@@ -584,7 +584,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private showVictory(score: number, stars: number, time: number, chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null }): void {
+  private showVictory(score: number, stars: number, time: number, chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null }): void {
     const { overlay } = this.createModal('🎉 修复完成！', '#4caf50', 0x4caf50);
 
     this.drawStars(375, 480, stars, 50);
@@ -608,24 +608,38 @@ export class GameScene extends Phaser.Scene {
       color: '#eaeaea'
     }).setOrigin(0.5);
 
+    let bannerY = 730;
     if (chapterResult?.chapterCompleted && chapterResult.completedChapterId) {
       const chapterBadge = this.add.graphics();
       chapterBadge.fillStyle(0xff9800, 1);
-      chapterBadge.fillRoundedRect(180, 730, 390, 45, 12);
+      chapterBadge.fillRoundedRect(180, bannerY, 390, 45, 12);
 
-      this.add.text(375, 752, '🎊 章节完成！点击查看章节奖励', {
+      this.add.text(375, bannerY + 22, '🎊 章节完成！点击查看章节奖励', {
         font: 'bold 18px Arial',
         color: '#ffffff'
       }).setOrigin(0.5);
 
       chapterBadge.setInteractive(
-        new Phaser.Geom.Rectangle(180, 730, 390, 45),
+        new Phaser.Geom.Rectangle(180, bannerY, 390, 45),
         Phaser.Geom.Rectangle.Contains
       );
 
       chapterBadge.on('pointerup', () => {
         this.scene.start('ChapterCompleteScene', { chapterId: chapterResult.completedChapterId });
       });
+
+      bannerY += 55;
+    }
+
+    if (chapterResult?.newlyUnlockedChapterId) {
+      const unlockBanner = this.add.graphics();
+      unlockBanner.fillStyle(0x9c27b0, 1);
+      unlockBanner.fillRoundedRect(140, bannerY, 470, 45, 12);
+
+      this.add.text(375, bannerY + 22, '🔓 新章节已解锁！', {
+        font: 'bold 18px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
     }
 
     this.createResultButtons(overlay, true, chapterResult);
@@ -664,11 +678,12 @@ export class GameScene extends Phaser.Scene {
   private createResultButtons(
     overlay: Phaser.GameObjects.Graphics,
     isVictory: boolean,
-    chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null }
+    chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null }
   ): void {
     const btnW = 230;
     const btnH = 68;
-    const btnY = chapterResult?.chapterCompleted ? 810 : 780;
+    const hasBanner = chapterResult?.chapterCompleted || chapterResult?.newlyUnlockedChapterId;
+    const btnY = hasBanner ? 810 : 780;
 
     if (chapterResult?.chapterCompleted && chapterResult.completedChapterId) {
       const chapterBtn = this.add.graphics();

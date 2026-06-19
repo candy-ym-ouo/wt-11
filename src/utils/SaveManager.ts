@@ -19,6 +19,10 @@ export class SaveManager {
     } else {
       this.data = this.createDefaultSave();
     }
+
+    this.recalculateTotalScore();
+    this.updateChapterProgress();
+    this.syncChapterUnlocks();
     this.save();
   }
 
@@ -152,11 +156,12 @@ export class SaveManager {
     return this.data.badges[badgeId] ?? false;
   }
 
-  static completeLevel(levelId: number, score: number, time: number, stars: number): { chapterCompleted: boolean; completedChapterId: number | null } {
+  static completeLevel(levelId: number, score: number, time: number, stars: number): { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null } {
     const progress = this.data.progress[levelId];
-    if (!progress) return { chapterCompleted: false, completedChapterId: null };
+    if (!progress) return { chapterCompleted: false, completedChapterId: null, newlyUnlockedChapterId: null };
 
     const isFirstCompletion = !progress.completed;
+    const starsImproved = stars > progress.stars;
 
     progress.completed = true;
     if (score > progress.bestScore) {
@@ -165,7 +170,7 @@ export class SaveManager {
     if (progress.bestTime === 0 || time < progress.bestTime) {
       progress.bestTime = time;
     }
-    if (stars > progress.stars) {
+    if (starsImproved) {
       progress.stars = stars;
     }
 
@@ -184,10 +189,15 @@ export class SaveManager {
     this.recalculateTotalScore();
     this.updateChapterProgress();
 
-    const result = this.checkChapterCompletion(levelId);
+    const completionResult = this.checkChapterCompletion(levelId);
+    const unlockResult = this.syncChapterUnlocks();
 
     this.save();
-    return result;
+    return {
+      chapterCompleted: completionResult.chapterCompleted,
+      completedChapterId: completionResult.completedChapterId,
+      newlyUnlockedChapterId: unlockResult
+    };
   }
 
   private static recalculateTotalScore(): void {
@@ -222,31 +232,45 @@ export class SaveManager {
     if (allLevelsCompleted) {
       chapterProgress.completed = true;
       chapterProgress.completedAt = Date.now();
-
-      const nextChapter = getNextChapter(chapter.id);
-      if (nextChapter) {
-        const totalStars = this.getTotalStars();
-        if (totalStars >= nextChapter.requiredStars) {
-          this.data.chapterProgress[nextChapter.id].unlocked = true;
-          if (!this.data.unlockedChapters.includes(nextChapter.id)) {
-            this.data.unlockedChapters.push(nextChapter.id);
-          }
-
-          const firstLevelId = nextChapter.levelIds[0];
-          if (this.data.progress[firstLevelId]) {
-            this.data.progress[firstLevelId].unlocked = true;
-            if (!this.data.unlockedLevels.includes(firstLevelId)) {
-              this.data.unlockedLevels.push(firstLevelId);
-            }
-          }
-        }
-      }
-
-      this.save();
       return { chapterCompleted: true, completedChapterId: chapter.id };
     }
 
     return { chapterCompleted: false, completedChapterId: null };
+  }
+
+  private static syncChapterUnlocks(): number | null {
+    const totalStars = this.getTotalStars();
+    let newlyUnlocked: number | null = null;
+
+    for (const chapter of Chapters) {
+      const chapterProgress = this.data.chapterProgress[chapter.id];
+      if (!chapterProgress) continue;
+      if (chapterProgress.unlocked) continue;
+
+      const prevChapter = Chapters.find(c => c.id === chapter.id - 1);
+      const prevCompleted = prevChapter ? this.data.chapterProgress[prevChapter.id]?.completed ?? false : true;
+
+      if (prevCompleted && totalStars >= chapter.requiredStars) {
+        chapterProgress.unlocked = true;
+        if (!this.data.unlockedChapters.includes(chapter.id)) {
+          this.data.unlockedChapters.push(chapter.id);
+        }
+
+        const firstLevelId = chapter.levelIds[0];
+        if (this.data.progress[firstLevelId]) {
+          this.data.progress[firstLevelId].unlocked = true;
+          if (!this.data.unlockedLevels.includes(firstLevelId)) {
+            this.data.unlockedLevels.push(firstLevelId);
+          }
+        }
+
+        if (newlyUnlocked === null) {
+          newlyUnlocked = chapter.id;
+        }
+      }
+    }
+
+    return newlyUnlocked;
   }
 
   static claimChapterRewards(chapterId: number): Reward[] {
