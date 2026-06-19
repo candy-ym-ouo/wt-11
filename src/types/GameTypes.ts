@@ -222,6 +222,59 @@ export interface EventSaveData {
   rankingCache: Record<string, EventRankingData>;
 }
 
+export type DailyQuestType = 'restore_plant' | 'timed_score' | 'win_streak';
+export type DailyQuestStatus = 'pending' | 'in_progress' | 'completed' | 'claimed';
+
+export interface DailyQuestReward {
+  type: 'score' | 'fragment' | 'material';
+  id: number;
+  name: string;
+  description: string;
+  value: number;
+  rarity: 'common' | 'rare' | 'epic';
+}
+
+export interface DailyQuest {
+  id: string;
+  type: DailyQuestType;
+  title: string;
+  description: string;
+  targetSpecimenId?: number;
+  targetLevelId?: number;
+  targetScore?: number;
+  targetTimeLimit?: number;
+  targetStreak?: number;
+  targetCount?: number;
+  currentProgress: number;
+  targetProgress: number;
+  status: DailyQuestStatus;
+  rewards: DailyQuestReward[];
+  difficulty: 'easy' | 'medium' | 'hard';
+  expiresAt: number;
+  createdAt: number;
+  completedAt?: number;
+  claimedAt?: number;
+}
+
+export interface DailyQuestProgress {
+  consecutiveWins: number;
+  lastWinTime?: number;
+  todayPlayedLevels: number[];
+  todayBestScores: Record<number, number>;
+  todayBestTimes: Record<number, number>;
+  restoredToday: number[];
+}
+
+export interface DailyQuestSaveData {
+  quests: Record<string, DailyQuest>;
+  lastRefreshDate: string;
+  refreshCount: number;
+  totalCompleted: number;
+  totalClaimed: number;
+  progress: DailyQuestProgress;
+  claimedQuestIds: string[];
+}
+
 export interface SaveData {
   progress: Record<number, LevelProgress>;
   chapterProgress: Record<number, ChapterProgress>;
@@ -232,4 +285,5 @@ export interface SaveData {
   galleryUnlocked: number[];
   workshop: WorkshopProgress;
   event: EventSaveData;
+  dailyQuest: DailyQuestSaveData;
 }

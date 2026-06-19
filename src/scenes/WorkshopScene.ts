@@ -6,6 +6,8 @@ import {
   getFragmentById, getMaterialById, getRecipeBySpecimenId,
   getRarityColor, getRarityText, getFragmentsBySpecimenId
 } from '../data/WorkshopConfig';
+import { DailyQuest } from '../types/GameTypes';
+import { DailyQuestManager } from '../utils/DailyQuestManager';
 
 type TabKey = 'fragments' | 'materials' | 'recipes';
 
@@ -395,8 +397,9 @@ export class WorkshopScene extends Phaser.Scene {
   }
 
   private performRestore(specimenId: number): void {
-    const success = SaveManager.restoreSpecimen(specimenId);
-    if (!success) return;
+    const result = SaveManager.restoreSpecimen(specimenId);
+    if (!result.success) return;
+    const { updatedQuests } = result;
 
     const specimen = getPlantSpecimen(specimenId);
     if (!specimen) return;
@@ -411,14 +414,19 @@ export class WorkshopScene extends Phaser.Scene {
     overlay.setInteractive();
     container.add(overlay);
 
+    const hasQuestUpdates = updatedQuests.length > 0;
+    const completedQuestCount = updatedQuests.filter(q => q.status === 'completed').length;
+    const modalHeight = hasQuestUpdates ? 760 : 700;
+    const modalY = hasQuestUpdates ? 270 : 300;
+
     const modal = this.add.graphics();
     modal.fillStyle(0x16213e, 1);
-    modal.fillRoundedRect(75, 300, 600, 700, 24);
+    modal.fillRoundedRect(75, modalY, 600, modalHeight, 24);
     modal.lineStyle(4, 0x4caf50, 1);
-    modal.strokeRoundedRect(75, 300, 600, 700, 24);
+    modal.strokeRoundedRect(75, modalY, 600, modalHeight, 24);
     container.add(modal);
 
-    this.add.text(375, 360, '🎉 修复成功！', {
+    this.add.text(375, modalY + 60, '🎉 修复成功！', {
       font: 'bold 36px Arial',
       color: '#4caf50'
     }).setOrigin(0.5);
@@ -426,21 +434,21 @@ export class WorkshopScene extends Phaser.Scene {
     const previewKey = `specimen-${specimenId}-preview`;
     const targetKey = `specimen-${specimenId}-target`;
     const displayKey = this.textures.exists(targetKey) ? targetKey : previewKey;
-    const img = this.add.image(375, 530, displayKey);
+    const img = this.add.image(375, modalY + 230, displayKey);
     img.setDisplaySize(300, 240);
     container.add(img);
 
-    this.add.text(375, 680, specimen.name, {
+    this.add.text(375, modalY + 380, specimen.name, {
       font: 'bold 28px Arial',
       color: '#ffffff'
     }).setOrigin(0.5);
 
-    this.add.text(375, 720, specimen.family, {
+    this.add.text(375, modalY + 420, specimen.family, {
       font: '20px Arial',
       color: '#aaaaaa'
     }).setOrigin(0.5);
 
-    this.add.text(375, 790, specimen.description, {
+    this.add.text(375, modalY + 490, specimen.description, {
       font: '16px Arial',
       color: '#eaeaea',
       align: 'center',
@@ -449,23 +457,56 @@ export class WorkshopScene extends Phaser.Scene {
 
     const galleryBadge = this.add.graphics();
     galleryBadge.fillStyle(0x4caf50, 1);
-    galleryBadge.fillRoundedRect(175, 860, 400, 45, 10);
+    galleryBadge.fillRoundedRect(175, modalY + 560, 400, 45, 10);
     container.add(galleryBadge);
-    this.add.text(375, 882, '📚 已同步至图鉴', {
+    this.add.text(375, modalY + 582, '📚 已同步至图鉴', {
       font: 'bold 18px Arial',
       color: '#ffffff'
     }).setOrigin(0.5);
 
+    let currentY = modalY + 630;
+    if (hasQuestUpdates) {
+      if (completedQuestCount > 0) {
+        const questBadge = this.add.graphics();
+        questBadge.fillStyle(0x03a9f4, 1);
+        questBadge.fillRoundedRect(150, currentY, 450, 45, 10);
+        questBadge.setInteractive(
+          new Phaser.Geom.Rectangle(150, currentY, 450, 45),
+          Phaser.Geom.Rectangle.Contains
+        );
+        container.add(questBadge);
+        this.add.text(375, currentY + 22, `📋 有${completedQuestCount}个每日委托可领取！`, {
+          font: 'bold 18px Arial',
+          color: '#ffffff'
+        }).setOrigin(0.5);
+
+        questBadge.on('pointerup', () => {
+          container.destroy();
+          this.scene.start('DailyQuestScene');
+        });
+      } else {
+          const questBadge = this.add.graphics();
+          questBadge.fillStyle(0x03a9f4, 0.8);
+          questBadge.fillRoundedRect(150, currentY, 450, 45, 10);
+          container.add(questBadge);
+          this.add.text(375, currentY + 22, '📋 每日委托进度已更新', {
+            font: 'bold 18px Arial',
+            color: '#ffffff'
+          }).setOrigin(0.5);
+        }
+      currentY += 55;
+    }
+
     const confirmBtn = this.add.graphics();
     confirmBtn.fillStyle(0x4caf50, 1);
-    confirmBtn.fillRoundedRect(200, 930, 350, 55, 14);
+    confirmBtn.fillRoundedRect(200, currentY, 350, 55, 14);
     confirmBtn.setInteractive(
-      new Phaser.Geom.Rectangle(200, 930, 350, 55),
+      new Phaser.Geom.Rectangle(200, currentY, 350, 55),
       Phaser.Geom.Rectangle.Contains
     );
     container.add(confirmBtn);
 
-    this.add.text(375, 957, '继续修复', {
+    this.add.text(375, currentY + 27, '继续修复', {
       font: 'bold 22px Arial',
       color: '#ffffff'
     }).setOrigin(0.5);

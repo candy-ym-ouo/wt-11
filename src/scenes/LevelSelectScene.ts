@@ -4,6 +4,7 @@ import { SaveManager } from '../utils/SaveManager';
 import { getDifficultyColor, getDifficultyText } from '../utils/GameUtils';
 import { LevelData } from '../types/GameTypes';
 import { Chapters, getChapterById, getChapterByLevelId } from '../data/Chapters';
+import { DailyQuestManager } from '../utils/DailyQuestManager';
 
 export class LevelSelectScene extends Phaser.Scene {
   private currentChapterId: number | null = null;
@@ -213,22 +214,38 @@ export class LevelSelectScene extends Phaser.Scene {
 
   private addBottomButtons(): void {
     const btnY = 1250;
-    const btnW = 280;
+    const btnW = 220;
     const btnH = 65;
-    const spacing = 30;
+    const spacing = 15;
+
+    const hasClaimable = DailyQuestManager.hasClaimableQuests();
+    const claimableCount = DailyQuestManager.getClaimableQuestsCount();
+    const dailyQuestLabel = hasClaimable
+      ? `📋 委托 (${claimableCount})`
+      : '📋 每日委托';
 
     const chapterBtn = this.createBottomButton(
-      375 - btnW / 2 - spacing / 2,
+      375 - btnW - spacing,
       btnY,
       btnW,
       btnH,
-      '📖 章节选择',
+      '📖 章节',
       0x9c27b0,
       () => this.scene.start('ChapterSelectScene')
     );
 
+    const questBtn = this.createBottomButton(
+      375,
+      btnY,
+      btnW,
+      btnH,
+      dailyQuestLabel,
+      hasClaimable ? 0xff9800 : 0x03a9f4,
+      () => this.scene.start('DailyQuestScene')
+    );
+
     const galleryBtn = this.createBottomButton(
-      375 + btnW / 2 + spacing / 2,
+      375 + btnW + spacing,
       btnY,
       btnW,
       btnH,

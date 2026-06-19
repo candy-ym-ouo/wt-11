@@ -4,10 +4,11 @@ import { getLevelRule } from '../data/LevelRules';
 import { getPlantSpecimen } from '../data/PlantSpecimens';
 import { SaveManager } from '../utils/SaveManager';
 import { calculateScore, formatTime, getDifficultyColor, getDifficultyText } from '../utils/GameUtils';
-import { LevelRule, PlantSpecimen, PuzzlePieceData, EventLevelRule } from '../types/GameTypes';
+import { LevelRule, PlantSpecimen, PuzzlePieceData, EventLevelRule, DailyQuest } from '../types/GameTypes';
 import { getDropRule, getFragmentsBySpecimenId, Fragments, Materials } from '../data/WorkshopConfig';
 import { getEventLevelRule, isEventLevel } from '../data/EventLevelRules';
 import { getEventById } from '../data/Events';
+import { DailyQuestManager } from '../utils/DailyQuestManager';
 
 export class GameScene extends Phaser.Scene {
   private levelRule!: LevelRule;
@@ -550,8 +551,9 @@ export class GameScene extends Phaser.Scene {
     );
     const finalScore = Math.floor(result.score * this.scoreMultiplier);
 
-    let chapterResult: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null } | undefined;
+    let chapterResult: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[] } | undefined;
     let eventResult: { newlyUnlockedLevelId: number | null; updatedTotalScore: number } | undefined;
+    let updatedQuests: DailyQuest[] = [];
 
     if (this.isEventLevel && this.eventId) {
       eventResult = SaveManager.completeEventLevel(
@@ -568,6 +570,7 @@ export class GameScene extends Phaser.Scene {
         this.elapsedTime,
         result.stars
       );
+      updatedQuests = chapterResult.updatedQuests || [];
     }
 
     const drops = this.calculateDrops(result.stars);
@@ -576,13 +579,17 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.zoomTo(1.05, 400, 'Cubic.easeInOut', true);
     this.time.delayedCall(450, () => {
       this.cameras.main.zoomTo(1.0, 400, 'Cubic.easeInOut', true);
-      this.showVictory(finalScore, result.stars, this.elapsedTime, chapterResult, drops, eventResult);
+      this.showVictory(finalScore, result.stars, this.elapsedTime, chapterResult, drops, eventResult, updatedQuests);
     });
   }
 
   private onTimeUp(): void {
     this.isCompleted = true;
     if (this.timerEvent) this.timerEvent.paused = true;
+
+    if (!this.isEventLevel) {
+      DailyQuestManager.onLevelFail();
+    }
 
     const result = calculateScore(
       this.levelRule.timeLimit,
@@ -676,7 +683,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private showVictory(score: number, stars: number, time: number, chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null }, drops?: { fragments: { id: number; count: number }[]; materials: { id: number; count: number }[] }, eventResult?: { newlyUnlockedLevelId: number | null; updatedTotalScore: number }): void {
+  private showVictory(score: number, stars: number, time: number, chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[] }, drops?: { fragments: { id: number; count: number }[]; materials: { id: number; count: number }[] }, eventResult?: { newlyUnlockedLevelId: number | null; updatedTotalScore: number }, updatedQuests: DailyQuest[] = []): void {
     const { overlay } = this.createModal('🎉 修复完成！', '#4caf50', 0x4caf50);
 
     this.drawStars(375, 480, stars, 50);
@@ -815,9 +822,40 @@ export class GameScene extends Phaser.Scene {
         font: 'bold 18px Arial',
         color: '#ffffff'
       }).setOrigin(0.5);
+      bannerY += 55;
     }
 
-    this.createResultButtons(overlay, true, chapterResult, eventResult);
+    if (!this.isEventLevel && updatedQuests.length > 0) {
+      const completedCount = updatedQuests.filter(q => q.status === 'completed').length;
+      if (completedCount > 0) {
+        const questBanner = this.add.graphics();
+        questBanner.fillStyle(0x03a9f4, 1);
+        questBanner.fillRoundedRect(140, bannerY, 470, 45, 12);
+        questBanner.setInteractive(
+          new Phaser.Geom.Rectangle(140, bannerY, 470, 45),
+          Phaser.Geom.Rectangle.Contains
+        );
+        this.add.text(375, bannerY + 22, `📋 有${completedCount}个每日委托可领取！`, {
+          font: 'bold 18px Arial',
+          color: '#ffffff'
+        }).setOrigin(0.5);
+        questBanner.on('pointerup', () => {
+          this.scene.start('DailyQuestScene');
+        });
+        bannerY += 55;
+      } else {
+        const questBanner = this.add.graphics();
+        questBanner.fillStyle(0x03a9f4, 0.8);
+        questBanner.fillRoundedRect(140, bannerY, 470, 45, 12);
+        this.add.text(375, bannerY + 22, `📋 每日委托进度已更新`, {
+          font: 'bold 18px Arial',
+          color: '#ffffff'
+        }).setOrigin(0.5);
+        bannerY += 55;
+      }
+    }
+
+    this.createResultButtons(overlay, true, chapterResult, eventResult, updatedQuests);
   }
 
   private showGameOver(score: number, snapped: number, total: number): void {
@@ -853,8 +891,9 @@ export class GameScene extends Phaser.Scene {
   private createResultButtons(
     overlay: Phaser.GameObjects.Graphics,
     isVictory: boolean,
-    chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null },
-    eventResult?: { newlyUnlockedLevelId: number | null; updatedTotalScore: number }
+    chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[] },
+    eventResult?: { newlyUnlockedLevelId: number | null; updatedTotalScore: number },
+    updatedQuests: DailyQuest[] = []
   ): void {
     const btnW = 230;
     const btnH = 68;
@@ -862,9 +901,9 @@ export class GameScene extends Phaser.Scene {
     if (this.isEventLevel) {
       hasBanner = !!eventResult;
     } else {
-      hasBanner = !!(chapterResult?.chapterCompleted || chapterResult?.newlyUnlockedChapterId);
+      hasBanner = !!(chapterResult?.chapterCompleted || chapterResult?.newlyUnlockedChapterId || updatedQuests.length > 0);
     }
-    const btnY = hasBanner ? 810 : 780;
+    const btnY = hasBanner ? 865 : 780;
 
     if (!this.isEventLevel && chapterResult?.chapterCompleted && chapterResult.completedChapterId) {
       const chapterBtn = this.add.graphics();

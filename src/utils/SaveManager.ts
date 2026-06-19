@@ -9,13 +9,15 @@ import {
   EventSaveData,
   EventRankingData,
   RankingEntry,
-  EventReward
+  EventReward,
+  DailyQuest
 } from '../types/GameTypes';
 import { Levels } from '../data/Levels';
 import { Chapters, getChapterById, getChapterByLevelId, getNextChapter, getRewardsByChapterId } from '../data/Chapters';
 import { WorkshopRecipes, getRecipeBySpecimenId } from '../data/WorkshopConfig';
 import { Events, getActiveEvent, getEventById } from '../data/Events';
 import { EventLevelRules, getEventLevelRulesByEventId } from '../data/EventLevelRules';
+import { DailyQuestManager } from './DailyQuestManager';
 
 const STORAGE_KEY = 'plant_specimen_puzzle_save';
 
@@ -38,6 +40,7 @@ export class SaveManager {
     this.recalculateTotalScore();
     this.updateChapterProgress();
     this.syncChapterUnlocks();
+    DailyQuestManager.init(this.data.dailyQuest);
     this.save();
   }
 
@@ -73,6 +76,31 @@ export class SaveManager {
       }
       if (!oldData.event.rankingCache) {
         oldData.event.rankingCache = defaultData.event.rankingCache;
+      }
+    }
+    if (!oldData.dailyQuest) {
+      oldData.dailyQuest = defaultData.dailyQuest;
+    } else {
+      if (!oldData.dailyQuest.quests) {
+        oldData.dailyQuest.quests = defaultData.dailyQuest.quests;
+      }
+      if (!oldData.dailyQuest.progress) {
+        oldData.dailyQuest.progress = defaultData.dailyQuest.progress;
+      }
+      if (!oldData.dailyQuest.claimedQuestIds) {
+        oldData.dailyQuest.claimedQuestIds = defaultData.dailyQuest.claimedQuestIds;
+      }
+      if (oldData.dailyQuest.lastRefreshDate === undefined) {
+        oldData.dailyQuest.lastRefreshDate = defaultData.dailyQuest.lastRefreshDate;
+      }
+      if (oldData.dailyQuest.refreshCount === undefined) {
+        oldData.dailyQuest.refreshCount = defaultData.dailyQuest.refreshCount;
+      }
+      if (oldData.dailyQuest.totalCompleted === undefined) {
+        oldData.dailyQuest.totalCompleted = defaultData.dailyQuest.totalCompleted;
+      }
+      if (oldData.dailyQuest.totalClaimed === undefined) {
+        oldData.dailyQuest.totalClaimed = defaultData.dailyQuest.totalClaimed;
       }
     }
 
@@ -117,6 +145,7 @@ export class SaveManager {
     });
 
     const eventSaveData = this.createDefaultEventSave();
+    const dailyQuestSaveData = DailyQuestManager.createDefaultDailyQuestSave();
 
     return {
       progress,
@@ -131,7 +160,8 @@ export class SaveManager {
         materials: {},
         restoredSpecimens: []
       },
-      event: eventSaveData
+      event: eventSaveData,
+      dailyQuest: dailyQuestSaveData
     };
   }
 
@@ -232,6 +262,11 @@ export class SaveManager {
     return this.data.totalScore;
   }
 
+  static addScore(value: number): void {
+    this.data.totalScore += value;
+    this.save();
+  }
+
   static getUnlockedLevels(): number[] {
     return [...this.data.unlockedLevels];
   }
@@ -254,9 +289,9 @@ export class SaveManager {
     return this.data.badges[badgeId] ?? false;
   }
 
-  static completeLevel(levelId: number, score: number, time: number, stars: number): { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null } {
+  static completeLevel(levelId: number, score: number, time: number, stars: number): { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[] } {
     const progress = this.data.progress[levelId];
-    if (!progress) return { chapterCompleted: false, completedChapterId: null, newlyUnlockedChapterId: null };
+    if (!progress) return { chapterCompleted: false, completedChapterId: null, newlyUnlockedChapterId: null, updatedQuests: [] };
 
     const isFirstCompletion = !progress.completed;
     const starsImproved = stars > progress.stars;
@@ -286,11 +321,14 @@ export class SaveManager {
     const completionResult = this.checkChapterCompletion(levelId);
     const unlockResult = this.syncChapterUnlocks();
 
+    const updatedQuests = DailyQuestManager.onLevelComplete(levelId, score, time, stars);
+
     this.save();
     return {
       chapterCompleted: completionResult.chapterCompleted,
       completedChapterId: completionResult.completedChapterId,
-      newlyUnlockedChapterId: unlockResult
+      newlyUnlockedChapterId: unlockResult,
+      updatedQuests
     };
   }
 
@@ -470,8 +508,8 @@ export class SaveManager {
     return true;
   }
 
-  static restoreSpecimen(specimenId: number): boolean {
-    if (!this.canRestoreSpecimen(specimenId)) return false;
+  static restoreSpecimen(specimenId: number): { success: boolean; updatedQuests: DailyQuest[] } {
+    if (!this.canRestoreSpecimen(specimenId)) return { success: false, updatedQuests: [] };
 
     const recipe = getRecipeBySpecimenId(specimenId)!;
 
@@ -488,8 +526,10 @@ export class SaveManager {
       this.data.galleryUnlocked.push(specimenId);
     }
 
+    const updatedQuests = DailyQuestManager.onSpecimenRestored(specimenId);
+
     this.save();
-    return true;
+    return { success: true, updatedQuests };
   }
 
   static addWorkshopDrops(drops: { fragments: { id: number; count: number }[]; materials: { id: number; count: number }[] }): void {
