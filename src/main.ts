@@ -24,6 +24,7 @@ import { SeasonPassScene } from './scenes/SeasonPassScene';
 import { CustomPuzzleScene } from './scenes/CustomPuzzleScene';
 import { CustomPuzzleGameScene } from './scenes/CustomPuzzleGameScene';
 import { RepairLogScene } from './scenes/RepairLogScene';
+import { NotificationScene } from './scenes/NotificationScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -59,7 +60,8 @@ const config: Phaser.Types.Core.GameConfig = {
     SeasonPassScene,
     CustomPuzzleScene,
     CustomPuzzleGameScene,
-    RepairLogScene
+    RepairLogScene,
+    NotificationScene
   ],
   physics: {
     default: 'arcade',

@@ -38,8 +38,9 @@ import { TowerSaveData, TowerFloorProgress, TowerReward, TowerResultData, Exhibi
 import { ExhibitionThemes, getExhibitionTheme, getBadgesByThemeId, getExhibitionBadge } from '../data/ExhibitionConfig';
 import { AchievementManager } from './AchievementManager';
 import { SeasonPassManager } from './SeasonPassManager';
-import { SeasonPassSaveData } from '../types/GameTypes';
+import { SeasonPassSaveData, NotificationSaveData } from '../types/GameTypes';
 import { RepairLogManager } from './RepairLogManager';
+import { NotificationManager } from './NotificationManager';
 
 const STORAGE_KEY = 'plant_specimen_puzzle_save';
 
@@ -69,6 +70,8 @@ export class SaveManager {
     ConservationManager.init(this.data.conservation);
     SeasonPassManager.init(this.data.seasonPass);
     RepairLogManager.init(this.data.repairLog);
+    NotificationManager.init(this.data.notification);
+    this.data.notification = NotificationManager.getSaveData();
     this.save();
   }
 
@@ -369,6 +372,26 @@ export class SaveManager {
       oldData.repairLog = { entries: [], totalEntries: 0 };
     }
 
+    if (!oldData.notification) {
+      oldData.notification = NotificationManager.createDefaultNotificationSave();
+    } else {
+      if (!oldData.notification.notifications) {
+        oldData.notification.notifications = [];
+      }
+      if (oldData.notification.lastCheckTime === undefined) {
+        oldData.notification.lastCheckTime = Date.now();
+      }
+      if (oldData.notification.lastStreakCheckDate === undefined) {
+        oldData.notification.lastStreakCheckDate = '';
+      }
+      if (!oldData.notification.dismissedNotificationIds) {
+        oldData.notification.dismissedNotificationIds = [];
+      }
+      if (oldData.notification.maxStored === undefined) {
+        oldData.notification.maxStored = 100;
+      }
+    }
+
     return oldData as SaveData;
   }
 
@@ -437,7 +460,8 @@ export class SaveManager {
       familyCollection: familyCollectionData,
       seasonPass: seasonPassData,
       customPuzzle: { records: {}, totalPlays: 0, totalScore: 0 },
-      repairLog: RepairLogManager.createDefaultSave()
+      repairLog: RepairLogManager.createDefaultSave(),
+      notification: NotificationManager.createDefaultNotificationSave()
     };
   }
 

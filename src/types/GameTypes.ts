@@ -959,6 +959,56 @@ export interface RepairLogSaveData {
   totalEntries: number;
 }
 
+export type NotificationType = 
+  | 'event_start' 
+  | 'event_end' 
+  | 'reward_available' 
+  | 'gallery_unlock' 
+  | 'streak_broken'
+  | 'daily_quest'
+  | 'achievement'
+  | 'season_pass'
+  | 'conservation'
+  | 'system';
+
+export type NotificationPriority = 'low' | 'medium' | 'high' | 'urgent';
+
+export interface NotificationData {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  icon: string;
+  priority: NotificationPriority;
+  timestamp: number;
+  read: boolean;
+  dismissed: boolean;
+  relatedId?: string | number;
+  relatedType?: string;
+  actionLabel?: string;
+  actionScene?: string;
+  data?: Record<string, any>;
+  expiresAt?: number;
+}
+
+export interface NotificationSummary {
+  totalCount: number;
+  unreadCount: number;
+  highPriorityCount: number;
+  byType: Record<NotificationType, number>;
+  hasRewardsToClaim: boolean;
+  hasActiveEvent: boolean;
+  streakBroken: boolean;
+}
+
+export interface NotificationSaveData {
+  notifications: NotificationData[];
+  lastCheckTime: number;
+  lastStreakCheckDate: string;
+  dismissedNotificationIds: string[];
+  maxStored: number;
+}
+
 export interface SaveData {
   progress: Record<number, LevelProgress>;
   chapterProgress: Record<number, ChapterProgress>;
@@ -980,4 +1030,5 @@ export interface SaveData {
   seasonPass: SeasonPassSaveData;
   customPuzzle: CustomPuzzleSaveData;
   repairLog: RepairLogSaveData;
+  notification: NotificationSaveData;
 }
