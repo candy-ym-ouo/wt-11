@@ -1258,7 +1258,7 @@ export class SaveManager {
       const nextFloor = getTowerFloor(nextFloorId);
       if (nextFloor && !this.data.tower.floorProgress[nextFloorId]?.unlocked) {
         const totalStars = this.data.tower.totalStars;
-        if (totalStars >= nextFloor.requiredStars) {
+        if (totalStars >= nextFloor.requiredStars && this.data.tower.floorProgress[nextFloorId]) {
           this.data.tower.floorProgress[nextFloorId].unlocked = true;
           unlockedNextFloor = true;
           if (nextFloor.floorNumber > this.data.tower.highestFloor) {

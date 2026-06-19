@@ -47,6 +47,8 @@ export class GameScene extends Phaser.Scene {
   private targetTween: Phaser.Tweens.Tween | null = null;
   private snapCountForShuffle: number = 0;
   private comboBonusMultiplier: number = 1;
+  private mirrorPieces: PuzzlePieceSprite[] = [];
+  private realPiecesCount: number = 0;
 
   private static readonly TARGET_AREA_X = 375;
   private static readonly TARGET_AREA_Y = 420;
@@ -63,6 +65,20 @@ export class GameScene extends Phaser.Scene {
     this.eventId = data.eventId ?? null;
     this.isTowerFloor = data.isTowerFloor ?? false;
     this.towerFloorId = data.towerFloorId ?? null;
+    this.comboCount = 0;
+    this.maxCombo = 0;
+    this.mistakeCount = 0;
+    this.hintsUsed = 0;
+    this.perfectSnaps = 0;
+    this.totalSnapDistance = 0;
+    this.snapCount = 0;
+    this.snapCountForShuffle = 0;
+    this.comboBonusMultiplier = 1;
+    this.mirrorPieces = [];
+    this.realPiecesCount = 0;
+    this.pieces = [];
+    this.targetOffsetX = 0;
+    this.targetOffsetY = 0;
 
     if (this.isTowerFloor && this.towerFloorId) {
       const towerFloor = getTowerFloor(this.towerFloorId);
@@ -150,6 +166,20 @@ export class GameScene extends Phaser.Scene {
       font: '18px Arial',
       color: '#' + getDifficultyColor(this.levelRule.difficulty).toString(16).padStart(6, '0')
     });
+
+    if (this.isTowerFloor && this.towerFloorData) {
+      const rulesY = 128;
+      const ruleNames = this.towerFloorData.rules.map(r => r.name);
+      const ruleText = ruleNames.join(' · ');
+      const ruleBg = this.add.graphics();
+      ruleBg.fillStyle(0x9c27b0, 0.8);
+      const ruleTextWidth = Math.min(660, ruleText.length * 13 + 24);
+      ruleBg.fillRoundedRect(60, rulesY - 10, ruleTextWidth, 22, 6);
+      this.add.text(72, rulesY + 1, `📜 ${ruleText}`, {
+        font: 'bold 11px Arial',
+        color: '#ffffff'
+      }).setOrigin(0, 0.5);
+    }
 
     if (this.isEventLevel) {
       const eventBadge = this.add.graphics();
@@ -291,6 +321,24 @@ export class GameScene extends Phaser.Scene {
     if (label) {
       label.setPosition(x, y - h / 2 - 28);
     }
+
+    if (this.isTowerFloor && this.hasTowerRule('moving_target')) {
+      const baseX = GameScene.TARGET_AREA_X;
+      const baseY = GameScene.TARGET_AREA_Y;
+      const deltaX = this.targetOffsetX;
+      const deltaY = this.targetOffsetY;
+
+      this.pieces.forEach(piece => {
+        if (!piece.isMirror && !piece.isPieceSnapped()) {
+          const origTargetX = piece.getTargetX();
+          const origTargetY = piece.getTargetY();
+          const offsetX = origTargetX - baseX;
+          const offsetY = origTargetY - baseY;
+          piece.setData('liveTargetX', baseX + offsetX + deltaX);
+          piece.setData('liveTargetY', baseY + offsetY + deltaY);
+        }
+      });
+    }
   }
 
   private drawDashedRect(
@@ -379,6 +427,59 @@ export class GameScene extends Phaser.Scene {
 
       this.pieces.push(sprite);
     });
+
+    this.realPiecesCount = pieceDataList.length;
+
+    if (this.isTowerFloor && this.hasTowerRule('mirror_pieces')) {
+      this.createMirrorPieces();
+    }
+  }
+
+  private createMirrorPieces(): void {
+    const mirrorCount = this.getTowerRule('mirror_pieces')?.value || 2;
+    const realPieces = this.pieces.filter(p => !p.isMirror);
+
+    for (let i = 0; i < mirrorCount && i < realPieces.length; i++) {
+      const sourcePiece = realPieces[Phaser.Math.Between(0, realPieces.length - 1)];
+      const sourceData: PuzzlePieceData = {
+        id: 1000 + i,
+        initialX: Phaser.Math.Between(80, 670),
+        initialY: Phaser.Math.Between(920, 1100),
+        targetX: Phaser.Math.Between(
+          GameScene.TARGET_AREA_X - GameScene.TARGET_AREA_W / 2 + 50,
+          GameScene.TARGET_AREA_X + GameScene.TARGET_AREA_W / 2 - 50
+        ),
+        targetY: Phaser.Math.Between(
+          GameScene.TARGET_AREA_Y - GameScene.TARGET_AREA_H / 2 + 50,
+          GameScene.TARGET_AREA_Y + GameScene.TARGET_AREA_H / 2 - 50
+        ),
+        width: sourcePiece.width,
+        height: sourcePiece.height,
+        textureKey: sourcePiece.getData('textureKey') || `specimen-${this.specimen.id}-piece-${sourcePiece.getPieceId()}`,
+        sourceX: 0,
+        sourceY: 0
+      };
+
+      const mirrorSprite = new PuzzlePieceSprite(this, sourceData, {
+        position: this.levelRule.snapPositionThreshold * 0.6,
+        rotation: this.levelRule.snapRotationThreshold * 0.6
+      });
+      mirrorSprite.isMirror = true;
+      mirrorSprite.setDepth(9);
+      mirrorSprite.setAlpha(0.85);
+
+      const mirrorBorder = this.add.graphics();
+      mirrorBorder.lineStyle(2, 0xe94560, 0);
+      this.add.existing(mirrorBorder);
+      mirrorSprite.add(mirrorBorder);
+
+      const rotations = [90, 180, 270];
+      const randomRotation = rotations[Math.floor(Math.random() * rotations.length)];
+      mirrorSprite.angle = randomRotation;
+
+      this.mirrorPieces.push(mirrorSprite);
+      this.pieces.push(mirrorSprite);
+    }
   }
 
   private generatePieceData(): PuzzlePieceData[] {
@@ -669,8 +770,21 @@ export class GameScene extends Phaser.Scene {
     this.isCompleted = false;
     this.elapsedTime = 0;
     this.isPaused = false;
+    this.comboCount = 0;
+    this.maxCombo = 0;
+    this.mistakeCount = 0;
+    this.hintsUsed = 0;
+    this.perfectSnaps = 0;
+    this.totalSnapDistance = 0;
+    this.snapCount = 0;
+    this.snapCountForShuffle = 0;
+    this.comboBonusMultiplier = 1;
 
     PuzzlePieceSprite.clearSelection();
+
+    this.mirrorPieces.forEach(mp => mp.destroy());
+    this.mirrorPieces = [];
+    this.pieces = this.pieces.filter(p => !p.isMirror);
 
     const newPositions = this.generateShufflePositions(this.pieces.length);
     this.pieces.forEach((piece, index) => {
@@ -679,12 +793,21 @@ export class GameScene extends Phaser.Scene {
       piece.updateInitialPosition(newPositions[index].x, newPositions[index].y);
     });
 
+    if (this.isTowerFloor && this.hasTowerRule('mirror_pieces')) {
+      this.createMirrorPieces();
+    }
+
     this.startTimer();
     this.updateUI();
   }
 
   private setupEvents(): void {
-    this.events.on('piece-snapped', (data: { piece: PuzzlePieceSprite; distance: number; isPerfect: boolean }) => {
+    this.events.on('piece-snapped', (data: { pieceId: number; piece: PuzzlePieceSprite; distance: number; isPerfect: boolean }) => {
+      if (data.piece && data.piece.isMirror) {
+        this.handleMirrorSnap(data.piece);
+        return;
+      }
+
       this.snappedCount++;
       this.snapCount++;
 
@@ -694,7 +817,7 @@ export class GameScene extends Phaser.Scene {
           this.maxCombo = this.comboCount;
         }
 
-        this.totalSnapDistance += data.distance;
+        this.totalSnapDistance += data.distance || 0;
 
         if (data.isPerfect) {
           this.perfectSnaps++;
@@ -714,12 +837,12 @@ export class GameScene extends Phaser.Scene {
 
       this.cameras.main.flash(80, 255, 255, 200, false);
 
-      if (this.snappedCount >= this.pieces.length) {
+      if (this.snappedCount >= this.realPiecesCount) {
         this.time.delayedCall(400, () => this.onLevelComplete());
       }
     });
 
-    this.events.on('piece-missed', () => {
+    this.events.on('piece-missed', (data: { pieceId: number; piece: PuzzlePieceSprite }) => {
       if (this.isTowerFloor) {
         this.comboCount = 0;
         this.mistakeCount++;
@@ -729,6 +852,19 @@ export class GameScene extends Phaser.Scene {
           const penalty = this.getTowerRule('time_penalty')?.value || 5;
           this.elapsedTime += penalty;
           this.cameras.main.shake(200, 0.005, false);
+
+          const penaltyText = this.add.text(375, 300, `-${penalty}s`, {
+            font: 'bold 28px Arial',
+            color: '#f44336'
+          }).setOrigin(0.5).setDepth(100);
+          this.tweens.add({
+            targets: penaltyText,
+            y: 260,
+            alpha: 0,
+            duration: 800,
+            ease: 'Cubic.easeOut',
+            onComplete: () => penaltyText.destroy()
+          });
         }
 
         if (this.hasTowerRule('limited_mistake_penalty')) {
@@ -760,10 +896,61 @@ export class GameScene extends Phaser.Scene {
     const n = this.getTowerRule('shuffle_every_n_pieces')?.value || 3;
     this.snapCountForShuffle++;
 
-    if (this.snapCountForShuffle >= n && this.snappedCount < this.pieces.length) {
+    if (this.snapCountForShuffle >= n && this.snappedCount < this.realPiecesCount) {
       this.snapCountForShuffle = 0;
       this.shuffleRemainingPieces();
     }
+  }
+
+  private handleMirrorSnap(mirrorPiece: PuzzlePieceSprite): void {
+    this.comboCount = 0;
+    this.mistakeCount++;
+    this.comboBonusMultiplier = 1;
+
+    this.cameras.main.shake(300, 0.008, false);
+
+    const breakText = this.add.text(mirrorPiece.x, mirrorPiece.y - 40, '幻影!', {
+      font: 'bold 22px Arial',
+      color: '#e94560'
+    }).setOrigin(0.5).setDepth(100);
+    this.tweens.add({
+      targets: breakText,
+      y: breakText.y - 50,
+      alpha: 0,
+      duration: 800,
+      ease: 'Cubic.easeOut',
+      onComplete: () => breakText.destroy()
+    });
+
+    this.tweens.add({
+      targets: mirrorPiece,
+      alpha: 0,
+      scale: 0.3,
+      duration: 400,
+      ease: 'Cubic.easeIn',
+      onComplete: () => {
+        mirrorPiece.destroy();
+        const idx = this.mirrorPieces.indexOf(mirrorPiece);
+        if (idx >= 0) this.mirrorPieces.splice(idx, 1);
+        const pieceIdx = this.pieces.indexOf(mirrorPiece);
+        if (pieceIdx >= 0) this.pieces.splice(pieceIdx, 1);
+      }
+    });
+
+    if (this.hasTowerRule('time_penalty')) {
+      const penalty = this.getTowerRule('time_penalty')?.value || 5;
+      this.elapsedTime += penalty;
+    }
+
+    if (this.hasTowerRule('limited_mistake_penalty')) {
+      const maxMistakes = this.getTowerRule('limited_mistake_penalty')?.value || 3;
+      if (this.mistakeCount >= maxMistakes) {
+        this.onMistakeLimitReached();
+        return;
+      }
+    }
+
+    this.updateTowerStatusUI();
   }
 
   private shuffleRemainingPieces(): void {
@@ -796,7 +983,7 @@ export class GameScene extends Phaser.Scene {
       SaveManager.failTowerFloor(this.towerFloorId);
     }
 
-    this.showGameOver(0, this.snappedCount, this.pieces.length, 'mistake_limit');
+    this.showGameOver(0, this.snappedCount, this.realPiecesCount, 'mistake_limit');
   }
 
   private startTimer(): void {
@@ -913,8 +1100,8 @@ export class GameScene extends Phaser.Scene {
         time: this.elapsedTime,
         accuracy: 0,
         maxCombo: 0,
-        mistakes: 0,
-        hintsUsed: 0,
+        mistakes: this.mistakeCount,
+        hintsUsed: this.hintsUsed,
         perfectSnaps: 0,
         scoringBreakdown: [],
         isNewRecord: false,
@@ -925,16 +1112,18 @@ export class GameScene extends Phaser.Scene {
     }
 
     const floor = this.towerFloorData;
-    const totalPieces = this.pieces.length;
+    const totalPieces = this.realPiecesCount;
     const scoringConditions = floor.scoringConditions;
     const scoringBreakdown: { condition: string; score: number; maxScore: number }[] = [];
 
     let totalScore = 0;
     const baseMaxScore = 1000;
+    const totalWeight = scoringConditions.reduce((sum, c) => sum + c.weight, 0);
 
     scoringConditions.forEach(condition => {
       let score = 0;
-      const maxScore = Math.floor(baseMaxScore * (condition.weight / 100));
+      const weightRatio = totalWeight > 0 ? condition.weight / totalWeight : 1 / scoringConditions.length;
+      const maxScore = Math.floor(baseMaxScore * weightRatio * scoringConditions.length);
 
       switch (condition.type) {
         case 'time':
@@ -943,9 +1132,8 @@ export class GameScene extends Phaser.Scene {
           break;
 
         case 'accuracy':
-          const avgDistance = this.snapCount > 0 ? this.totalSnapDistance / this.snapCount : 0;
-          const maxThreshold = floor.snapPositionThreshold;
-          const accuracyRatio = Math.max(0, 1 - avgDistance / maxThreshold);
+          const avgDistance = this.snapCount > 0 ? this.totalSnapDistance / this.snapCount : floor.snapPositionThreshold;
+          const accuracyRatio = Math.max(0, 1 - avgDistance / floor.snapPositionThreshold);
           score = Math.floor(maxScore * accuracyRatio);
           break;
 
@@ -994,7 +1182,7 @@ export class GameScene extends Phaser.Scene {
     if (totalScore >= baseMaxScore * 0.85) stars = 3;
 
     const accuracy = this.snapCount > 0
-      ? Math.round((1 - this.totalSnapDistance / (this.snapCount * floor.snapPositionThreshold)) * 100)
+      ? Math.round(Math.max(0, Math.min(100, (1 - this.totalSnapDistance / (this.snapCount * floor.snapPositionThreshold)) * 100)))
       : 0;
 
     const progress = SaveManager.getTowerFloorProgress(floor.id);
@@ -1029,7 +1217,7 @@ export class GameScene extends Phaser.Scene {
 
     if (this.isTowerFloor && this.towerFloorId) {
       SaveManager.failTowerFloor(this.towerFloorId);
-      this.showGameOver(0, this.snappedCount, this.pieces.length, 'time_up');
+      this.showGameOver(0, this.snappedCount, this.realPiecesCount, 'time_up');
       return;
     }
 
@@ -1338,22 +1526,30 @@ export class GameScene extends Phaser.Scene {
 
     const scoreBg = this.add.graphics();
     scoreBg.fillStyle(0x0f3460, 0.6);
-    scoreBg.fillRoundedRect(130, 560, 490, 160, 16);
+    const scoreBgY = subtitle ? 570 : 560;
+    scoreBg.fillRoundedRect(130, scoreBgY, 490, this.isTowerFloor ? 180 : 160, 16);
 
-    this.add.text(375, 600, `获得分数`, {
+    this.add.text(375, scoreBgY + 30, `获得分数`, {
       font: '20px Arial',
       color: '#aaaaaa'
     }).setOrigin(0.5);
 
-    this.add.text(375, 645, score.toLocaleString(), {
+    this.add.text(375, scoreBgY + 75, score.toLocaleString(), {
       font: 'bold 44px Arial',
       color: '#ff9800'
     }).setOrigin(0.5);
 
-    this.add.text(375, 695, `已修复 ${snapped}/${total} 片`, {
+    this.add.text(375, scoreBgY + 115, `已修复 ${snapped}/${this.realPiecesCount || total} 片`, {
       font: '18px Arial',
       color: '#eaeaea'
     }).setOrigin(0.5);
+
+    if (this.isTowerFloor) {
+      this.add.text(375, scoreBgY + 145, `连击: ${this.maxCombo}  |  失误: ${this.mistakeCount}  |  完美: ${this.perfectSnaps}`, {
+        font: '14px Arial',
+        color: '#aaaaaa'
+      }).setOrigin(0.5);
+    }
 
     this.createResultButtons(overlay, false);
   }

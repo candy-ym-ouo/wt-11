@@ -20,6 +20,7 @@ export class PuzzlePieceSprite extends Phaser.GameObjects.Container {
   private highlightBorder!: Phaser.GameObjects.Graphics;
   private selectedGlow!: Phaser.GameObjects.Graphics;
   private snapThreshold: { position: number; rotation: number };
+  private _isMirror: boolean = false;
 
   private static selectedPiece: PuzzlePieceSprite | null = null;
 
@@ -177,11 +178,16 @@ export class PuzzlePieceSprite extends Phaser.GameObjects.Container {
 
     if (this.canSnap()) {
       this.snap();
+    } else if (this.hasMoved && this._isMirror) {
+      this.scene.events.emit('piece-missed', { pieceId: this.pieceData.id, piece: this });
+    } else if (this.hasMoved) {
+      this.scene.events.emit('piece-missed', { pieceId: this.pieceData.id, piece: this });
     }
   }
 
   private checkSnapProximity(): void {
-    const dist = Phaser.Math.Distance.Between(this.x, this.y, this.targetX, this.targetY);
+    const [tx, ty] = this.getEffectiveTarget();
+    const dist = Phaser.Math.Distance.Between(this.x, this.y, tx, ty);
     const angleDiff = this.getAngleDifference();
 
     if (dist < this.snapThreshold.position * 1.8 && angleDiff < this.snapThreshold.rotation * 1.8) {
@@ -200,6 +206,15 @@ export class PuzzlePieceSprite extends Phaser.GameObjects.Container {
     this.highlightBorder.strokePath();
   }
 
+  private getEffectiveTarget(): [number, number] {
+    const liveX = this.getData('liveTargetX');
+    const liveY = this.getData('liveTargetY');
+    if (liveX !== undefined && liveY !== undefined) {
+      return [liveX as number, liveY as number];
+    }
+    return [this.targetX, this.targetY];
+  }
+
   private getAngleDifference(): number {
     let diff = Math.abs(Phaser.Math.RadToDeg(this.rotation) - this.targetRotation) % 360;
     if (diff > 180) diff = 360 - diff;
@@ -207,21 +222,27 @@ export class PuzzlePieceSprite extends Phaser.GameObjects.Container {
   }
 
   private canSnap(): boolean {
-    const dist = Phaser.Math.Distance.Between(this.x, this.y, this.targetX, this.targetY);
+    const [tx, ty] = this.getEffectiveTarget();
+    const dist = Phaser.Math.Distance.Between(this.x, this.y, tx, ty);
     const angleDiff = this.getAngleDifference();
 
     return dist < this.snapThreshold.position && angleDiff < this.snapThreshold.rotation;
   }
 
   private snap(): void {
+    const [tx, ty] = this.getEffectiveTarget();
+    const snapDistance = Phaser.Math.Distance.Between(this.x, this.y, tx, ty);
+    const angleDiff = this.getAngleDifference();
+    const isPerfect = snapDistance < this.snapThreshold.position * 0.3 && angleDiff < this.snapThreshold.rotation * 0.3;
+
     this.isSnapped = true;
     this.disableInteractive();
     this.setSelected(false);
 
     this.scene.tweens.add({
       targets: this,
-      x: this.targetX,
-      y: this.targetY,
+      x: tx,
+      y: ty,
       rotation: Phaser.Math.DegToRad(this.targetRotation),
       scale: 1,
       alpha: 1,
@@ -238,7 +259,12 @@ export class PuzzlePieceSprite extends Phaser.GameObjects.Container {
           8
         );
         this.highlightBorder.strokePath();
-        this.scene.events.emit('piece-snapped', this.pieceData.id);
+        this.scene.events.emit('piece-snapped', {
+          pieceId: this.pieceData.id,
+          piece: this,
+          distance: snapDistance,
+          isPerfect
+        });
       }
     });
   }
@@ -319,5 +345,25 @@ export class PuzzlePieceSprite extends Phaser.GameObjects.Container {
   updateInitialPosition(x: number, y: number): void {
     this.initialX = x;
     this.initialY = y;
+  }
+
+  set isMirror(value: boolean) {
+    this._isMirror = value;
+  }
+
+  get isMirror(): boolean {
+    return this._isMirror;
+  }
+
+  getTargetX(): number {
+    return this.targetX;
+  }
+
+  getTargetY(): number {
+    return this.targetY;
+  }
+
+  getSnapThreshold(): { position: number; rotation: number } {
+    return this.snapThreshold;
   }
 }
