@@ -222,7 +222,7 @@ export interface EventSaveData {
   rankingCache: Record<string, EventRankingData>;
 }
 
-export type DailyQuestType = 'restore_plant' | 'timed_score' | 'win_streak';
+export type DailyQuestType = 'restore_plant' | 'timed_score' | 'win_streak' | 'care_specimen';
 export type DailyQuestStatus = 'pending' | 'in_progress' | 'completed' | 'claimed';
 
 export interface DailyQuestReward {
@@ -660,6 +660,45 @@ export interface TutorialCompletionResult {
   achievementResult?: AchievementUnlockResult;
 }
 
+export type ConservationHealthLevel = 'thriving' | 'healthy' | 'fair' | 'declining' | 'critical';
+export type CareActionType = 'water' | 'prune' | 'fertilize' | 'pest_control' | 'repot';
+
+export interface CareActionDef {
+  type: CareActionType;
+  name: string;
+  icon: string;
+  description: string;
+  healthRecovery: number;
+  materialCost: { materialId: number; count: number }[];
+  cooldownMs: number;
+}
+
+export interface SpecimenConservationState {
+  specimenId: number;
+  health: number;
+  lastCareTimestamp: Record<CareActionType, number>;
+  lastDecayTick: number;
+  totalCaresPerformed: number;
+  consecutiveCares: number;
+  lastCareAt?: number;
+}
+
+export interface ConservationReminder {
+  specimenId: number;
+  healthLevel: ConservationHealthLevel;
+  message: string;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  timestamp: number;
+}
+
+export interface ConservationSaveData {
+  specimens: Record<number, SpecimenConservationState>;
+  totalCares: number;
+  decayAccumulator: number;
+  lastDecayProcessTime: number;
+  dismissedReminders: number[];
+}
+
 export interface SaveData {
   progress: Record<number, LevelProgress>;
   chapterProgress: Record<number, ChapterProgress>;
@@ -676,4 +715,5 @@ export interface SaveData {
   exhibition: ExhibitionSaveData;
   achievement: AchievementSaveData;
   tutorial: TutorialSaveData;
+  conservation: ConservationSaveData;
 }

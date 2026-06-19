@@ -18,6 +18,7 @@ import { TowerResultScene } from './scenes/TowerResultScene';
 import { ExhibitionScene } from './scenes/ExhibitionScene';
 import { AchievementScene } from './scenes/AchievementScene';
 import { TutorialScene } from './scenes/TutorialScene';
+import { ConservationScene } from './scenes/ConservationScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -47,7 +48,8 @@ const config: Phaser.Types.Core.GameConfig = {
     TowerResultScene,
     ExhibitionScene,
     AchievementScene,
-    TutorialScene
+    TutorialScene,
+    ConservationScene
   ],
   physics: {
     default: 'arcade',

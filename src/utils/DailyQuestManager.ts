@@ -10,8 +10,9 @@ import { LevelRules } from '../data/LevelRules';
 import { PlantSpecimens } from '../data/PlantSpecimens';
 import { WorkshopRecipes } from '../data/WorkshopConfig';
 import { SaveManager } from './SaveManager';
+import { ConservationManager } from './ConservationManager';
 
-const QUEST_COUNT_PER_DAY = 3;
+const QUEST_COUNT_PER_DAY = 4;
 const DAILY_REFRESH_HOUR = 0;
 const DAILY_REFRESH_MINUTE = 0;
 
@@ -92,7 +93,7 @@ export class DailyQuestManager {
   }
 
   private static generateDailyQuests(): void {
-    const questTypes: DailyQuestType[] = ['restore_plant', 'timed_score', 'win_streak'];
+    const questTypes: DailyQuestType[] = ['restore_plant', 'timed_score', 'win_streak', 'care_specimen'];
     const usedSpecimenIds: number[] = [];
 
     for (let i = 0; i < QUEST_COUNT_PER_DAY; i++) {
@@ -123,6 +124,8 @@ export class DailyQuestManager {
         return this.createTimedScoreQuest(id, difficulty, expiresAt, now);
       case 'win_streak':
         return this.createWinStreakQuest(id, difficulty, expiresAt, now);
+      case 'care_specimen':
+        return this.createCareSpecimenQuest(id, difficulty, expiresAt, now, usedSpecimenIds);
       default:
         return null;
     }
@@ -218,6 +221,45 @@ export class DailyQuestManager {
       targetStreak,
       currentProgress: this.data.progress.consecutiveWins || 0,
       targetProgress: targetStreak,
+      status: 'pending',
+      rewards,
+      difficulty,
+      expiresAt,
+      createdAt: now
+    };
+  }
+
+  private static createCareSpecimenQuest(
+    id: string,
+    difficulty: 'easy' | 'medium' | 'hard',
+    expiresAt: number,
+    now: number,
+    usedSpecimenIds: number[]
+  ): DailyQuest {
+    const registeredIds = ConservationManager.getRegisteredSpecimenIds();
+    const mainSpecimenIds = registeredIds.filter(id => id < 100 && !usedSpecimenIds.includes(id));
+
+    const targetSpecimenId = mainSpecimenIds.length > 0
+      ? mainSpecimenIds[Math.floor(Math.random() * mainSpecimenIds.length)]
+      : (registeredIds.length > 0 ? registeredIds[0] : 1);
+
+    if (!usedSpecimenIds.includes(targetSpecimenId)) {
+      usedSpecimenIds.push(targetSpecimenId);
+    }
+
+    const specimen = PlantSpecimens[targetSpecimenId];
+    const targetCount = difficulty === 'easy' ? 1 : difficulty === 'medium' ? 2 : 3;
+    const rewards = this.generateRewards(difficulty, 'care_specimen', targetSpecimenId);
+
+    return {
+      id,
+      type: 'care_specimen',
+      title: `养护${specimen?.name || '标本'}`,
+      description: `对${specimen?.name || '标本'}进行 ${targetCount} 次养护操作`,
+      targetSpecimenId,
+      targetCount,
+      currentProgress: 0,
+      targetProgress: targetCount,
       status: 'pending',
       rewards,
       difficulty,
@@ -400,6 +442,32 @@ export class DailyQuestManager {
     return updatedQuests;
   }
 
+  static onSpecimenCare(specimenId: number): DailyQuest[] {
+    this.checkAndRefreshDaily();
+
+    const updatedQuests: DailyQuest[] = [];
+    const quests = this.getAllQuests();
+
+    for (const quest of quests) {
+      if (quest.status === 'completed' || quest.status === 'claimed') continue;
+
+      if (quest.type === 'care_specimen' && quest.targetSpecimenId === specimenId) {
+        quest.currentProgress = Math.min(
+          (quest.currentProgress || 0) + 1,
+          quest.targetProgress
+        );
+        this.checkQuestCompletion(quest);
+        updatedQuests.push(quest);
+      }
+    }
+
+    if (updatedQuests.length > 0) {
+      SaveManager.save();
+    }
+
+    return updatedQuests;
+  }
+
   private static checkQuestCompletion(quest: DailyQuest): void {
     const isCompleted = quest.currentProgress >= quest.targetProgress;
 
@@ -531,6 +599,8 @@ export class DailyQuestManager {
         return `最高得分: ${quest.currentProgress}/${quest.targetProgress}`;
       case 'win_streak':
         return `连胜: ${quest.currentProgress}/${quest.targetProgress}`;
+      case 'care_specimen':
+        return `已养护: ${quest.currentProgress}/${quest.targetProgress}`;
       default:
         return `${quest.currentProgress}/${quest.targetProgress}`;
     }

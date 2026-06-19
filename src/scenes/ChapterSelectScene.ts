@@ -811,10 +811,10 @@ export class ChapterSelectScene extends Phaser.Scene {
 
   private addBottomButtons(): void {
     const btnY = 1230;
-    const btnW = 150;
+    const btnW = 130;
     const btnH = 60;
-    const spacing = 12;
-    const totalW = btnW * 4 + spacing * 3;
+    const spacing = 8;
+    const totalW = btnW * 5 + spacing * 4;
     const startX = 375 - totalW / 2 + btnW / 2;
 
     const labBtn = this.createBottomButton(
@@ -837,8 +837,18 @@ export class ChapterSelectScene extends Phaser.Scene {
       () => this.scene.start('WorkshopScene')
     );
 
-    const galleryBtn = this.createBottomButton(
+    const conservationBtn = this.createBottomButton(
       startX + 2 * (btnW + spacing),
+      btnY,
+      btnW,
+      btnH,
+      '🌿 养护',
+      0x2e7d32,
+      () => this.scene.start('ConservationScene')
+    );
+
+    const galleryBtn = this.createBottomButton(
+      startX + 3 * (btnW + spacing),
       btnY,
       btnW,
       btnH,
@@ -848,7 +858,7 @@ export class ChapterSelectScene extends Phaser.Scene {
     );
 
     const levelsBtn = this.createBottomButton(
-      startX + 3 * (btnW + spacing),
+      startX + 4 * (btnW + spacing),
       btnY,
       btnW,
       btnH,

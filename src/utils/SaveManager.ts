@@ -16,6 +16,7 @@ import {
   TutorialSaveData
 } from '../types/GameTypes';
 import { TutorialManager } from './TutorialManager';
+import { ConservationManager } from './ConservationManager';
 import { Levels, EventGalleryItems } from '../data/Levels';
 import { Chapters, getChapterById, getChapterByLevelId, getNextChapter, getRewardsByChapterId } from '../data/Chapters';
 import { WorkshopRecipes, getRecipeBySpecimenId } from '../data/WorkshopConfig';
@@ -30,7 +31,7 @@ import {
   getSpecimenCategory
 } from '../data/ResearchLabConfig';
 import { TowerFloors, getTowerFloor } from '../data/TowerConfig';
-import { TowerSaveData, TowerFloorProgress, TowerReward, TowerResultData, ExhibitionSaveData, ExhibitionProgress, ExhibitionSpecimenSubmission, ExhibitionReward, AchievementSaveData, AchievementUnlockResult } from '../types/GameTypes';
+import { TowerSaveData, TowerFloorProgress, TowerReward, TowerResultData, ExhibitionSaveData, ExhibitionProgress, ExhibitionSpecimenSubmission, ExhibitionReward, AchievementSaveData, AchievementUnlockResult, ConservationSaveData, ConservationHealthLevel } from '../types/GameTypes';
 import { ExhibitionThemes, getExhibitionTheme, getBadgesByThemeId, getExhibitionBadge } from '../data/ExhibitionConfig';
 import { AchievementManager } from './AchievementManager';
 
@@ -58,6 +59,7 @@ export class SaveManager {
     DailyQuestManager.init(this.data.dailyQuest);
     AchievementManager.init(this.data.achievement);
     TutorialManager.init(this.data.tutorial);
+    ConservationManager.init(this.data.conservation);
     this.save();
   }
 
@@ -275,6 +277,26 @@ export class SaveManager {
       }
     }
 
+    if (!oldData.conservation) {
+      oldData.conservation = defaultData.conservation;
+    } else {
+      if (!oldData.conservation.specimens) {
+        oldData.conservation.specimens = defaultData.conservation.specimens;
+      }
+      if (oldData.conservation.totalCares === undefined) {
+        oldData.conservation.totalCares = 0;
+      }
+      if (oldData.conservation.decayAccumulator === undefined) {
+        oldData.conservation.decayAccumulator = 0;
+      }
+      if (oldData.conservation.lastDecayProcessTime === undefined) {
+        oldData.conservation.lastDecayProcessTime = Date.now();
+      }
+      if (!oldData.conservation.dismissedReminders) {
+        oldData.conservation.dismissedReminders = [];
+      }
+    }
+
     return oldData as SaveData;
   }
 
@@ -315,6 +337,7 @@ export class SaveManager {
 
     const achievementData = AchievementManager.createDefaultAchievementSave();
     const tutorialData = TutorialManager.createDefaultTutorialSave();
+    const conservationData = ConservationManager.createDefaultSave();
 
     return {
       progress,
@@ -335,7 +358,8 @@ export class SaveManager {
       tower: towerSaveData,
       exhibition: exhibitionSaveData,
       achievement: achievementData,
-      tutorial: tutorialData
+      tutorial: tutorialData,
+      conservation: conservationData
     };
   }
 
@@ -887,6 +911,8 @@ export class SaveManager {
     if (!this.data.galleryUnlocked.includes(specimenId)) {
       this.data.galleryUnlocked.push(specimenId);
     }
+
+    ConservationManager.registerSpecimen(specimenId);
 
     const updatedQuests = DailyQuestManager.onSpecimenRestored(specimenId);
 
@@ -1855,6 +1881,18 @@ export class SaveManager {
 
   static getCompletedTutorialsCount(): number {
     return this.data.tutorial.completedTutorials.length;
+  }
+
+  static getConservationSaveData(): ConservationSaveData {
+    return { ...this.data.conservation, specimens: { ...this.data.conservation.specimens } };
+  }
+
+  static getConservationHealth(specimenId: number): number {
+    return ConservationManager.getHealth(specimenId);
+  }
+
+  static getConservationHealthLevel(specimenId: number): ConservationHealthLevel {
+    return ConservationManager.getHealthLevel(specimenId);
   }
 
   static save(): void {

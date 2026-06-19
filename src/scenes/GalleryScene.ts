@@ -4,6 +4,7 @@ import { SaveManager } from '../utils/SaveManager';
 import { GalleryItem } from '../types/GameTypes';
 import { Chapters, getChapterById } from '../data/Chapters';
 import { getActiveEvent } from '../data/Events';
+import { getGalleryModifiedDescription } from '../data/ConservationConfig';
 
 type FilterMode = 'all' | 'chapter' | 'event';
 
@@ -397,7 +398,13 @@ export class GalleryScene extends Phaser.Scene {
     }).setOrigin(0.5);
     container.add(familyText);
 
-    const descText = this.add.text(375, 725, item.description, {
+    let displayDescription = item.description;
+    const conservationHealth = SaveManager.getConservationHealth(item.specimenId);
+    if (conservationHealth > 0 && conservationHealth < 100) {
+      displayDescription = getGalleryModifiedDescription(item.description, conservationHealth);
+    }
+
+    const descText = this.add.text(375, 725, displayDescription, {
       font: '17px Arial',
       color: '#eaeaea',
       align: 'center',
