@@ -27,6 +27,8 @@ import {
   KnowledgeEntries,
   getSpecimenCategory
 } from '../data/ResearchLabConfig';
+import { TowerFloors, getTowerFloor } from '../data/TowerConfig';
+import { TowerSaveData, TowerFloorProgress, TowerReward, TowerResultData } from '../types/GameTypes';
 
 const STORAGE_KEY = 'plant_specimen_puzzle_save';
 
@@ -141,6 +143,38 @@ export class SaveManager {
       }
     }
 
+    if (!oldData.tower) {
+      oldData.tower = defaultData.tower;
+    } else {
+      if (!oldData.tower.floorProgress) {
+        oldData.tower.floorProgress = defaultData.tower.floorProgress;
+      }
+      if (!oldData.tower.badges) {
+        oldData.tower.badges = defaultData.tower.badges;
+      }
+      if (oldData.tower.highestFloor === undefined) {
+        oldData.tower.highestFloor = 0;
+      }
+      if (oldData.tower.totalStars === undefined) {
+        oldData.tower.totalStars = 0;
+      }
+      if (oldData.tower.totalScore === undefined) {
+        oldData.tower.totalScore = 0;
+      }
+      if (oldData.tower.currentStreak === undefined) {
+        oldData.tower.currentStreak = 0;
+      }
+      if (oldData.tower.bestStreak === undefined) {
+        oldData.tower.bestStreak = 0;
+      }
+      if (oldData.tower.totalAttempts === undefined) {
+        oldData.tower.totalAttempts = 0;
+      }
+      if (oldData.tower.totalCompletions === undefined) {
+        oldData.tower.totalCompletions = 0;
+      }
+    }
+
     return oldData as SaveData;
   }
 
@@ -176,6 +210,7 @@ export class SaveManager {
     const eventSaveData = this.createDefaultEventSave();
     const dailyQuestSaveData = DailyQuestManager.createDefaultDailyQuestSave();
     const researchLabData = this.createDefaultResearchLabSave();
+    const towerSaveData = this.createDefaultTowerSave();
 
     return {
       progress,
@@ -192,7 +227,8 @@ export class SaveManager {
       },
       event: eventSaveData,
       dailyQuest: dailyQuestSaveData,
-      researchLab: researchLabData
+      researchLab: researchLabData,
+      tower: towerSaveData
     };
   }
 
@@ -203,6 +239,45 @@ export class SaveManager {
       specimens: {},
       researchPoints: 0,
       totalStudies: 0
+    };
+  }
+
+  private static createDefaultTowerSave(): TowerSaveData {
+    const floorProgress: Record<number, TowerFloorProgress> = {};
+    TowerFloors.forEach((floor, index) => {
+      floorProgress[floor.id] = {
+        floorId: floor.id,
+        unlocked: index === 0,
+        completed: false,
+        bestScore: 0,
+        bestTime: 0,
+        stars: 0,
+        attempts: 0,
+        bestAccuracy: 0,
+        bestCombo: 0,
+        rewardsClaimed: false
+      };
+    });
+
+    const towerBadges: Record<number, boolean> = {};
+    TowerFloors.forEach(floor => {
+      floor.rewards
+        .filter(r => r.type === 'badge')
+        .forEach(r => {
+          towerBadges[r.id] = false;
+        });
+    });
+
+    return {
+      highestFloor: 0,
+      totalStars: 0,
+      totalScore: 0,
+      floorProgress,
+      badges: towerBadges,
+      currentStreak: 0,
+      bestStreak: 0,
+      totalAttempts: 0,
+      totalCompletions: 0
     };
   }
 
@@ -1077,6 +1152,198 @@ export class SaveManager {
     const totalPossible = KnowledgeEntries.length;
     const current = this.getTotalKnowledgeUnlocked();
     return totalPossible > 0 ? (current / totalPossible) * 100 : 0;
+  }
+
+  static getTowerSaveData(): TowerSaveData {
+    return { ...this.data.tower, floorProgress: { ...this.data.tower.floorProgress } };
+  }
+
+  static getTowerFloorProgress(floorId: number): TowerFloorProgress | undefined {
+    return this.data.tower.floorProgress[floorId];
+  }
+
+  static getAllTowerFloorProgress(): Record<number, TowerFloorProgress> {
+    return { ...this.data.tower.floorProgress };
+  }
+
+  static isTowerFloorUnlocked(floorId: number): boolean {
+    return this.data.tower.floorProgress[floorId]?.unlocked ?? false;
+  }
+
+  static getTowerHighestFloor(): number {
+    return this.data.tower.highestFloor;
+  }
+
+  static getTowerTotalStars(): number {
+    return this.data.tower.totalStars;
+  }
+
+  static getTowerTotalScore(): number {
+    return this.data.tower.totalScore;
+  }
+
+  static getTowerCurrentStreak(): number {
+    return this.data.tower.currentStreak;
+  }
+
+  static getTowerBestStreak(): number {
+    return this.data.tower.bestStreak;
+  }
+
+  static getTowerTotalAttempts(): number {
+    return this.data.tower.totalAttempts;
+  }
+
+  static getTowerTotalCompletions(): number {
+    return this.data.tower.totalCompletions;
+  }
+
+  static hasTowerBadge(badgeId: number): boolean {
+    return this.data.tower.badges[badgeId] ?? false;
+  }
+
+  static canClaimTowerRewards(floorId: number): boolean {
+    const progress = this.data.tower.floorProgress[floorId];
+    return progress?.completed === true && progress?.rewardsClaimed === false;
+  }
+
+  static completeTowerFloor(
+    floorId: number,
+    result: TowerResultData
+  ): { unlockedNextFloor: boolean; newHighestFloor: number } {
+    const progress = this.data.tower.floorProgress[floorId];
+    if (!progress) return { unlockedNextFloor: false, newHighestFloor: this.data.tower.highestFloor };
+
+    const floor = getTowerFloor(floorId);
+    const isFirstCompletion = !progress.completed;
+
+    progress.completed = true;
+    progress.attempts += 1;
+    progress.lastPlayedAt = Date.now();
+
+    if (result.score > progress.bestScore) {
+      progress.bestScore = result.score;
+    }
+    if (progress.bestTime === 0 || result.time < progress.bestTime) {
+      progress.bestTime = result.time;
+    }
+    if (result.stars > progress.stars) {
+      progress.stars = result.stars;
+    }
+    if (result.accuracy > (progress.bestAccuracy || 0)) {
+      progress.bestAccuracy = result.accuracy;
+    }
+    if (result.maxCombo > (progress.bestCombo || 0)) {
+      progress.bestCombo = result.maxCombo;
+    }
+
+    if (isFirstCompletion) {
+      progress.completedAt = Date.now();
+      this.data.tower.totalCompletions += 1;
+    }
+
+    this.data.tower.totalAttempts += 1;
+    this.data.tower.currentStreak += 1;
+    if (this.data.tower.currentStreak > this.data.tower.bestStreak) {
+      this.data.tower.bestStreak = this.data.tower.currentStreak;
+    }
+
+    this.recalculateTowerTotals();
+
+    let unlockedNextFloor = false;
+    let newHighestFloor = this.data.tower.highestFloor;
+
+    if (isFirstCompletion) {
+      const nextFloorId = floorId + 1;
+      const nextFloor = getTowerFloor(nextFloorId);
+      if (nextFloor && !this.data.tower.floorProgress[nextFloorId]?.unlocked) {
+        const totalStars = this.data.tower.totalStars;
+        if (totalStars >= nextFloor.requiredStars) {
+          this.data.tower.floorProgress[nextFloorId].unlocked = true;
+          unlockedNextFloor = true;
+          if (nextFloor.floorNumber > this.data.tower.highestFloor) {
+            this.data.tower.highestFloor = nextFloor.floorNumber;
+            newHighestFloor = nextFloor.floorNumber;
+          }
+        }
+      }
+
+      const scoreReward = result.rewards.find(r => r.type === 'score');
+      if (scoreReward?.value) {
+        this.data.tower.totalScore += scoreReward.value;
+      }
+    }
+
+    const scoreReward = floor?.rewards.find(r => r.type === 'score');
+    if (scoreReward?.value && isFirstCompletion) {
+      this.data.totalScore += scoreReward.value;
+    }
+
+    this.save();
+    return { unlockedNextFloor, newHighestFloor };
+  }
+
+  static failTowerFloor(floorId: number): void {
+    const progress = this.data.tower.floorProgress[floorId];
+    if (!progress) return;
+
+    progress.attempts += 1;
+    progress.lastPlayedAt = Date.now();
+    this.data.tower.totalAttempts += 1;
+    this.data.tower.currentStreak = 0;
+
+    this.save();
+  }
+
+  private static recalculateTowerTotals(): void {
+    const progressList = Object.values(this.data.tower.floorProgress);
+    this.data.tower.totalStars = progressList.reduce((sum, p) => sum + p.stars, 0);
+
+    let highestUnlockedFloor = 0;
+    for (const floor of TowerFloors) {
+      if (this.data.tower.floorProgress[floor.id]?.unlocked) {
+        highestUnlockedFloor = Math.max(highestUnlockedFloor, floor.floorNumber);
+      }
+    }
+  }
+
+  static claimTowerRewards(floorId: number): TowerReward[] {
+    const progress = this.data.tower.floorProgress[floorId];
+    const floor = getTowerFloor(floorId);
+    if (!progress || !progress.completed || progress.rewardsClaimed || !floor) {
+      return [];
+    }
+
+    const rewards = floor.rewards;
+
+    rewards.forEach(reward => {
+      switch (reward.type) {
+        case 'score':
+          if (reward.value) {
+            this.data.totalScore += reward.value;
+          }
+          break;
+        case 'badge':
+          this.data.tower.badges[reward.id] = true;
+          this.data.badges[reward.id] = true;
+          break;
+        case 'fragment':
+          if (reward.specimenId && reward.value) {
+            this.addFragments(reward.specimenId, reward.value);
+          }
+          break;
+        case 'research_point':
+          if (reward.value) {
+            this.grantResearchPoints(reward.value);
+          }
+          break;
+      }
+    });
+
+    progress.rewardsClaimed = true;
+    this.save();
+
+    return rewards;
   }
 
   static save(): void {

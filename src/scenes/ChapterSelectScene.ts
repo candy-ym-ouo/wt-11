@@ -4,6 +4,7 @@ import { SaveManager } from '../utils/SaveManager';
 import { ChapterData } from '../types/GameTypes';
 import { EventManager } from '../utils/EventManager';
 import { getActiveEvent } from '../data/Events';
+import { getTotalTowerFloors, getTowerStarsRequired } from '../data/TowerConfig';
 
 export class ChapterSelectScene extends Phaser.Scene {
   constructor() {
@@ -15,6 +16,7 @@ export class ChapterSelectScene extends Phaser.Scene {
     this.addTitle();
     this.addStatsBar();
     this.addEventBanner();
+    this.addTowerBanner();
     this.addChapterCards();
     this.addBottomButtons();
   }
@@ -240,8 +242,113 @@ export class ChapterSelectScene extends Phaser.Scene {
     }
   }
 
+  private addTowerBanner(): void {
+    const bannerY = 340;
+    const bannerH = 80;
+    const totalStars = SaveManager.getTotalStars();
+    const requiredStars = getTowerStarsRequired();
+    const canEnter = totalStars >= requiredStars;
+    const towerSave = SaveManager.getTowerSaveData();
+    const completedFloors = towerSave ? Object.values(towerSave.floorProgress).filter(p => p.completed).length : 0;
+    const totalFloors = getTotalTowerFloors();
+
+    const banner = this.add.graphics();
+
+    const gradientSteps = 15;
+    for (let i = 0; i < gradientSteps; i++) {
+      const t = i / gradientSteps;
+      const baseColor = canEnter ? 0x9c27b0 : 0x555555;
+      const baseColor2 = canEnter ? 0xe94560 : 0x333333;
+      const r = Math.floor(((baseColor >> 16) & 0xff) * (1 - t) + ((baseColor2 >> 16) & 0xff) * t);
+      const g = Math.floor(((baseColor >> 8) & 0xff) * (1 - t) + ((baseColor2 >> 8) & 0xff) * t);
+      const b = Math.floor((baseColor & 0xff) * (1 - t) + (baseColor2 & 0xff) * t);
+      const color = (r << 16) | (g << 8) | b;
+      banner.fillStyle(color, canEnter ? 0.95 : 0.6);
+      banner.fillRect(45 + (660 * i) / gradientSteps, bannerY - bannerH / 2, 660 / gradientSteps + 1, bannerH);
+    }
+    banner.fillRoundedRect(45, bannerY - bannerH / 2, 660, bannerH, 16);
+
+    const borderColor = canEnter ? 0xffd700 : 0x666666;
+    banner.lineStyle(3, borderColor, 1);
+    banner.strokeRoundedRect(45, bannerY - bannerH / 2, 660, bannerH, 16);
+
+    this.add.text(80, bannerY, canEnter ? '🏰' : '🔒', {
+      font: '38px Arial'
+    }).setOrigin(0, 0.5);
+
+    this.add.text(140, bannerY - 15, '困难模式 · 挑战塔', {
+      font: 'bold 20px Arial',
+      color: canEnter ? '#ffffff' : '#aaaaaa'
+    }).setOrigin(0, 0.5);
+
+    const statusText = canEnter
+      ? `已通关 ${completedFloors} / ${totalFloors} 层`
+      : `需要 ${requiredStars} 颗星星解锁 (当前: ${totalStars})`;
+    this.add.text(140, bannerY + 15, statusText, {
+      font: '14px Arial',
+      color: canEnter ? 'rgba(255,255,255,0.85)' : '#ffcc80'
+    }).setOrigin(0, 0.5);
+
+    const goBtn = this.add.graphics();
+    goBtn.fillStyle(0xffffff, canEnter ? 1 : 0.5);
+    goBtn.fillRoundedRect(610, bannerY - 22, 80, 44, 12);
+
+    this.add.text(650, bannerY, canEnter ? '进入 →' : '未解锁', {
+      font: 'bold 15px Arial',
+      color: canEnter ? '#9c27b0' : '#555555'
+    }).setOrigin(0.5);
+
+    if (towerSave?.totalStars && towerSave.totalStars > 0 && canEnter) {
+      const scoreBadge = this.add.graphics();
+      scoreBadge.fillStyle(0x000000, 0.4);
+      scoreBadge.fillRoundedRect(500, bannerY - 22, 100, 22, 6);
+      this.add.text(550, bannerY - 11, `⭐ ${towerSave.totalStars}`, {
+        font: 'bold 12px Arial',
+        color: '#ffd700'
+      }).setOrigin(0.5);
+    }
+
+    const claimable = towerSave ? Object.values(towerSave.floorProgress).filter(p => SaveManager.canClaimTowerRewards(p.floorId)).length : 0;
+    if (claimable > 0 && canEnter) {
+      const badge = this.add.graphics();
+      badge.fillStyle(0xffeb3b, 1);
+      badge.fillCircle(690, bannerY - 28, 14);
+      this.add.text(690, bannerY - 28, claimable.toString(), {
+        font: 'bold 12px Arial',
+        color: '#1a1a2e'
+      }).setOrigin(0.5);
+    }
+
+    if (canEnter) {
+      banner.setInteractive(
+        new Phaser.Geom.Rectangle(45, bannerY - bannerH / 2, 660, bannerH),
+        Phaser.Geom.Rectangle.Contains
+      );
+      goBtn.setInteractive(
+        new Phaser.Geom.Rectangle(610, bannerY - 22, 80, 44),
+        Phaser.Geom.Rectangle.Contains
+      );
+
+      const goToTower = () => {
+        if (canEnter) {
+          this.scene.start('TowerSelectScene');
+        }
+      };
+
+      banner.on('pointerup', goToTower);
+      goBtn.on('pointerup', goToTower);
+
+      banner.on('pointerover', () => {
+        banner.lineStyle(3, 0xffffff, 1);
+      });
+      banner.on('pointerout', () => {
+        banner.lineStyle(3, borderColor, 1);
+      });
+    }
+  }
+
   private addChapterCards(): void {
-    const startY = 350;
+    const startY = 450;
     const cardWidth = 660;
     const cardHeight = 280;
     const padding = 25;

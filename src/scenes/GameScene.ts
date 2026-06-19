@@ -4,11 +4,12 @@ import { getLevelRule } from '../data/LevelRules';
 import { getPlantSpecimen } from '../data/PlantSpecimens';
 import { SaveManager } from '../utils/SaveManager';
 import { calculateScore, formatTime, getDifficultyColor, getDifficultyText } from '../utils/GameUtils';
-import { LevelRule, PlantSpecimen, PuzzlePieceData, EventLevelRule, DailyQuest } from '../types/GameTypes';
+import { LevelRule, PlantSpecimen, PuzzlePieceData, EventLevelRule, DailyQuest, TowerFloorData, TowerResultData, TowerScoringCondition, TowerRuleModifier } from '../types/GameTypes';
 import { getDropRule, getFragmentsBySpecimenId, Fragments, Materials } from '../data/WorkshopConfig';
 import { getEventLevelRule, isEventLevel } from '../data/EventLevelRules';
 import { getEventById } from '../data/Events';
 import { DailyQuestManager } from '../utils/DailyQuestManager';
+import { getTowerFloor } from '../data/TowerConfig';
 
 export class GameScene extends Phaser.Scene {
   private levelRule!: LevelRule;
@@ -31,6 +32,22 @@ export class GameScene extends Phaser.Scene {
   private eventLevelRule: EventLevelRule | null = null;
   private scoreMultiplier: number = 1;
 
+  private isTowerFloor: boolean = false;
+  private towerFloorId: number | null = null;
+  private towerFloorData: TowerFloorData | null = null;
+  private comboCount: number = 0;
+  private maxCombo: number = 0;
+  private mistakeCount: number = 0;
+  private hintsUsed: number = 0;
+  private perfectSnaps: number = 0;
+  private totalSnapDistance: number = 0;
+  private snapCount: number = 0;
+  private targetOffsetX: number = 0;
+  private targetOffsetY: number = 0;
+  private targetTween: Phaser.Tweens.Tween | null = null;
+  private snapCountForShuffle: number = 0;
+  private comboBonusMultiplier: number = 1;
+
   private static readonly TARGET_AREA_X = 375;
   private static readonly TARGET_AREA_Y = 420;
   private static readonly TARGET_AREA_W = 500;
@@ -41,11 +58,32 @@ export class GameScene extends Phaser.Scene {
     super('GameScene');
   }
 
-  init(data: { levelId: number; isEventLevel?: boolean; eventId?: string }): void {
+  init(data: { levelId: number; isEventLevel?: boolean; eventId?: string; isTowerFloor?: boolean; towerFloorId?: number }): void {
     this.isEventLevel = data.isEventLevel ?? false;
     this.eventId = data.eventId ?? null;
+    this.isTowerFloor = data.isTowerFloor ?? false;
+    this.towerFloorId = data.towerFloorId ?? null;
 
-    if (this.isEventLevel || isEventLevel(data.levelId)) {
+    if (this.isTowerFloor && this.towerFloorId) {
+      const towerFloor = getTowerFloor(this.towerFloorId);
+      if (!towerFloor) {
+        this.scene.start('TowerSelectScene');
+        return;
+      }
+      this.towerFloorData = towerFloor;
+      this.levelRule = {
+        id: towerFloor.id,
+        name: towerFloor.name,
+        specimenId: towerFloor.specimenId,
+        difficulty: 'hard',
+        rows: towerFloor.rows,
+        cols: towerFloor.cols,
+        timeLimit: towerFloor.timeLimit,
+        snapPositionThreshold: towerFloor.snapPositionThreshold,
+        snapRotationThreshold: towerFloor.snapRotationThreshold
+      };
+      this.scoreMultiplier = 1;
+    } else if (this.isEventLevel || isEventLevel(data.levelId)) {
       const eventRule = getEventLevelRule(data.levelId);
       if (!eventRule) {
         this.scene.start(this.eventId ? 'EventLevelSelectScene' : 'LevelSelectScene', this.eventId ? { eventId: this.eventId } : {});
@@ -67,7 +105,11 @@ export class GameScene extends Phaser.Scene {
 
     const specimen = getPlantSpecimen(this.levelRule.specimenId);
     if (!specimen) {
-      this.scene.start(this.eventId ? 'EventLevelSelectScene' : 'LevelSelectScene', this.eventId ? { eventId: this.eventId } : {});
+      if (this.isTowerFloor) {
+        this.scene.start('TowerSelectScene');
+      } else {
+        this.scene.start(this.eventId ? 'EventLevelSelectScene' : 'LevelSelectScene', this.eventId ? { eventId: this.eventId } : {});
+      }
       return;
     }
     this.specimen = specimen;
@@ -148,28 +190,107 @@ export class GameScene extends Phaser.Scene {
   }
 
   private addTargetArea(): void {
-    const x = GameScene.TARGET_AREA_X;
-    const y = GameScene.TARGET_AREA_Y;
+    const x = GameScene.TARGET_AREA_X + this.targetOffsetX;
+    const y = GameScene.TARGET_AREA_Y + this.targetOffsetY;
     const w = GameScene.TARGET_AREA_W;
     const h = GameScene.TARGET_AREA_H;
 
-    const frame = this.add.graphics();
-    frame.lineStyle(4, 0x4caf50, 0.7);
-    frame.strokeRoundedRect(x - w / 2, y - h / 2, w, h, 12);
+    const hasHiddenTarget = this.hasTowerRule('hidden_target');
+    const hasMovingTarget = this.hasTowerRule('moving_target');
 
-    const dashPattern = [12, 8];
-    frame.lineStyle(2, 0x4caf50, 0.3);
-    this.drawDashedRect(frame, x - w / 2 + 8, y - h / 2 + 8, w - 16, h - 16, dashPattern);
+    const frame = this.add.graphics();
+    frame.setName('targetFrame');
+    if (!hasHiddenTarget) {
+      frame.lineStyle(4, 0x4caf50, 0.7);
+      frame.strokeRoundedRect(x - w / 2, y - h / 2, w, h, 12);
+
+      const dashPattern = [12, 8];
+      frame.lineStyle(2, 0x4caf50, 0.3);
+      this.drawDashedRect(frame, x - w / 2 + 8, y - h / 2 + 8, w - 16, h - 16, dashPattern);
+    } else {
+      frame.lineStyle(2, 0x4caf50, 0.15);
+      frame.strokeRoundedRect(x - w / 2, y - h / 2, w, h, 12);
+    }
 
     this.hintImage = this.add.image(x, y, this.targetTextureKey);
+    this.hintImage.setName('hintImage');
     this.hintImage.setDisplaySize(w - 24, h - 24);
     this.hintImage.setAlpha(0);
     this.hintImage.setDepth(0);
 
-    this.add.text(x, y - h / 2 - 28, '标本目标区域', {
-      font: 'bold 16px Arial',
-      color: '#4caf50'
-    }).setOrigin(0.5);
+    if (!hasHiddenTarget) {
+      this.add.text(x, y - h / 2 - 28, '标本目标区域', {
+        font: 'bold 16px Arial',
+        color: '#4caf50'
+      }).setOrigin(0.5).setName('targetLabel');
+    }
+
+    if (hasMovingTarget && !this.isPaused && !this.isCompleted) {
+      this.startMovingTarget();
+    }
+  }
+
+  private hasTowerRule(ruleType: string): boolean {
+    if (!this.isTowerFloor || !this.towerFloorData) return false;
+    return this.towerFloorData.rules.some(r => r.type === ruleType);
+  }
+
+  private getTowerRule(ruleType: string): TowerRuleModifier | undefined {
+    if (!this.isTowerFloor || !this.towerFloorData) return undefined;
+    return this.towerFloorData.rules.find(r => r.type === ruleType);
+  }
+
+  private startMovingTarget(): void {
+    const range = this.getTowerRule('moving_target')?.value || 20;
+    const duration = 3000;
+
+    this.targetTween = this.tweens.add({
+      targets: { offsetX: 0, offsetY: 0 },
+      offsetX: { from: -range, to: range },
+      offsetY: { from: -range / 2, to: range / 2 },
+      duration: duration,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+      onUpdate: (tween) => {
+        const data = tween.targets[0] as { offsetX: number; offsetY: number };
+        this.targetOffsetX = data.offsetX;
+        this.targetOffsetY = data.offsetY;
+        this.updateTargetPosition();
+      }
+    });
+  }
+
+  private updateTargetPosition(): void {
+    const x = GameScene.TARGET_AREA_X + this.targetOffsetX;
+    const y = GameScene.TARGET_AREA_Y + this.targetOffsetY;
+    const w = GameScene.TARGET_AREA_W;
+    const h = GameScene.TARGET_AREA_H;
+
+    const frame = this.children.getByName('targetFrame') as Phaser.GameObjects.Graphics;
+    if (frame) {
+      frame.clear();
+      const hasHiddenTarget = this.hasTowerRule('hidden_target');
+      if (!hasHiddenTarget) {
+        frame.lineStyle(4, 0x4caf50, 0.7);
+        frame.strokeRoundedRect(x - w / 2, y - h / 2, w, h, 12);
+        const dashPattern = [12, 8];
+        frame.lineStyle(2, 0x4caf50, 0.3);
+        this.drawDashedRect(frame, x - w / 2 + 8, y - h / 2 + 8, w - 16, h - 16, dashPattern);
+      } else {
+        frame.lineStyle(2, 0x4caf50, 0.15);
+        frame.strokeRoundedRect(x - w / 2, y - h / 2, w, h, 12);
+      }
+    }
+
+    if (this.hintImage) {
+      this.hintImage.setPosition(x, y);
+    }
+
+    const label = this.children.getByName('targetLabel') as Phaser.GameObjects.Text;
+    if (label) {
+      label.setPosition(x, y - h / 2 - 28);
+    }
   }
 
   private drawDashedRect(
@@ -240,13 +361,22 @@ export class GameScene extends Phaser.Scene {
 
   private createPuzzlePieces(): void {
     const pieceDataList = this.generatePieceData();
+    const hasRotationLock = this.hasTowerRule('rotation_lock');
 
-    pieceDataList.forEach(data => {
+    pieceDataList.forEach((data, index) => {
       const sprite = new PuzzlePieceSprite(this, data, {
         position: this.levelRule.snapPositionThreshold,
         rotation: this.levelRule.snapRotationThreshold
       });
       sprite.setDepth(10);
+
+      if (hasRotationLock) {
+        const rotations = [90, 180, 270];
+        const randomRotation = rotations[Math.floor(Math.random() * rotations.length)];
+        sprite.angle = randomRotation;
+        sprite.setData('targetRotation', 0);
+      }
+
       this.pieces.push(sprite);
     });
   }
@@ -311,15 +441,22 @@ export class GameScene extends Phaser.Scene {
   }
 
   private addControlButtons(): void {
+    const hasNoHintRestriction = this.hasTowerRule('no_hint_restriction');
     const btnY = 845;
     const btnW = 130;
     const btnH = 58;
     const spacing = 40;
-    const totalW = btnW * 3 + spacing * 2;
+
+    let buttonCount = 3;
+    if (hasNoHintRestriction) buttonCount = 2;
+
+    const totalW = btnW * buttonCount + spacing * (buttonCount - 1);
     const startX = (750 - totalW) / 2 + btnW / 2;
 
+    let currentIndex = 0;
+
     const rotateBtn = this.createControlButton(
-      startX,
+      startX + currentIndex * (btnW + spacing),
       btnY,
       btnW,
       btnH,
@@ -328,23 +465,27 @@ export class GameScene extends Phaser.Scene {
       () => this.rotateSelectedPiece()
     );
 
-    const keyHint = this.add.text(startX, btnY + btnH / 2 + 28, '按键 R', {
+    const keyHint = this.add.text(startX + currentIndex * (btnW + spacing), btnY + btnH / 2 + 28, '按键 R', {
       font: '12px Arial',
       color: 'rgba(255,255,255,0.5)'
     }).setOrigin(0.5);
+    currentIndex++;
 
-    const hintBtn = this.createControlButton(
-      startX + btnW + spacing,
-      btnY,
-      btnW,
-      btnH,
-      '提示',
-      0xff9800,
-      () => this.toggleHint()
-    );
+    if (!hasNoHintRestriction) {
+      const hintBtn = this.createControlButton(
+        startX + currentIndex * (btnW + spacing),
+        btnY,
+        btnW,
+        btnH,
+        '提示',
+        0xff9800,
+        () => this.toggleHint()
+      );
+      currentIndex++;
+    }
 
     const resetBtn = this.createControlButton(
-      startX + (btnW + spacing) * 2,
+      startX + currentIndex * (btnW + spacing),
       btnY,
       btnW,
       btnH,
@@ -357,10 +498,76 @@ export class GameScene extends Phaser.Scene {
     );
 
     this.input.keyboard?.on('keydown-R', () => this.rotateSelectedPiece());
-    this.input.keyboard?.on('keydown-H', () => this.toggleHint());
+    if (!hasNoHintRestriction) {
+      this.input.keyboard?.on('keydown-H', () => this.toggleHint());
+    }
     this.input.keyboard?.on('keydown-ESC', () => {
       if (!this.isCompleted) this.showPauseMenu();
     });
+
+    if (this.isTowerFloor) {
+      this.addTowerStatusUI();
+    }
+  }
+
+  private addTowerStatusUI(): void {
+    const statusY = 740;
+
+    const statusBg = this.add.graphics();
+    statusBg.fillStyle(0x0f3460, 0.8);
+    statusBg.fillRoundedRect(50, statusY - 25, 650, 50, 10);
+    statusBg.lineStyle(1, 0xffffff, 0.1);
+    statusBg.strokeRoundedRect(50, statusY - 25, 650, 50, 10);
+
+    const comboText = this.add.text(100, statusY, `连击: ${this.comboCount}`, {
+      font: 'bold 16px Arial',
+      color: '#ff9800'
+    }).setOrigin(0, 0.5).setName('comboStatus');
+
+    const mistakeText = this.add.text(280, statusY, `失误: ${this.mistakeCount}`, {
+      font: 'bold 16px Arial',
+      color: '#f44336'
+    }).setOrigin(0, 0.5).setName('mistakeStatus');
+
+    const hasLimitedMistakes = this.hasTowerRule('limited_mistake_penalty');
+    if (hasLimitedMistakes) {
+      const maxMistakes = this.getTowerRule('limited_mistake_penalty')?.value || 3;
+      mistakeText.setText(`失误: ${this.mistakeCount}/${maxMistakes}`);
+    }
+
+    const perfectText = this.add.text(480, statusY, `完美: ${this.perfectSnaps}`, {
+      font: 'bold 16px Arial',
+      color: '#4caf50'
+    }).setOrigin(0, 0.5).setName('perfectStatus');
+  }
+
+  private updateTowerStatusUI(): void {
+    const comboText = this.children.getByName('comboStatus') as Phaser.GameObjects.Text;
+    const mistakeText = this.children.getByName('mistakeStatus') as Phaser.GameObjects.Text;
+    const perfectText = this.children.getByName('perfectStatus') as Phaser.GameObjects.Text;
+
+    if (comboText) {
+      comboText.setText(`连击: ${this.comboCount}`);
+      if (this.comboCount >= 5) {
+        comboText.setColor('#ffd700');
+      } else {
+        comboText.setColor('#ff9800');
+      }
+    }
+
+    if (mistakeText) {
+      const hasLimitedMistakes = this.hasTowerRule('limited_mistake_penalty');
+      if (hasLimitedMistakes) {
+        const maxMistakes = this.getTowerRule('limited_mistake_penalty')?.value || 3;
+        mistakeText.setText(`失误: ${this.mistakeCount}/${maxMistakes}`);
+      } else {
+        mistakeText.setText(`失误: ${this.mistakeCount}`);
+      }
+    }
+
+    if (perfectText) {
+      perfectText.setText(`完美: ${this.perfectSnaps}`);
+    }
   }
 
   private createControlButton(
@@ -443,7 +650,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private toggleHint(): void {
+    if (this.hasTowerRule('no_hint_restriction')) return;
+
     this.showHint = !this.showHint;
+    if (this.showHint && this.isTowerFloor) {
+      this.hintsUsed++;
+    }
     this.tweens.add({
       targets: this.hintImage,
       alpha: this.showHint ? 0.28 : 0,
@@ -472,14 +684,62 @@ export class GameScene extends Phaser.Scene {
   }
 
   private setupEvents(): void {
-    this.events.on('piece-snapped', () => {
+    this.events.on('piece-snapped', (data: { piece: PuzzlePieceSprite; distance: number; isPerfect: boolean }) => {
       this.snappedCount++;
+      this.snapCount++;
+
+      if (this.isTowerFloor) {
+        this.comboCount++;
+        if (this.comboCount > this.maxCombo) {
+          this.maxCombo = this.comboCount;
+        }
+
+        this.totalSnapDistance += data.distance;
+
+        if (data.isPerfect) {
+          this.perfectSnaps++;
+        }
+
+        if (this.hasTowerRule('combo_bonus')) {
+          const comboMultiplier = this.getTowerRule('combo_bonus')?.value || 1.5;
+          this.comboBonusMultiplier = 1 + (this.comboCount - 1) * (comboMultiplier - 1) * 0.1;
+        }
+
+        this.handleShuffleEveryNPieces();
+
+        this.updateTowerStatusUI();
+      }
+
       this.updateUI();
 
       this.cameras.main.flash(80, 255, 255, 200, false);
 
       if (this.snappedCount >= this.pieces.length) {
         this.time.delayedCall(400, () => this.onLevelComplete());
+      }
+    });
+
+    this.events.on('piece-missed', () => {
+      if (this.isTowerFloor) {
+        this.comboCount = 0;
+        this.mistakeCount++;
+        this.comboBonusMultiplier = 1;
+
+        if (this.hasTowerRule('time_penalty')) {
+          const penalty = this.getTowerRule('time_penalty')?.value || 5;
+          this.elapsedTime += penalty;
+          this.cameras.main.shake(200, 0.005, false);
+        }
+
+        if (this.hasTowerRule('limited_mistake_penalty')) {
+          const maxMistakes = this.getTowerRule('limited_mistake_penalty')?.value || 3;
+          if (this.mistakeCount >= maxMistakes) {
+            this.onMistakeLimitReached();
+            return;
+          }
+        }
+
+        this.updateTowerStatusUI();
       }
     });
 
@@ -492,6 +752,51 @@ export class GameScene extends Phaser.Scene {
         PuzzlePieceSprite.clearSelection();
       }
     });
+  }
+
+  private handleShuffleEveryNPieces(): void {
+    if (!this.hasTowerRule('shuffle_every_n_pieces')) return;
+
+    const n = this.getTowerRule('shuffle_every_n_pieces')?.value || 3;
+    this.snapCountForShuffle++;
+
+    if (this.snapCountForShuffle >= n && this.snappedCount < this.pieces.length) {
+      this.snapCountForShuffle = 0;
+      this.shuffleRemainingPieces();
+    }
+  }
+
+  private shuffleRemainingPieces(): void {
+    const unsnapped = this.pieces.filter(p => !p.isPieceSnapped());
+    const positions = unsnapped.map(p => ({ x: p.x, y: p.y }));
+    const shuffled = Phaser.Utils.Array.Shuffle([...positions]);
+
+    unsnapped.forEach((piece, index) => {
+      this.tweens.add({
+        targets: piece,
+        x: shuffled[index].x,
+        y: shuffled[index].y,
+        duration: 300,
+        ease: 'Cubic.easeInOut'
+      });
+    });
+
+    this.cameras.main.flash(150, 255, 150, 0, false);
+  }
+
+  private onMistakeLimitReached(): void {
+    this.isCompleted = true;
+    if (this.timerEvent) this.timerEvent.paused = true;
+
+    if (this.targetTween) {
+      this.targetTween.stop();
+    }
+
+    if (this.isTowerFloor && this.towerFloorId) {
+      SaveManager.failTowerFloor(this.towerFloorId);
+    }
+
+    this.showGameOver(0, this.snappedCount, this.pieces.length, 'mistake_limit');
   }
 
   private startTimer(): void {
@@ -543,6 +848,22 @@ export class GameScene extends Phaser.Scene {
     this.isCompleted = true;
     if (this.timerEvent) this.timerEvent.paused = true;
 
+    if (this.targetTween) {
+      this.targetTween.stop();
+    }
+
+    if (this.isTowerFloor && this.towerFloorData && this.towerFloorId) {
+      const towerResult = this.calculateTowerScore();
+      const completeResult = SaveManager.completeTowerFloor(this.towerFloorId, towerResult);
+
+      this.cameras.main.zoomTo(1.05, 400, 'Cubic.easeInOut', true);
+      this.time.delayedCall(450, () => {
+        this.cameras.main.zoomTo(1.0, 400, 'Cubic.easeInOut', true);
+        this.showTowerVictory(towerResult, completeResult);
+      });
+      return;
+    }
+
     const result = calculateScore(
       this.elapsedTime,
       this.levelRule.timeLimit,
@@ -583,9 +904,134 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  private calculateTowerScore(): TowerResultData {
+    if (!this.towerFloorData) {
+      return {
+        floorId: this.towerFloorId || 0,
+        score: 0,
+        stars: 0,
+        time: this.elapsedTime,
+        accuracy: 0,
+        maxCombo: 0,
+        mistakes: 0,
+        hintsUsed: 0,
+        perfectSnaps: 0,
+        scoringBreakdown: [],
+        isNewRecord: false,
+        isNewBestTime: false,
+        unlockedNextFloor: false,
+        rewards: []
+      };
+    }
+
+    const floor = this.towerFloorData;
+    const totalPieces = this.pieces.length;
+    const scoringConditions = floor.scoringConditions;
+    const scoringBreakdown: { condition: string; score: number; maxScore: number }[] = [];
+
+    let totalScore = 0;
+    const baseMaxScore = 1000;
+
+    scoringConditions.forEach(condition => {
+      let score = 0;
+      const maxScore = Math.floor(baseMaxScore * (condition.weight / 100));
+
+      switch (condition.type) {
+        case 'time':
+          const timeRatio = Math.max(0, 1 - this.elapsedTime / floor.timeLimit);
+          score = Math.floor(maxScore * Math.max(0, Math.min(1, timeRatio)));
+          break;
+
+        case 'accuracy':
+          const avgDistance = this.snapCount > 0 ? this.totalSnapDistance / this.snapCount : 0;
+          const maxThreshold = floor.snapPositionThreshold;
+          const accuracyRatio = Math.max(0, 1 - avgDistance / maxThreshold);
+          score = Math.floor(maxScore * accuracyRatio);
+          break;
+
+        case 'combo':
+          const comboThreshold = condition.threshold || 5;
+          const comboRatio = Math.min(1, this.maxCombo / comboThreshold);
+          score = Math.floor(maxScore * comboRatio);
+          break;
+
+        case 'mistakes':
+          const mistakePenalty = Math.min(1, this.mistakeCount / 10);
+          score = Math.floor(maxScore * (1 - mistakePenalty));
+          break;
+
+        case 'hint_usage':
+          const hintPenalty = Math.min(1, this.hintsUsed / 5);
+          score = Math.floor(maxScore * (1 - hintPenalty));
+          break;
+
+        case 'perfect_snap':
+          const perfectRatio = totalPieces > 0 ? this.perfectSnaps / totalPieces : 0;
+          score = Math.floor(maxScore * perfectRatio);
+          break;
+      }
+
+      scoringBreakdown.push({
+        condition: condition.name,
+        score,
+        maxScore
+      });
+
+      totalScore += score;
+    });
+
+    const difficultyMultiplier: Record<string, number> = {
+      'hard': 1.2,
+      'extreme': 1.5,
+      'nightmare': 2.0
+    };
+    const diffMult = difficultyMultiplier[floor.difficulty] || 1;
+    totalScore = Math.floor(totalScore * diffMult);
+
+    let stars = 0;
+    if (totalScore >= baseMaxScore * 0.4) stars = 1;
+    if (totalScore >= baseMaxScore * 0.65) stars = 2;
+    if (totalScore >= baseMaxScore * 0.85) stars = 3;
+
+    const accuracy = this.snapCount > 0
+      ? Math.round((1 - this.totalSnapDistance / (this.snapCount * floor.snapPositionThreshold)) * 100)
+      : 0;
+
+    const progress = SaveManager.getTowerFloorProgress(floor.id);
+    const isNewRecord = !progress || totalScore > progress.bestScore;
+    const isNewBestTime = !progress || progress.bestTime === 0 || this.elapsedTime < progress.bestTime;
+
+    return {
+      floorId: floor.id,
+      score: totalScore,
+      stars,
+      time: this.elapsedTime,
+      accuracy,
+      maxCombo: this.maxCombo,
+      mistakes: this.mistakeCount,
+      hintsUsed: this.hintsUsed,
+      perfectSnaps: this.perfectSnaps,
+      scoringBreakdown,
+      isNewRecord,
+      isNewBestTime,
+      unlockedNextFloor: false,
+      rewards: floor.rewards
+    };
+  }
+
   private onTimeUp(): void {
     this.isCompleted = true;
     if (this.timerEvent) this.timerEvent.paused = true;
+
+    if (this.targetTween) {
+      this.targetTween.stop();
+    }
+
+    if (this.isTowerFloor && this.towerFloorId) {
+      SaveManager.failTowerFloor(this.towerFloorId);
+      this.showGameOver(0, this.snappedCount, this.pieces.length, 'time_up');
+      return;
+    }
 
     if (!this.isEventLevel) {
       DailyQuestManager.onLevelFail();
@@ -858,13 +1304,37 @@ export class GameScene extends Phaser.Scene {
     this.createResultButtons(overlay, true, chapterResult, eventResult, updatedQuests);
   }
 
-  private showGameOver(score: number, snapped: number, total: number): void {
-    const { overlay } = this.createModal('⏰ 时间到', '#f44336', 0xf44336);
+  private showGameOver(score: number, snapped: number, total: number, failType?: string): void {
+    let title = '⏰ 时间到';
+    let titleColor = '#f44336';
+    let borderColor = 0xf44336;
+    let emoji = '😢';
+    let subtitle = '';
 
-    this.add.text(375, 480, '😢', {
+    if (this.isTowerFloor && failType === 'mistake_limit') {
+      title = '💔 挑战失败';
+      titleColor = '#9c27b0';
+      borderColor = 0x9c27b0;
+      emoji = '😵';
+      subtitle = '失误次数已达上限';
+    } else if (this.isTowerFloor && failType === 'time_up') {
+      title = '⏰ 时间耗尽';
+      subtitle = '挑战塔时间到';
+    }
+
+    const { overlay } = this.createModal(title, titleColor, borderColor);
+
+    this.add.text(375, 480, emoji, {
       font: '60px Arial',
       color: '#ffffff'
     }).setOrigin(0.5);
+
+    if (subtitle) {
+      this.add.text(375, 530, subtitle, {
+        font: '18px Arial',
+        color: '#ff9800'
+      }).setOrigin(0.5);
+    }
 
     const scoreBg = this.add.graphics();
     scoreBg.fillStyle(0x0f3460, 0.6);
@@ -886,6 +1356,170 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     this.createResultButtons(overlay, false);
+  }
+
+  private showTowerVictory(
+    result: TowerResultData,
+    completeResult: { unlockedNextFloor: boolean; newHighestFloor: number }
+  ): void {
+    const { overlay } = this.createModal('🏆 挑战成功！', '#ffd700', 0xffd700);
+
+    this.drawStars(375, 480, result.stars, 50);
+
+    if (result.isNewRecord) {
+      const recordBadge = this.add.graphics();
+      recordBadge.fillStyle(0xff9800, 1);
+      recordBadge.fillRoundedRect(260, 540, 230, 35, 10);
+      this.add.text(375, 557, '🎉 新纪录！', {
+        font: 'bold 18px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+    }
+
+    const scoreBg = this.add.graphics();
+    scoreBg.fillStyle(0x0f3460, 0.6);
+    scoreBg.fillRoundedRect(130, result.isNewRecord ? 600 : 580, 490, 90, 16);
+
+    this.add.text(375, result.isNewRecord ? 630 : 610, `最终得分`, {
+      font: '20px Arial',
+      color: '#aaaaaa'
+    }).setOrigin(0.5);
+
+    this.add.text(375, result.isNewRecord ? 665 : 645, result.score.toLocaleString(), {
+      font: 'bold 40px Arial',
+      color: '#ffd700'
+    }).setOrigin(0.5);
+
+    let statsY = result.isNewRecord ? 710 : 690;
+    const stats = [
+      { label: '用时', value: formatTime(result.time), color: '#2196f3' },
+      { label: '精准度', value: `${Math.max(0, Math.min(100, result.accuracy))}%`, color: '#4caf50' },
+      { label: '最大连击', value: `${result.maxCombo}`, color: '#ff9800' },
+      { label: '完美吸附', value: `${result.perfectSnaps}`, color: '#9c27b0' }
+    ];
+
+    stats.forEach((stat, index) => {
+      const x = 155 + (index % 2) * 240;
+      const y = statsY + Math.floor(index / 2) * 50;
+      this.add.text(x, y, `${stat.label}: `, {
+        font: '14px Arial',
+        color: '#aaaaaa'
+      }).setOrigin(0, 0.5);
+      this.add.text(x + 70, y, stat.value, {
+        font: 'bold 16px Arial',
+        color: stat.color
+      }).setOrigin(0, 0.5);
+    });
+
+    let breakdownY = statsY + 110;
+    this.add.text(375, breakdownY, '📊 评分详情', {
+      font: 'bold 18px Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+    breakdownY += 25;
+
+    result.scoringBreakdown.forEach(item => {
+      const barBg = this.add.graphics();
+      barBg.fillStyle(0x0a1a2a, 1);
+      barBg.fillRoundedRect(150, breakdownY, 450, 18, 4);
+
+      const ratio = item.maxScore > 0 ? item.score / item.maxScore : 0;
+      const barColor = ratio >= 0.8 ? 0x4caf50 : ratio >= 0.5 ? 0xff9800 : 0xf44336;
+      const barFill = this.add.graphics();
+      barFill.fillStyle(barColor, 1);
+      barFill.fillRoundedRect(150, breakdownY, 450 * ratio, 18, 4);
+
+      this.add.text(155, breakdownY + 9, item.condition, {
+        font: '11px Arial',
+        color: '#ffffff'
+      }).setOrigin(0, 0.5);
+
+      this.add.text(595, breakdownY + 9, `${item.score}/${item.maxScore}`, {
+        font: 'bold 11px Arial',
+        color: '#ffffff'
+      }).setOrigin(1, 0.5);
+
+      breakdownY += 24;
+    });
+
+    let bannerY = breakdownY + 15;
+
+    if (completeResult.unlockedNextFloor) {
+      const unlockBanner = this.add.graphics();
+      unlockBanner.fillStyle(0x4caf50, 1);
+      unlockBanner.fillRoundedRect(140, bannerY, 470, 40, 10);
+      this.add.text(375, bannerY + 20, '🔓 下一层已解锁！', {
+        font: 'bold 16px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+      bannerY += 50;
+    }
+
+    const canClaim = SaveManager.canClaimTowerRewards(result.floorId);
+    if (canClaim) {
+      const rewardBanner = this.add.graphics();
+      rewardBanner.fillStyle(0xffd700, 1);
+      rewardBanner.fillRoundedRect(140, bannerY, 470, 40, 10);
+      rewardBanner.setInteractive(
+        new Phaser.Geom.Rectangle(140, bannerY, 470, 40),
+        Phaser.Geom.Rectangle.Contains
+      );
+      this.add.text(375, bannerY + 20, '🎁 有奖励可领取！', {
+        font: 'bold 16px Arial',
+        color: '#1a1a2e'
+      }).setOrigin(0.5);
+      rewardBanner.on('pointerup', () => {
+        this.scene.start('TowerResultScene', { floorId: result.floorId, result });
+      });
+      bannerY += 50;
+    }
+
+    this.createTowerResultButtons(overlay, completeResult);
+  }
+
+  private createTowerResultButtons(
+    overlay: Phaser.GameObjects.Graphics,
+    completeResult: { unlockedNextFloor: boolean; newHighestFloor: number }
+  ): void {
+    const btnW = 230;
+    const btnH = 68;
+    const btnY = 1120;
+
+    const continueBtn = this.add.graphics();
+    continueBtn.fillStyle(0x4caf50, 1);
+    continueBtn.fillRoundedRect(135, btnY, btnW, btnH, 16);
+    continueBtn.setInteractive(
+      new Phaser.Geom.Rectangle(135, btnY, btnW, btnH),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    this.add.text(135 + btnW / 2, btnY + btnH / 2, '领取奖励', {
+      font: 'bold 20px Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+
+    continueBtn.on('pointerup', () => {
+      if (this.towerFloorId) {
+        this.scene.start('TowerResultScene', { floorId: this.towerFloorId });
+      }
+    });
+
+    const backBtn = this.add.graphics();
+    backBtn.fillStyle(0xe94560, 1);
+    backBtn.fillRoundedRect(385, btnY, btnW, btnH, 16);
+    backBtn.setInteractive(
+      new Phaser.Geom.Rectangle(385, btnY, btnW, btnH),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    this.add.text(385 + btnW / 2, btnY + btnH / 2, '返回塔层', {
+      font: 'bold 20px Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+
+    backBtn.on('pointerup', () => {
+      this.scene.start('TowerSelectScene');
+    });
   }
 
   private createResultButtons(

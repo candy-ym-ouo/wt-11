@@ -319,6 +319,106 @@ export interface ResearchLevelConfig {
   unlockMessage?: string;
 }
 
+export type TowerRuleType = 
+  | 'rotation_lock'
+  | 'time_penalty'
+  | 'mirror_pieces'
+  | 'hidden_target'
+  | 'moving_target'
+  | 'limited_mistake_penalty'
+  | 'combo_bonus'
+  | 'no_hint_restriction'
+  | 'shuffle_every_n_pieces'
+  | 'extra_pieces';
+
+export interface TowerRuleModifier {
+  type: TowerRuleType;
+  name: string;
+  description: string;
+  value?: number;
+}
+
+export interface TowerScoringCondition {
+  type: 'time' | 'accuracy' | 'combo' | 'mistakes' | 'hint_usage' | 'perfect_snap';
+  name: string;
+  weight: number;
+  description: string;
+  threshold?: number;
+}
+
+export interface TowerFloorData {
+  id: number;
+  name: string;
+  description: string;
+  floorNumber: number;
+  specimenId: number;
+  difficulty: 'hard' | 'extreme' | 'nightmare';
+  rows: number;
+  cols: number;
+  timeLimit: number;
+  snapPositionThreshold: number;
+  snapRotationThreshold: number;
+  rules: TowerRuleModifier[];
+  scoringConditions: TowerScoringCondition[];
+  rewards: TowerReward[];
+  requiredStars: number;
+  unlockedDefault?: boolean;
+}
+
+export interface TowerReward {
+  type: 'score' | 'badge' | 'fragment' | 'material' | 'research_point';
+  id: number;
+  name: string;
+  description: string;
+  value?: number;
+  rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  specimenId?: number;
+}
+
+export interface TowerFloorProgress {
+  floorId: number;
+  unlocked: boolean;
+  completed: boolean;
+  bestScore: number;
+  bestTime: number;
+  stars: number;
+  attempts: number;
+  bestAccuracy?: number;
+  bestCombo?: number;
+  rewardsClaimed: boolean;
+  lastPlayedAt?: number;
+  completedAt?: number;
+}
+
+export interface TowerSaveData {
+  highestFloor: number;
+  totalStars: number;
+  totalScore: number;
+  floorProgress: Record<number, TowerFloorProgress>;
+  badges: Record<number, boolean>;
+  currentStreak: number;
+  bestStreak: number;
+  totalAttempts: number;
+  totalCompletions: number;
+}
+
+export interface TowerResultData {
+  floorId: number;
+  score: number;
+  stars: number;
+  time: number;
+  accuracy: number;
+  maxCombo: number;
+  mistakes: number;
+  hintsUsed: number;
+  perfectSnaps: number;
+  scoringBreakdown: { condition: string; score: number; maxScore: number }[];
+  isNewRecord: boolean;
+  isNewBestTime: boolean;
+  unlockedNextFloor: boolean;
+  rewards: TowerReward[];
+}
+
 export interface SaveData {
   progress: Record<number, LevelProgress>;
   chapterProgress: Record<number, ChapterProgress>;
@@ -331,4 +431,5 @@ export interface SaveData {
   event: EventSaveData;
   dailyQuest: DailyQuestSaveData;
   researchLab: ResearchLabProgress;
+  tower: TowerSaveData;
 }
