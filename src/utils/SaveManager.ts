@@ -14,7 +14,7 @@ import {
   SpecimenResearch,
   ResearchLabProgress
 } from '../types/GameTypes';
-import { Levels } from '../data/Levels';
+import { Levels, EventGalleryItems } from '../data/Levels';
 import { Chapters, getChapterById, getChapterByLevelId, getNextChapter, getRewardsByChapterId } from '../data/Chapters';
 import { WorkshopRecipes, getRecipeBySpecimenId } from '../data/WorkshopConfig';
 import { Events, getActiveEvent, getEventById } from '../data/Events';
@@ -905,12 +905,12 @@ export class SaveManager {
     score: number,
     time: number,
     stars: number
-  ): { newlyUnlockedLevelId: number | null; updatedTotalScore: number } {
+  ): { newlyUnlockedLevelId: number | null; updatedTotalScore: number; achievementResult: AchievementUnlockResult } {
     const eventProg = this.data.event.eventProgress[eventId];
-    if (!eventProg) return { newlyUnlockedLevelId: null, updatedTotalScore: 0 };
+    if (!eventProg) return { newlyUnlockedLevelId: null, updatedTotalScore: 0, achievementResult: { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 } };
 
     const levelProg = eventProg.levelProgress[levelId];
-    if (!levelProg) return { newlyUnlockedLevelId: null, updatedTotalScore: 0 };
+    if (!levelProg) return { newlyUnlockedLevelId: null, updatedTotalScore: 0, achievementResult: { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 } };
 
     const scoreImproved = score > levelProg.bestScore;
     const starsImproved = stars > levelProg.stars;
@@ -951,8 +951,21 @@ export class SaveManager {
       }
     }
 
+    const achievementResult = AchievementManager.onEventParticipation();
+
+    const eventSpecimenCount = this.getUnlockedEventGalleryItems().length;
+    const eventSpecimenResult = AchievementManager.onEventSpecimenUnlocked(eventSpecimenCount);
+
+    achievementResult.newlyUnlocked.push(...eventSpecimenResult.newlyUnlocked);
+    achievementResult.newlyUnlockedTitles.push(...eventSpecimenResult.newlyUnlockedTitles);
+    achievementResult.scoreGained += eventSpecimenResult.scoreGained;
+
+    if (achievementResult.scoreGained > 0) {
+      this.data.totalScore += achievementResult.scoreGained;
+    }
+
     this.save();
-    return { newlyUnlockedLevelId, updatedTotalScore: eventProg.totalScore };
+    return { newlyUnlockedLevelId, updatedTotalScore: eventProg.totalScore, achievementResult };
   }
 
   static canClaimEventReward(eventId: string, rewardId: number): boolean {
@@ -1112,6 +1125,7 @@ export class SaveManager {
     newResearcherLevel: number;
     newSpecimenLevel: number;
     unlockMessage?: string;
+    achievementResult: AchievementUnlockResult;
   } {
     if (!this.canStudySpecimen(specimenId)) {
       return {
@@ -1120,7 +1134,8 @@ export class SaveManager {
         newlyUnlockedKnowledge: [],
         leveledUp: false,
         newResearcherLevel: this.data.researchLab.researcherLevel,
-        newSpecimenLevel: this.getSpecimenResearchLevel(specimenId)
+        newSpecimenLevel: this.getSpecimenResearchLevel(specimenId),
+        achievementResult: { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 }
       };
     }
 
@@ -1178,6 +1193,23 @@ export class SaveManager {
     }
 
     this.save();
+
+    const knowledgeCount = this.getTotalKnowledgeUnlocked();
+    const knowledgeResult = AchievementManager.onKnowledgeUnlocked(knowledgeCount);
+
+    const researcherLevel = this.data.researchLab.researcherLevel;
+    const levelResult = AchievementManager.onResearcherLevelUp(researcherLevel);
+
+    const achievementResult: AchievementUnlockResult = {
+      newlyUnlocked: [...knowledgeResult.newlyUnlocked, ...levelResult.newlyUnlocked],
+      newlyUnlockedTitles: [...knowledgeResult.newlyUnlockedTitles, ...levelResult.newlyUnlockedTitles],
+      scoreGained: knowledgeResult.scoreGained + levelResult.scoreGained
+    };
+
+    if (achievementResult.scoreGained > 0) {
+      this.data.totalScore += achievementResult.scoreGained;
+    }
+
     return {
       success: true,
       gainedExp,
@@ -1185,7 +1217,8 @@ export class SaveManager {
       leveledUp: researcherLeveledUp || newSpecimenLevel > oldSpecimenLevel,
       newResearcherLevel: this.data.researchLab.researcherLevel,
       newSpecimenLevel: specimenResearch.researchLevel,
-      unlockMessage
+      unlockMessage,
+      achievementResult
     };
   }
 
@@ -1198,19 +1231,25 @@ export class SaveManager {
     return finalAmount;
   }
 
-  static grantResearchExp(amount: number): { totalAdded: number; leveledUp: boolean; newLevel: number; unlockMessage?: string } {
+  static grantResearchExp(amount: number): { totalAdded: number; leveledUp: boolean; newLevel: number; unlockMessage?: string; achievementResult: AchievementUnlockResult } {
     const oldLevel = this.data.researchLab.researcherLevel;
     this.data.researchLab.totalExp += amount;
     const newLevelConfig = getResearchLevel(this.data.researchLab.totalExp);
     this.data.researchLab.researcherLevel = newLevelConfig.level;
     const leveledUp = this.data.researchLab.researcherLevel > oldLevel;
 
+    const achievementResult = AchievementManager.onResearcherLevelUp(this.data.researchLab.researcherLevel);
+    if (achievementResult.scoreGained > 0) {
+      this.data.totalScore += achievementResult.scoreGained;
+    }
+
     this.save();
     return {
       totalAdded: amount,
       leveledUp,
       newLevel: this.data.researchLab.researcherLevel,
-      unlockMessage: leveledUp ? newLevelConfig.unlockMessage : undefined
+      unlockMessage: leveledUp ? newLevelConfig.unlockMessage : undefined,
+      achievementResult
     };
   }
 
@@ -1336,9 +1375,9 @@ export class SaveManager {
   static completeTowerFloor(
     floorId: number,
     result: TowerResultData
-  ): { unlockedNextFloor: boolean; newHighestFloor: number } {
+  ): { unlockedNextFloor: boolean; newHighestFloor: number; achievementResult: AchievementUnlockResult } {
     const progress = this.data.tower.floorProgress[floorId];
-    if (!progress) return { unlockedNextFloor: false, newHighestFloor: this.data.tower.highestFloor };
+    if (!progress) return { unlockedNextFloor: false, newHighestFloor: this.data.tower.highestFloor, achievementResult: { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 } };
 
     const floor = getTowerFloor(floorId);
     const isFirstCompletion = !progress.completed;
@@ -1405,8 +1444,14 @@ export class SaveManager {
       this.data.totalScore += scoreReward.value;
     }
 
+    const achievementResult = AchievementManager.onTowerFloor(this.data.tower.highestFloor);
+
+    if (achievementResult.scoreGained > 0) {
+      this.data.totalScore += achievementResult.scoreGained;
+    }
+
     this.save();
-    return { unlockedNextFloor, newHighestFloor };
+    return { unlockedNextFloor, newHighestFloor, achievementResult };
   }
 
   static failTowerFloor(floorId: number): void {
@@ -1524,13 +1569,13 @@ export class SaveManager {
   static submitSpecimenToExhibition(
     themeId: string,
     specimenId: number
-  ): { success: boolean; submission?: ExhibitionSpecimenSubmission } {
+  ): { success: boolean; submission?: ExhibitionSpecimenSubmission; achievementResult: AchievementUnlockResult } {
     if (!this.canSubmitToExhibition(themeId, specimenId)) {
-      return { success: false };
+      return { success: false, achievementResult: { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 } };
     }
 
     const themeProgress = this.data.exhibition.themeProgress[themeId];
-    if (!themeProgress) return { success: false };
+    if (!themeProgress) return { success: false, achievementResult: { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 } };
 
     const allProgress = this.getAllProgress();
     let specimenStars = 0;
@@ -1571,8 +1616,13 @@ export class SaveManager {
 
     themeProgress.lastSubmittedAt = Date.now();
 
+    const achievementResult = AchievementManager.onExhibitionParticipation();
+    if (achievementResult.scoreGained > 0) {
+      this.data.totalScore += achievementResult.scoreGained;
+    }
+
     this.save();
-    return { success: true, submission };
+    return { success: true, submission, achievementResult };
   }
 
   static canClaimExhibitionReward(themeId: string, rewardId: number): boolean {

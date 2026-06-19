@@ -1060,7 +1060,7 @@ export class GameScene extends Phaser.Scene {
     const finalScore = Math.floor(result.score * this.scoreMultiplier);
 
     let chapterResult: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[]; achievementResult: AchievementUnlockResult } | undefined;
-    let eventResult: { newlyUnlockedLevelId: number | null; updatedTotalScore: number } | undefined;
+    let eventResult: { newlyUnlockedLevelId: number | null; updatedTotalScore: number; achievementResult: AchievementUnlockResult } | undefined;
     let updatedQuests: DailyQuest[] = [];
     let achievementResult: AchievementUnlockResult = { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 };
 
@@ -1072,6 +1072,7 @@ export class GameScene extends Phaser.Scene {
         this.elapsedTime,
         result.stars
       );
+      achievementResult = eventResult.achievementResult;
     } else {
       chapterResult = SaveManager.completeLevel(
         this.levelRule.id,
@@ -1491,7 +1492,7 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    if (!this.isEventLevel && achievementResult.newlyUnlocked.length > 0) {
+    if (achievementResult.newlyUnlocked.length > 0) {
       const achievementBanner = this.add.graphics();
       achievementBanner.fillStyle(0xffd700, 1);
       achievementBanner.fillRoundedRect(140, bannerY, 470, 45, 12);
@@ -1520,7 +1521,7 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    if (!this.isEventLevel && achievementResult.newlyUnlockedTitles.length > 0) {
+    if (achievementResult.newlyUnlockedTitles.length > 0) {
       const titleBanner = this.add.graphics();
       titleBanner.fillStyle(0x9c27b0, 1);
       titleBanner.fillRoundedRect(140, bannerY, 470, 45, 12);
@@ -1605,7 +1606,7 @@ export class GameScene extends Phaser.Scene {
 
   private showTowerVictory(
     result: TowerResultData,
-    completeResult: { unlockedNextFloor: boolean; newHighestFloor: number }
+    completeResult: { unlockedNextFloor: boolean; newHighestFloor: number; achievementResult: AchievementUnlockResult }
   ): void {
     const { overlay } = this.createModal('🏆 挑战成功！', '#ffd700', 0xffd700);
 
@@ -1717,6 +1718,53 @@ export class GameScene extends Phaser.Scene {
         this.scene.start('TowerResultScene', { floorId: result.floorId, result });
       });
       bannerY += 50;
+    }
+
+    if (completeResult.achievementResult.newlyUnlocked.length > 0) {
+      const achievementBanner = this.add.graphics();
+      achievementBanner.fillStyle(0xffd700, 1);
+      achievementBanner.fillRoundedRect(140, bannerY, 470, 45, 12);
+      achievementBanner.setInteractive(
+        new Phaser.Geom.Rectangle(140, bannerY, 470, 45),
+        Phaser.Geom.Rectangle.Contains
+      );
+      this.add.text(375, bannerY + 22, `🏆 解锁${completeResult.achievementResult.newlyUnlocked.length}个新成就！`, {
+        font: 'bold 18px Arial',
+        color: '#1a1a2e'
+      }).setOrigin(0.5);
+      achievementBanner.on('pointerup', () => {
+        this.scene.start('AchievementScene');
+      });
+      bannerY += 55;
+
+      if (completeResult.achievementResult.scoreGained > 0) {
+        const scoreBanner = this.add.graphics();
+        scoreBanner.fillStyle(0xff9800, 0.9);
+        scoreBanner.fillRoundedRect(180, bannerY, 390, 35, 10);
+        this.add.text(375, bannerY + 17, `💰 成就积分 +${completeResult.achievementResult.scoreGained.toLocaleString()}`, {
+          font: 'bold 15px Arial',
+          color: '#ffffff'
+        }).setOrigin(0.5);
+        bannerY += 45;
+      }
+    }
+
+    if (completeResult.achievementResult.newlyUnlockedTitles.length > 0) {
+      const titleBanner = this.add.graphics();
+      titleBanner.fillStyle(0x9c27b0, 1);
+      titleBanner.fillRoundedRect(140, bannerY, 470, 45, 12);
+      titleBanner.setInteractive(
+        new Phaser.Geom.Rectangle(140, bannerY, 470, 45),
+        Phaser.Geom.Rectangle.Contains
+      );
+      this.add.text(375, bannerY + 22, `👑 获得新称号：${completeResult.achievementResult.newlyUnlockedTitles[0].name}`, {
+        font: 'bold 18px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+      titleBanner.on('pointerup', () => {
+        this.scene.start('AchievementScene');
+      });
+      bannerY += 55;
     }
 
     this.createTowerResultButtons(overlay, completeResult);

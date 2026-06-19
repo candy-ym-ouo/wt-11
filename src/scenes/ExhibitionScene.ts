@@ -3,7 +3,7 @@ import { ExhibitionManager } from '../utils/ExhibitionManager';
 import { SaveManager } from '../utils/SaveManager';
 import { getAllExhibitionThemes, getBadgeTierColor, getBadgeTierName, getExhibitionBadge } from '../data/ExhibitionConfig';
 import { getPlantSpecimen } from '../data/PlantSpecimens';
-import { ExhibitionTheme, ExhibitionBadge } from '../types/GameTypes';
+import { ExhibitionTheme, ExhibitionBadge, AchievementUnlockResult } from '../types/GameTypes';
 
 export class ExhibitionScene extends Phaser.Scene {
   private selectedThemeId: string | null = null;
@@ -474,7 +474,12 @@ export class ExhibitionScene extends Phaser.Scene {
         const result = SaveManager.submitSpecimenToExhibition(themeId, specimenId);
         if (result.success) {
           ExhibitionManager.finalizeExhibition(themeId);
-          this.scene.restart();
+          const hasAchievement = result.achievementResult.newlyUnlocked.length > 0 || result.achievementResult.newlyUnlockedTitles.length > 0;
+          if (hasAchievement) {
+            this.showSubmissionWithAchievement(result.achievementResult);
+          } else {
+            this.scene.restart();
+          }
         }
       });
 
@@ -821,6 +826,117 @@ export class ExhibitionScene extends Phaser.Scene {
       this.scene.restart();
     };
 
+    confirmBtn.on('pointerup', close);
+    overlay.on('pointerup', close);
+  }
+
+  private showSubmissionWithAchievement(achievementResult: AchievementUnlockResult): void {
+    const container = this.add.container(0, 0);
+
+    const overlay = this.add.graphics();
+    overlay.fillStyle(0x000000, 0.85);
+    overlay.fillRect(0, 0, 750, 1334);
+    overlay.setInteractive();
+    container.add(overlay);
+
+    const modalH = 350 +
+      (achievementResult.newlyUnlocked.length > 0 ? 55 : 0) +
+      (achievementResult.scoreGained > 0 ? 45 : 0) +
+      (achievementResult.newlyUnlockedTitles.length > 0 ? 55 : 0);
+    const modalY = (1334 - modalH) / 2;
+
+    const modal = this.add.graphics();
+    modal.fillStyle(0x16213e, 1);
+    modal.fillRoundedRect(75, modalY, 600, modalH, 24);
+    modal.lineStyle(4, 0x00bcd4, 1);
+    modal.strokeRoundedRect(75, modalY, 600, modalH, 24);
+    container.add(modal);
+
+    this.add.text(375, modalY + 60, '🖼️ 提交成功！', {
+      font: 'bold 32px Arial',
+      color: '#00bcd4'
+    }).setOrigin(0.5);
+
+    this.add.text(375, modalY + 110, '标本已成功提交至展览', {
+      font: '18px Arial',
+      color: '#aaaaaa'
+    }).setOrigin(0.5);
+
+    let currentY = modalY + 160;
+
+    if (achievementResult.newlyUnlocked.length > 0) {
+      const achievementBg = this.add.graphics();
+      achievementBg.fillStyle(0xffd700, 1);
+      achievementBg.fillRoundedRect(110, currentY, 530, 45, 12);
+      achievementBg.setInteractive(
+        new Phaser.Geom.Rectangle(110, currentY, 530, 45),
+        Phaser.Geom.Rectangle.Contains
+      );
+      container.add(achievementBg);
+      this.add.text(375, currentY + 22, `🏆 解锁${achievementResult.newlyUnlocked.length}个新成就！`, {
+        font: 'bold 17px Arial',
+        color: '#1a1a2e'
+      }).setOrigin(0.5);
+      achievementBg.on('pointerup', () => {
+        container.destroy();
+        this.scene.start('AchievementScene');
+      });
+      currentY += 55;
+
+      if (achievementResult.scoreGained > 0) {
+        const scoreBg = this.add.graphics();
+        scoreBg.fillStyle(0xff9800, 0.9);
+        scoreBg.fillRoundedRect(150, currentY, 450, 35, 10);
+        container.add(scoreBg);
+        this.add.text(375, currentY + 17, `💰 成就积分 +${achievementResult.scoreGained.toLocaleString()}`, {
+          font: 'bold 15px Arial',
+          color: '#ffffff'
+        }).setOrigin(0.5);
+        currentY += 45;
+      }
+    }
+
+    if (achievementResult.newlyUnlockedTitles.length > 0) {
+      const titleBg = this.add.graphics();
+      titleBg.fillStyle(0x9c27b0, 1);
+      titleBg.fillRoundedRect(110, currentY, 530, 45, 12);
+      titleBg.setInteractive(
+        new Phaser.Geom.Rectangle(110, currentY, 530, 45),
+        Phaser.Geom.Rectangle.Contains
+      );
+      container.add(titleBg);
+      this.add.text(375, currentY + 22, `👑 获得新称号：${achievementResult.newlyUnlockedTitles[0].name}`, {
+        font: 'bold 17px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+      titleBg.on('pointerup', () => {
+        container.destroy();
+        this.scene.start('AchievementScene');
+      });
+      currentY += 55;
+    }
+
+    currentY += 20;
+
+    const confirmBtn = this.add.graphics();
+    confirmBtn.fillStyle(0x00bcd4, 1);
+    confirmBtn.fillRoundedRect(200, currentY, 350, 55, 14);
+    container.add(confirmBtn);
+
+    this.add.text(375, currentY + 27, '继续展览', {
+      font: 'bold 20px Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+
+    const close = () => {
+      container.destroy();
+      this.scene.restart();
+    };
+
+    confirmBtn.setInteractive(
+      new Phaser.Geom.Rectangle(200, currentY, 350, 55),
+      Phaser.Geom.Rectangle.Contains
+    );
     confirmBtn.on('pointerup', close);
     overlay.on('pointerup', close);
   }

@@ -594,6 +594,7 @@ export class ResearchLabScene extends Phaser.Scene {
       newResearcherLevel: number;
       newSpecimenLevel: number;
       unlockMessage?: string;
+      achievementResult: { newlyUnlocked: any[]; newlyUnlockedTitles: any[]; scoreGained: number };
     }
   ): void {
     const specimen = getPlantSpecimen(specimenId);
@@ -609,8 +610,17 @@ export class ResearchLabScene extends Phaser.Scene {
 
     const hasNewKnowledge = result.newlyUnlockedKnowledge.length > 0;
     const hasLevelUp = result.leveledUp;
-    const baseH = hasNewKnowledge ? 780 : 520;
-    const modalY = hasNewKnowledge ? 260 : 380;
+    const hasAchievement = result.achievementResult.newlyUnlocked.length > 0 || result.achievementResult.newlyUnlockedTitles.length > 0;
+    
+    let extraH = 0;
+    if (hasAchievement) {
+      extraH += result.achievementResult.newlyUnlocked.length > 0 ? 55 : 0;
+      extraH += result.achievementResult.scoreGained > 0 ? 45 : 0;
+      extraH += result.achievementResult.newlyUnlockedTitles.length > 0 ? 55 : 0;
+    }
+    
+    const baseH = (hasNewKnowledge ? 780 : 520) + extraH;
+    const modalY = hasNewKnowledge ? 260 - extraH / 2 : 380 - extraH / 2;
 
     const modal = this.add.graphics();
     modal.fillStyle(0x16213e, 1);
@@ -723,6 +733,58 @@ export class ResearchLabScene extends Phaser.Scene {
         }).setOrigin(0.5);
         currentY += 30;
       }
+    }
+
+    if (result.achievementResult.newlyUnlocked.length > 0) {
+      const achievementBg = this.add.graphics();
+      achievementBg.fillStyle(0xffd700, 1);
+      achievementBg.fillRoundedRect(110, currentY, 530, 45, 12);
+      achievementBg.setInteractive(
+        new Phaser.Geom.Rectangle(110, currentY, 530, 45),
+        Phaser.Geom.Rectangle.Contains
+      );
+      container.add(achievementBg);
+      this.add.text(375, currentY + 22, `🏆 解锁${result.achievementResult.newlyUnlocked.length}个新成就！`, {
+        font: 'bold 17px Arial',
+        color: '#1a1a2e'
+      }).setOrigin(0.5);
+      achievementBg.on('pointerup', () => {
+        container.destroy();
+        this.scene.start('AchievementScene');
+      });
+      currentY += 55;
+
+      if (result.achievementResult.scoreGained > 0) {
+        const scoreBg = this.add.graphics();
+        scoreBg.fillStyle(0xff9800, 0.9);
+        scoreBg.fillRoundedRect(150, currentY, 450, 35, 10);
+        container.add(scoreBg);
+        this.add.text(375, currentY + 17, `💰 成就积分 +${result.achievementResult.scoreGained.toLocaleString()}`, {
+          font: 'bold 15px Arial',
+          color: '#ffffff'
+        }).setOrigin(0.5);
+        currentY += 45;
+      }
+    }
+
+    if (result.achievementResult.newlyUnlockedTitles.length > 0) {
+      const titleBg = this.add.graphics();
+      titleBg.fillStyle(0x9c27b0, 1);
+      titleBg.fillRoundedRect(110, currentY, 530, 45, 12);
+      titleBg.setInteractive(
+        new Phaser.Geom.Rectangle(110, currentY, 530, 45),
+        Phaser.Geom.Rectangle.Contains
+      );
+      container.add(titleBg);
+      this.add.text(375, currentY + 22, `👑 获得新称号：${result.achievementResult.newlyUnlockedTitles[0].name}`, {
+        font: 'bold 17px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+      titleBg.on('pointerup', () => {
+        container.destroy();
+        this.scene.start('AchievementScene');
+      });
+      currentY += 55;
     }
 
     const btnY = currentY + 15;

@@ -259,6 +259,9 @@ export class AchievementManager {
         case 'unlock_knowledge':
           unlocked = knowledgeCount >= cond.target;
           break;
+        case 'unlock_all_knowledge':
+          unlocked = knowledgeCount >= KnowledgeEntries.length;
+          break;
         default:
           break;
       }

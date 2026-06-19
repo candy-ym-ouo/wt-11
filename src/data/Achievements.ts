@@ -335,6 +335,72 @@ export const Achievements: Achievement[] = [
     rewardScore: 500,
     unlocked: false
   },
+  {
+    id: 5006,
+    name: '知识大师',
+    description: '解锁25条知识条目',
+    icon: '📚',
+    category: 'collection',
+    rarity: 'epic',
+    condition: { type: 'unlock_knowledge', target: 25 },
+    rewardScore: 1500,
+    unlocked: false
+  },
+  {
+    id: 5007,
+    name: '高级研究员',
+    description: '研究员等级达到10级',
+    icon: '👨‍🔬',
+    category: 'collection',
+    rarity: 'epic',
+    condition: { type: 'researcher_level', target: 10 },
+    rewardScore: 1500,
+    unlocked: false
+  },
+  {
+    id: 5008,
+    name: '百科全书',
+    description: '解锁全部知识条目',
+    icon: '📖',
+    category: 'collection',
+    rarity: 'legendary',
+    condition: { type: 'unlock_all_knowledge', target: 1 },
+    rewardScore: 3000,
+    unlocked: false
+  },
+  {
+    id: 5009,
+    name: '首席科学家',
+    description: '研究员等级达到15级',
+    icon: '🧑‍🚀',
+    category: 'collection',
+    rarity: 'legendary',
+    condition: { type: 'researcher_level', target: 15 },
+    rewardScore: 4000,
+    unlocked: false
+  },
+  {
+    id: 5010,
+    name: '碎片大亨',
+    description: '收集300个碎片',
+    icon: '💎',
+    category: 'collection',
+    rarity: 'epic',
+    condition: { type: 'collect_fragments', target: 300 },
+    rewardScore: 1200,
+    unlocked: false
+  },
+  {
+    id: 5011,
+    name: '修复宗师',
+    description: '修复30个植物标本',
+    icon: '🏆',
+    category: 'collection',
+    rarity: 'epic',
+    condition: { type: 'restore_specimens', target: 30 },
+    rewardScore: 2000,
+    unlocked: false
+  },
 
   {
     id: 6001,
@@ -378,6 +444,61 @@ export const Achievements: Achievement[] = [
     rarity: 'epic',
     condition: { type: 'multi_category', target: 3 },
     rewardScore: 1000,
+    unlocked: false
+  },
+  {
+    id: 6005,
+    name: '高塔征服者',
+    description: '通过高塔第10层',
+    icon: '🏰',
+    category: 'special',
+    rarity: 'epic',
+    condition: { type: 'tower_floor', target: 10 },
+    rewardScore: 1500,
+    unlocked: false
+  },
+  {
+    id: 6006,
+    name: '登峰造极',
+    description: '通过高塔第15层',
+    icon: '⛰️',
+    category: 'special',
+    rarity: 'legendary',
+    condition: { type: 'tower_floor', target: 15 },
+    rewardScore: 3000,
+    unlocked: false
+  },
+  {
+    id: 6007,
+    name: '活动狂热者',
+    description: '完成所有活动关卡',
+    icon: '🎪',
+    category: 'special',
+    rarity: 'epic',
+    condition: { type: 'complete_event_levels', target: 1 },
+    rewardScore: 1500,
+    unlocked: false
+  },
+  {
+    id: 6008,
+    name: '展览收藏家',
+    description: '获得3个展览徽章',
+    icon: '🏵️',
+    category: 'special',
+    rarity: 'epic',
+    condition: { type: 'exhibition_badges', target: 3 },
+    rewardScore: 1200,
+    unlocked: false
+  },
+  {
+    id: 6009,
+    name: '展览大师',
+    description: '完成一个展览主题的全部提交',
+    icon: '🎨',
+    category: 'special',
+    rarity: 'rare',
+    condition: { type: 'complete_exhibition', target: 1 },
+    rewardScore: 800,
     unlocked: false
   }
 ];
