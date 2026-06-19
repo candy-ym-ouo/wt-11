@@ -16,12 +16,18 @@ import {
   TutorialSaveData,
   CustomPuzzleRecord,
   RepairLogSaveData,
-  QuizSaveData
+  QuizSaveData,
+  ChapterMapSaveData,
+  BranchRouteProgress,
+  BranchRouteType,
+  MapNodeData,
+  EndingData
 } from '../types/GameTypes';
 import { TutorialManager } from './TutorialManager';
 import { ConservationManager } from './ConservationManager';
 import { Levels, EventGalleryItems } from '../data/Levels';
 import { Chapters, getChapterById, getChapterByLevelId, getNextChapter, getRewardsByChapterId } from '../data/Chapters';
+import { BranchRoutes, BranchRoutesList, getMapNode, getNextNodes, getPrevNodes, getRouteEnding, getRouteByNodeId, getRouteLevelIds } from '../data/BranchRoutes';
 import { WorkshopRecipes, getRecipeBySpecimenId } from '../data/WorkshopConfig';
 import { Events, getActiveEvent, getEventById } from '../data/Events';
 import { EventLevelRules, getEventLevelRulesByEventId } from '../data/EventLevelRules';
@@ -66,6 +72,7 @@ export class SaveManager {
     this.updateChapterProgress();
     this.syncChapterUnlocks();
     this.syncFamilyProgress();
+    this.syncRouteUnlocks();
     DailyQuestManager.init(this.data.dailyQuest);
     AchievementManager.init(this.data.achievement);
     TutorialManager.init(this.data.tutorial);
@@ -422,6 +429,26 @@ export class SaveManager {
       }
     }
 
+    if (!oldData.chapterMap) {
+      oldData.chapterMap = defaultData.chapterMap;
+    } else {
+      if (!oldData.chapterMap.routeProgress) {
+        oldData.chapterMap.routeProgress = defaultData.chapterMap.routeProgress;
+      }
+      if (oldData.chapterMap.totalRoutesCompleted === undefined) {
+        oldData.chapterMap.totalRoutesCompleted = 0;
+      }
+      if (!oldData.chapterMap.activeRouteId) {
+        oldData.chapterMap.activeRouteId = 'flower';
+      }
+      if (!oldData.chapterMap.unlockedRoutes) {
+        oldData.chapterMap.unlockedRoutes = ['flower'];
+      }
+      if (!oldData.chapterMap.endingsViewed) {
+        oldData.chapterMap.endingsViewed = [];
+      }
+    }
+
     return oldData as SaveData;
   }
 
@@ -465,6 +492,7 @@ export class SaveManager {
     const conservationData = ConservationManager.createDefaultSave();
     const familyCollectionData = this.createDefaultFamilyCollectionSave();
     const seasonPassData = this.createDefaultSeasonPassSave();
+    const chapterMapData = this.createDefaultChapterMapSave();
 
     return {
       progress,
@@ -492,7 +520,8 @@ export class SaveManager {
       customPuzzle: { records: {}, totalPlays: 0, totalScore: 0 },
       repairLog: RepairLogManager.createDefaultSave(),
       notification: NotificationManager.createDefaultNotificationSave(),
-      quiz: QuizManager.createDefaultQuizSave()
+      quiz: QuizManager.createDefaultQuizSave(),
+      chapterMap: chapterMapData
     };
   }
 
@@ -539,6 +568,39 @@ export class SaveManager {
       completedQuests: 0,
       claimedQuests: 0,
       pendingRewards: []
+    };
+  }
+
+  private static createDefaultChapterMapSave(): ChapterMapSaveData {
+    const routeProgress: Record<BranchRouteType, BranchRouteProgress> = {} as Record<BranchRouteType, BranchRouteProgress>;
+    
+    BranchRoutesList.forEach((route, index) => {
+      const rewardsClaimed: Record<string, boolean> = {};
+      route.nodes.forEach(node => {
+        if (node.rewards) {
+          rewardsClaimed[node.id] = false;
+        }
+      });
+
+      routeProgress[route.id] = {
+        routeId: route.id,
+        unlocked: index === 0,
+        completed: false,
+        currentNodeId: route.startingNodeId,
+        completedNodeIds: [],
+        unlockedNodeIds: index === 0 ? [route.startingNodeId] : [],
+        totalStars: 0,
+        rewardsClaimed,
+        endingViewed: false
+      };
+    });
+
+    return {
+      routeProgress,
+      totalRoutesCompleted: 0,
+      activeRouteId: 'flower',
+      unlockedRoutes: ['flower'],
+      endingsViewed: []
     };
   }
 
@@ -1066,6 +1128,239 @@ export class SaveManager {
   static canClaimRewards(chapterId: number): boolean {
     const chapterProgress = this.data.chapterProgress[chapterId];
     return chapterProgress?.completed === true && chapterProgress.rewardsClaimed === false;
+  }
+
+  static getChapterMapSaveData(): ChapterMapSaveData {
+    return {
+      ...this.data.chapterMap,
+      routeProgress: { ...this.data.chapterMap.routeProgress }
+    };
+  }
+
+  static getRouteProgress(routeId: BranchRouteType): BranchRouteProgress | undefined {
+    return this.data.chapterMap.routeProgress[routeId];
+  }
+
+  static getAllRouteProgress(): Record<BranchRouteType, BranchRouteProgress> {
+    return { ...this.data.chapterMap.routeProgress };
+  }
+
+  static isRouteUnlocked(routeId: BranchRouteType): boolean {
+    return this.data.chapterMap.routeProgress[routeId]?.unlocked ?? false;
+  }
+
+  static isRouteCompleted(routeId: BranchRouteType): boolean {
+    return this.data.chapterMap.routeProgress[routeId]?.completed ?? false;
+  }
+
+  static getActiveRouteId(): BranchRouteType | null {
+    return this.data.chapterMap.activeRouteId;
+  }
+
+  static setActiveRoute(routeId: BranchRouteType): void {
+    if (this.isRouteUnlocked(routeId)) {
+      this.data.chapterMap.activeRouteId = routeId;
+      this.save();
+    }
+  }
+
+  static getUnlockedRoutes(): BranchRouteType[] {
+    return [...this.data.chapterMap.unlockedRoutes];
+  }
+
+  static isNodeUnlocked(routeId: BranchRouteType, nodeId: string): boolean {
+    const progress = this.data.chapterMap.routeProgress[routeId];
+    return progress?.unlockedNodeIds.includes(nodeId) ?? false;
+  }
+
+  static isNodeCompleted(routeId: BranchRouteType, nodeId: string): boolean {
+    const progress = this.data.chapterMap.routeProgress[routeId];
+    return progress?.completedNodeIds.includes(nodeId) ?? false;
+  }
+
+  static getCompletedNodes(routeId: BranchRouteType): string[] {
+    const progress = this.data.chapterMap.routeProgress[routeId];
+    return progress?.completedNodeIds ?? [];
+  }
+
+  static canClaimNodeReward(routeId: BranchRouteType, nodeId: string): boolean {
+    return this.canClaimMapNodeRewards(routeId, nodeId);
+  }
+
+  static getCurrentNodeId(routeId: BranchRouteType): string | null {
+    return this.data.chapterMap.routeProgress[routeId]?.currentNodeId ?? null;
+  }
+
+  static getRouteStars(routeId: BranchRouteType): number {
+    const progress = this.data.chapterMap.routeProgress[routeId];
+    return progress?.totalStars ?? 0;
+  }
+
+  static completeNode(routeId: BranchRouteType, nodeId: string): { 
+    newlyUnlockedNodes: string[]; 
+    routeCompleted: boolean;
+    rewards?: Reward[];
+  } {
+    const progress = this.data.chapterMap.routeProgress[routeId];
+    if (!progress || progress.completedNodeIds.includes(nodeId)) {
+      return { newlyUnlockedNodes: [], routeCompleted: false };
+    }
+
+    progress.completedNodeIds.push(nodeId);
+
+    const node = getMapNode(routeId, nodeId);
+    let rewards: Reward[] | undefined;
+
+    if (node?.rewards) {
+      rewards = node.rewards;
+      this.claimMapNodeRewards(routeId, nodeId);
+    }
+
+    if (node?.type === 'level' || node?.type === 'boss') {
+      const levelProgress = this.data.progress[node.levelId!];
+      if (levelProgress) {
+        progress.totalStars = this.calculateRouteStars(routeId);
+      }
+    }
+
+    const nextNodes = getNextNodes(routeId, nodeId);
+    const newlyUnlockedNodes: string[] = [];
+
+    nextNodes.forEach(nextNode => {
+      if (!progress.unlockedNodeIds.includes(nextNode.id)) {
+        progress.unlockedNodeIds.push(nextNode.id);
+        newlyUnlockedNodes.push(nextNode.id);
+      }
+    });
+
+    if (nextNodes.length > 0) {
+      progress.currentNodeId = nextNodes[0].id;
+    }
+
+    const route = getRouteByNodeId(nodeId);
+    if (route && nodeId === route.endingNodeId) {
+      progress.completed = true;
+      progress.endingViewed = true;
+      progress.completedAt = Date.now();
+      this.data.chapterMap.totalRoutesCompleted += 1;
+
+      const ending = getRouteEnding(routeId);
+      if (ending && !this.data.chapterMap.endingsViewed.includes(ending.id)) {
+        this.data.chapterMap.endingsViewed.push(ending.id);
+      }
+
+      if (ending?.rewards) {
+        ending.rewards.forEach(reward => {
+          if (reward.type === 'score' && reward.value) {
+            this.data.totalScore += reward.value;
+          } else if (reward.type === 'badge') {
+            this.data.badges[reward.id] = true;
+          }
+        });
+      }
+    }
+
+    this.syncRouteUnlocks();
+    this.save();
+
+    return { newlyUnlockedNodes, routeCompleted: progress.completed, rewards };
+  }
+
+  private static calculateRouteStars(routeId: BranchRouteType): number {
+    const route = BranchRoutes[routeId];
+    if (!route) return 0;
+
+    return route.nodes.reduce((sum, node) => {
+      if ((node.type === 'level' || node.type === 'boss') && node.levelId) {
+        return sum + (this.data.progress[node.levelId]?.stars || 0);
+      }
+      return sum;
+    }, 0);
+  }
+
+  static claimMapNodeRewards(routeId: BranchRouteType, nodeId: string): Reward[] {
+    const progress = this.data.chapterMap.routeProgress[routeId];
+    const node = getMapNode(routeId, nodeId);
+    
+    if (!progress || !node?.rewards || progress.rewardsClaimed[nodeId]) {
+      return [];
+    }
+
+    const rewards = node.rewards;
+
+    rewards.forEach(reward => {
+      if (reward.type === 'score' && reward.value) {
+        this.data.totalScore += reward.value;
+      } else if (reward.type === 'badge') {
+        this.data.badges[reward.id] = true;
+      }
+    });
+
+    progress.rewardsClaimed[nodeId] = true;
+    this.save();
+
+    return rewards;
+  }
+
+  static canClaimMapNodeRewards(routeId: BranchRouteType, nodeId: string): boolean {
+    const progress = this.data.chapterMap.routeProgress[routeId];
+    return this.isNodeCompleted(routeId, nodeId) 
+      && progress?.rewardsClaimed[nodeId] === false 
+      && getMapNode(routeId, nodeId)?.rewards !== undefined;
+  }
+
+  static canAccessRoute(routeId: BranchRouteType): { allowed: boolean; reason: string; current: number; required: number } {
+    const route = BranchRoutes[routeId];
+    if (!route) return { allowed: false, reason: '路线不存在', current: 0, required: 0 };
+
+    const progress = this.data.chapterMap.routeProgress[routeId];
+    if (progress?.unlocked) return { allowed: true, reason: '', current: 0, required: 0 };
+
+    const totalStars = this.getTotalStars();
+    const requiredStars = route.requiredStars;
+
+    if (totalStars >= requiredStars) {
+      return { allowed: true, reason: '', current: totalStars, required: requiredStars };
+    }
+
+    return {
+      allowed: false,
+      reason: `需要 ${requiredStars} 颗星星解锁`,
+      current: totalStars,
+      required: requiredStars
+    };
+  }
+
+  private static syncRouteUnlocks(): void {
+    const totalStars = this.getTotalStars();
+
+    BranchRoutesList.forEach(route => {
+      const progress = this.data.chapterMap.routeProgress[route.id];
+      if (!progress || progress.unlocked) return;
+
+      if (totalStars >= route.requiredStars) {
+        progress.unlocked = true;
+        progress.firstUnlockedAt = Date.now();
+        progress.unlockedNodeIds = [route.startingNodeId];
+        progress.currentNodeId = route.startingNodeId;
+        
+        if (!this.data.chapterMap.unlockedRoutes.includes(route.id)) {
+          this.data.chapterMap.unlockedRoutes.push(route.id);
+        }
+      }
+    });
+  }
+
+  static isEndingViewed(endingId: string): boolean {
+    return this.data.chapterMap.endingsViewed.includes(endingId);
+  }
+
+  static getViewedEndings(): string[] {
+    return [...this.data.chapterMap.endingsViewed];
+  }
+
+  static getTotalRoutesCompleted(): number {
+    return this.data.chapterMap.totalRoutesCompleted;
   }
 
   static getFragmentCount(fragmentId: number): number {

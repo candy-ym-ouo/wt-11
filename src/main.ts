@@ -27,6 +27,8 @@ import { RepairLogScene } from './scenes/RepairLogScene';
 import { NotificationScene } from './scenes/NotificationScene';
 import { QuizScene } from './scenes/QuizScene';
 import { QuizResultScene } from './scenes/QuizResultScene';
+import { ChapterMapScene } from './scenes/ChapterMapScene';
+import { EndingScene } from './scenes/EndingScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -65,7 +67,9 @@ const config: Phaser.Types.Core.GameConfig = {
     RepairLogScene,
     NotificationScene,
     QuizScene,
-    QuizResultScene
+    QuizResultScene,
+    ChapterMapScene,
+    EndingScene
   ],
   physics: {
     default: 'arcade',

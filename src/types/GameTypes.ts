@@ -116,6 +116,7 @@ export interface GalleryItem {
   specimenId: number;
   unlocked: boolean;
   chapterId: number;
+  routeId?: BranchRouteType;
   isEventExclusive?: boolean;
   eventId?: string;
   eventName?: string;
@@ -150,6 +151,78 @@ export interface ChapterProgress {
   totalStars: number;
   rewardsClaimed: boolean;
   completedAt?: number;
+}
+
+export type BranchRouteType = 'flower' | 'tree' | 'herb';
+
+export interface MapNodeData {
+  id: string;
+  type: 'level' | 'story' | 'boss' | 'reward' | 'ending';
+  name: string;
+  description: string;
+  x: number;
+  y: number;
+  levelId?: number;
+  rewards?: Reward[];
+  storyContent?: string;
+  endingId?: string;
+  requiredStars?: number;
+  icon?: string;
+}
+
+export interface BranchRouteData {
+  id: BranchRouteType;
+  name: string;
+  description: string;
+  theme: string;
+  primaryColor: number;
+  secondaryColor: number;
+  accentColor: number;
+  icon: string;
+  backgroundPattern: string;
+  nodes: MapNodeData[];
+  connections: { from: string; to: string }[];
+  startingNodeId: string;
+  endingNodeId: string;
+  totalLevels: number;
+  requiredStars: number;
+  unlocked: boolean;
+}
+
+export interface BranchRouteProgress {
+  routeId: BranchRouteType;
+  unlocked: boolean;
+  completed: boolean;
+  currentNodeId: string;
+  completedNodeIds: string[];
+  unlockedNodeIds: string[];
+  totalStars: number;
+  rewardsClaimed: Record<string, boolean>;
+  endingViewed: boolean;
+  completedAt?: number;
+  firstUnlockedAt?: number;
+}
+
+export interface EndingData {
+  id: string;
+  routeId: BranchRouteType;
+  title: string;
+  subtitle: string;
+  description: string;
+  longDescription: string;
+  illustrationKey: string;
+  primaryColor: number;
+  secondaryColor: number;
+  rewards: Reward[];
+  badgeId?: number;
+}
+
+export interface ChapterMapSaveData {
+  routeProgress: Record<BranchRouteType, BranchRouteProgress>;
+  totalRoutesCompleted: number;
+  activeRouteId: BranchRouteType | null;
+  unlockedRoutes: BranchRouteType[];
+  endingsViewed: string[];
 }
 
 export interface Badge {
@@ -1124,4 +1197,5 @@ export interface SaveData {
   repairLog: RepairLogSaveData;
   notification: NotificationSaveData;
   quiz: QuizSaveData;
+  chapterMap: ChapterMapSaveData;
 }

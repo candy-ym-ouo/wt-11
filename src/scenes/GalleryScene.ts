@@ -1,15 +1,17 @@
 import Phaser from 'phaser';
 import { AllGalleryItems, EventGalleryItems } from '../data/Levels';
 import { SaveManager } from '../utils/SaveManager';
-import { GalleryItem } from '../types/GameTypes';
+import { GalleryItem, BranchRouteType } from '../types/GameTypes';
 import { Chapters, getChapterById } from '../data/Chapters';
 import { getActiveEvent } from '../data/Events';
 import { getGalleryModifiedDescription } from '../data/ConservationConfig';
+import { BranchRoutesList, getBranchRoute } from '../data/BranchRoutes';
 
-type FilterMode = 'all' | 'chapter' | 'event';
+type FilterMode = 'all' | 'chapter' | 'event' | 'route';
 
 export class GalleryScene extends Phaser.Scene {
   private selectedChapterId: number | null = null;
+  private selectedRouteId: BranchRouteType | null = null;
   private filterMode: FilterMode = 'all';
 
   constructor() {
@@ -77,12 +79,13 @@ export class GalleryScene extends Phaser.Scene {
 
   private addFilterTabs(): void {
     const tabY = 215;
-    const tabWidth = 150;
+    const tabWidth = 110;
     const tabHeight = 44;
-    const spacing = 8;
+    const spacing = 6;
     const chapterTabs = Chapters.length;
+    const routeTabs = BranchRoutesList.length;
     const extraTabs = 2;
-    const totalTabs = chapterTabs + extraTabs;
+    const totalTabs = chapterTabs + routeTabs + extraTabs;
     const totalWidth = tabWidth * totalTabs + spacing * (totalTabs - 1);
     const startX = (750 - totalWidth) / 2 + tabWidth / 2;
 
@@ -97,6 +100,7 @@ export class GalleryScene extends Phaser.Scene {
       () => {
         this.filterMode = 'all';
         this.selectedChapterId = null;
+        this.selectedRouteId = null;
         this.scene.restart();
       }
     );
@@ -111,12 +115,13 @@ export class GalleryScene extends Phaser.Scene {
       tabY,
       tabWidth,
       tabHeight,
-      hasEventItems ? `🌸 活动限定` : '🌸 活动',
+      hasEventItems ? `🌸 活动` : '🌸 活动',
       this.filterMode === 'event',
       eventColor,
       () => {
         this.filterMode = 'event';
         this.selectedChapterId = null;
+        this.selectedRouteId = null;
         this.scene.restart();
       },
       !hasEventItems
@@ -134,8 +139,35 @@ export class GalleryScene extends Phaser.Scene {
       }).setOrigin(0.5);
     }
 
+    let currentOffset = 2;
+    BranchRoutesList.forEach((route, index) => {
+      const x = startX + (index + currentOffset) * (tabWidth + spacing);
+      const isSelected = this.filterMode === 'route' && this.selectedRouteId === route.id;
+      const unlocked = SaveManager.isRouteUnlocked(route.id);
+
+      this.createFilterTab(
+        x,
+        tabY,
+        tabWidth,
+        tabHeight,
+        `${route.icon} ${route.name}`,
+        isSelected,
+        route.primaryColor,
+        () => {
+          if (unlocked) {
+            this.filterMode = 'route';
+            this.selectedRouteId = route.id;
+            this.selectedChapterId = null;
+            this.scene.restart();
+          }
+        },
+        !unlocked
+      );
+    });
+
+    currentOffset += routeTabs;
     Chapters.forEach((chapter, index) => {
-      const x = startX + (index + extraTabs) * (tabWidth + spacing);
+      const x = startX + (index + currentOffset) * (tabWidth + spacing);
       const isSelected = this.filterMode === 'chapter' && this.selectedChapterId === chapter.id;
       const unlocked = SaveManager.isChapterUnlocked(chapter.id);
 
@@ -151,6 +183,7 @@ export class GalleryScene extends Phaser.Scene {
           if (unlocked) {
             this.filterMode = 'chapter';
             this.selectedChapterId = chapter.id;
+            this.selectedRouteId = null;
             this.scene.restart();
           }
         },
@@ -217,6 +250,10 @@ export class GalleryScene extends Phaser.Scene {
     
     if (this.filterMode === 'event') {
       itemsToShow = EventGalleryItems;
+    } else if (this.filterMode === 'route' && this.selectedRouteId !== null) {
+      itemsToShow = AllGalleryItems.filter(item => 
+        item.routeId === this.selectedRouteId && !item.isEventExclusive
+      );
     } else if (this.filterMode === 'chapter' && this.selectedChapterId !== null) {
       itemsToShow = AllGalleryItems.filter(item => 
         item.chapterId === this.selectedChapterId && !item.isEventExclusive
@@ -258,6 +295,7 @@ export class GalleryScene extends Phaser.Scene {
     const progress = SaveManager.getProgress(item.id);
     const unlocked = SaveManager.isGalleryUnlocked(item.specimenId);
     const chapter = getChapterById(item.chapterId);
+    const route = item.routeId ? getBranchRoute(item.routeId) : null;
     const isEvent = item.isEventExclusive;
 
     const card = this.add.graphics();
@@ -265,21 +303,42 @@ export class GalleryScene extends Phaser.Scene {
     
     const borderColor = isEvent 
       ? (unlocked ? 0xe91e63 : 0x662244) 
-      : (unlocked ? 0x4caf50 : 0x555566);
+      : route
+        ? (unlocked ? route.primaryColor : 0x555566)
+        : (unlocked ? 0x4caf50 : 0x555566);
     
     card.lineStyle(2, borderColor, 1);
     card.strokeRoundedRect(x - width / 2, y - height / 2, width, height, 12);
     card.fillRoundedRect(x - width / 2, y - height / 2, width, height, 12);
 
     const badgeBg = this.add.graphics();
-    const badgeColor = isEvent ? 0xe91e63 : (chapter?.primaryColor ?? 0x607d8b);
-    const badgeText = isEvent ? `🌸 ${item.eventName || '活动限定'}` : (chapter?.theme ?? '主线');
+    let badgeColor = 0x607d8b;
+    let badgeText = '主线';
+    let badgeWidth = 75;
+    let badgeTextX = 47;
+    
+    if (isEvent) {
+      badgeColor = 0xe91e63;
+      badgeText = `🌸 ${item.eventName || '活动限定'}`;
+      badgeWidth = 110;
+      badgeTextX = 65;
+    } else if (route) {
+      badgeColor = route.primaryColor;
+      badgeText = `${route.icon} ${route.name}`;
+      badgeWidth = 95;
+      badgeTextX = 57;
+    } else if (chapter) {
+      badgeColor = chapter.primaryColor;
+      badgeText = chapter.theme;
+      badgeWidth = 75;
+      badgeTextX = 47;
+    }
     
     badgeBg.fillStyle(badgeColor, unlocked ? 0.85 : 0.5);
-    badgeBg.fillRoundedRect(x - width / 2 + 10, y - height / 2 + 10, isEvent ? 110 : 75, 26, 6);
+    badgeBg.fillRoundedRect(x - width / 2 + 10, y - height / 2 + 10, badgeWidth, 26, 6);
 
-    this.add.text(x - width / 2 + (isEvent ? 65 : 47), y - height / 2 + 23, badgeText, {
-      font: isEvent ? 'bold 11px Arial' : 'bold 11px Arial',
+    this.add.text(x - width / 2 + badgeTextX, y - height / 2 + 23, badgeText, {
+      font: 'bold 10px Arial',
       color: '#ffffff'
     }).setOrigin(0.5);
 
@@ -362,7 +421,13 @@ export class GalleryScene extends Phaser.Scene {
     container.add(overlay);
 
     const isEvent = item.isEventExclusive;
-    const headerColor = isEvent ? 0xe91e63 : 0xe94560;
+    const route = item.routeId ? getBranchRoute(item.routeId) : null;
+    let headerColor = 0xe94560;
+    if (isEvent) {
+      headerColor = 0xe91e63;
+    } else if (route) {
+      headerColor = route.primaryColor;
+    }
 
     const modal = this.add.graphics();
     modal.fillStyle(0x16213e, 1);
@@ -384,6 +449,15 @@ export class GalleryScene extends Phaser.Scene {
         color: '#ffffff'
       }).setOrigin(0.5);
       container.add(eventBadge);
+    } else if (route) {
+      const routeBadge = this.add.graphics();
+      routeBadge.fillStyle(route.primaryColor, 0.95);
+      routeBadge.fillRoundedRect(240, 300, 270, 36, 18);
+      this.add.text(375, 318, `${route.icon} ${route.name} 专属图鉴`, {
+        font: 'bold 16px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+      container.add(routeBadge);
     }
 
     const nameText = this.add.text(375, 600, item.name, {

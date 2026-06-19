@@ -13,6 +13,7 @@ import { PlantFamilies } from '../data/PlantFamilies';
 import { SeasonPassManager } from '../utils/SeasonPassManager';
 import { getChapterQuiz, canAttemptQuiz } from '../data/ChapterQuizzes';
 import { QuizManager } from '../utils/QuizManager';
+import { BranchRoutesList } from '../data/BranchRoutes';
 
 export class ChapterSelectScene extends Phaser.Scene {
   constructor() {
@@ -28,6 +29,7 @@ export class ChapterSelectScene extends Phaser.Scene {
     this.addExhibitionBanner();
     this.addAchievementBanner();
     this.addSeasonPassBanner();
+    this.addChapterMapBanner();
     this.addChapterCards();
     this.addBottomButtons();
 
@@ -803,8 +805,119 @@ export class ChapterSelectScene extends Phaser.Scene {
     });
   }
 
+  private addChapterMapBanner(): void {
+    const bannerY = 745;
+    const bannerH = 90;
+    const unlockedRoutes = BranchRoutesList.filter(r => SaveManager.isRouteUnlocked(r.id)).length;
+    const completedRoutes = SaveManager.getTotalRoutesCompleted();
+
+    const banner = this.add.graphics();
+
+    const gradientSteps = 15;
+    for (let i = 0; i < gradientSteps; i++) {
+      const t = i / gradientSteps;
+      const baseColor = 0xe91e63;
+      const baseColor2 = 0x9c27b0;
+      const r = Math.floor(((baseColor >> 16) & 0xff) * (1 - t) + ((baseColor2 >> 16) & 0xff) * t);
+      const g = Math.floor(((baseColor >> 8) & 0xff) * (1 - t) + ((baseColor2 >> 8) & 0xff) * t);
+      const b = Math.floor((baseColor & 0xff) * (1 - t) + (baseColor2 & 0xff) * t);
+      const color = (r << 16) | (g << 8) | b;
+      banner.fillStyle(color, 0.95);
+      banner.fillRect(45 + (660 * i) / gradientSteps, bannerY - bannerH / 2, 660 / gradientSteps + 1, bannerH);
+    }
+    banner.fillRoundedRect(45, bannerY - bannerH / 2, 660, bannerH, 16);
+
+    const borderColor = 0xffd700;
+    banner.lineStyle(3, borderColor, 0.8);
+    banner.strokeRoundedRect(45, bannerY - bannerH / 2, 660, bannerH, 16);
+
+    this.add.text(80, bannerY, '🗺️', {
+      font: '42px Arial'
+    }).setOrigin(0, 0.5);
+
+    this.add.text(140, bannerY - 18, '分支路线 · 章节地图', {
+      font: 'bold 22px Arial',
+      color: '#ffffff'
+    }).setOrigin(0, 0.5);
+
+    const statusText = `已解锁 ${unlockedRoutes}/3 路线 · 已完成 ${completedRoutes}/3`;
+    this.add.text(140, bannerY + 15, statusText, {
+      font: '14px Arial',
+      color: 'rgba(255,255,255,0.85)'
+    }).setOrigin(0, 0.5);
+
+    const routeIcons = ['🌸', '🌳', '🌿'];
+    routeIcons.forEach((icon, index) => {
+      const route = BranchRoutesList[index];
+      const unlocked = route ? SaveManager.isRouteUnlocked(route.id) : false;
+      const completed = route ? SaveManager.isRouteCompleted(route.id) : false;
+      
+      const iconX = 420 + index * 55;
+      this.add.text(iconX, bannerY, icon, {
+        font: unlocked ? '28px Arial' : '20px Arial'
+      }).setOrigin(0, 0.5).setAlpha(unlocked ? 1 : 0.3);
+
+      if (completed) {
+        const checkBadge = this.add.graphics();
+        checkBadge.fillStyle(0x4caf50, 1);
+        checkBadge.fillCircle(iconX + 18, bannerY - 12, 10);
+        this.add.text(iconX + 18, bannerY - 12, '✓', {
+          font: 'bold 12px Arial',
+          color: '#ffffff'
+        }).setOrigin(0.5);
+      }
+    });
+
+    const goBtn = this.add.graphics();
+    goBtn.fillStyle(0xffffff, 1);
+    goBtn.fillRoundedRect(610, bannerY - 25, 80, 50, 12);
+
+    this.add.text(650, bannerY, '进入 →', {
+      font: 'bold 16px Arial',
+      color: '#e91e63'
+    }).setOrigin(0.5);
+
+    const hasClaimable = BranchRoutesList.some(route => {
+      const nodes = SaveManager.getCompletedNodes(route.id);
+      return nodes.some(nodeId => SaveManager.canClaimNodeReward(route.id, nodeId));
+    });
+
+    if (hasClaimable) {
+      const badge = this.add.graphics();
+      badge.fillStyle(0xffeb3b, 1);
+      badge.fillCircle(690, bannerY - 30, 14);
+      this.add.text(690, bannerY - 30, '!', {
+        font: 'bold 14px Arial',
+        color: '#1a1a2e'
+      }).setOrigin(0.5);
+    }
+
+    banner.setInteractive(
+      new Phaser.Geom.Rectangle(45, bannerY - bannerH / 2, 660, bannerH),
+      Phaser.Geom.Rectangle.Contains
+    );
+    goBtn.setInteractive(
+      new Phaser.Geom.Rectangle(610, bannerY - 25, 80, 50),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    const goToMap = () => {
+      this.scene.start('ChapterMapScene');
+    };
+
+    banner.on('pointerup', goToMap);
+    goBtn.on('pointerup', goToMap);
+
+    banner.on('pointerover', () => {
+      banner.lineStyle(3, 0xffffff, 1);
+    });
+    banner.on('pointerout', () => {
+      banner.lineStyle(3, borderColor, 0.8);
+    });
+  }
+
   private addChapterCards(): void {
-    const startY = 770;
+    const startY = 865;
     const cardWidth = 660;
     const cardHeight = 280;
     const padding = 25;
