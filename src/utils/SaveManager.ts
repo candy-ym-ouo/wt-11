@@ -239,14 +239,33 @@ export class SaveManager {
       if (!oldData.tutorial.completedTutorials) {
         oldData.tutorial.completedTutorials = defaultData.tutorial.completedTutorials;
       }
+      if (!oldData.tutorial.skippedTutorials) {
+        oldData.tutorial.skippedTutorials = defaultData.tutorial.skippedTutorials;
+      }
       if (oldData.tutorial.currentTutorialId === undefined) {
         oldData.tutorial.currentTutorialId = defaultData.tutorial.currentTutorialId;
       }
       if (!oldData.tutorial.progress) {
         oldData.tutorial.progress = defaultData.tutorial.progress;
+      } else {
+        Object.keys(oldData.tutorial.progress).forEach(key => {
+          const p = oldData.tutorial.progress[key];
+          if (p.skipped === undefined) {
+            p.skipped = false;
+          }
+          if (p.rewardsClaimed === undefined) {
+            p.rewardsClaimed = false;
+          }
+          if (p.attempts === undefined) {
+            p.attempts = 0;
+          }
+        });
       }
       if (oldData.tutorial.teachingLevelCompleted === undefined) {
         oldData.tutorial.teachingLevelCompleted = defaultData.tutorial.teachingLevelCompleted;
+      }
+      if (oldData.tutorial.teachingLevelSkipped === undefined) {
+        oldData.tutorial.teachingLevelSkipped = defaultData.tutorial.teachingLevelSkipped;
       }
       if (oldData.tutorial.firstTimePlayer === undefined) {
         oldData.tutorial.firstTimePlayer = defaultData.tutorial.firstTimePlayer;

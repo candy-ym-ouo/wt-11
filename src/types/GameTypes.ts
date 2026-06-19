@@ -636,15 +636,19 @@ export interface TutorialProgress {
   currentStepIndex: number;
   completed: boolean;
   completedAt?: number;
+  skipped: boolean;
+  skippedAt?: number;
   rewardsClaimed: boolean;
   attempts: number;
 }
 
 export interface TutorialSaveData {
   completedTutorials: string[];
+  skippedTutorials: string[];
   currentTutorialId: string | null;
   progress: Record<string, TutorialProgress>;
   teachingLevelCompleted: boolean;
+  teachingLevelSkipped: boolean;
   firstTimePlayer: boolean;
   rewardsClaimed: Record<string, boolean>;
 }

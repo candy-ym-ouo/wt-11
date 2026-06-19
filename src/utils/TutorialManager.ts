@@ -29,9 +29,11 @@ export class TutorialManager {
   static createDefaultTutorialSave(): TutorialSaveData {
     return {
       completedTutorials: [],
+      skippedTutorials: [],
       currentTutorialId: null,
       progress: {},
       teachingLevelCompleted: false,
+      teachingLevelSkipped: false,
       firstTimePlayer: true,
       rewardsClaimed: {}
     };
@@ -47,15 +49,27 @@ export class TutorialManager {
   }
 
   static shouldShowTeachingLevel(): boolean {
-    return this.data.firstTimePlayer || !this.data.teachingLevelCompleted;
+    return this.data.firstTimePlayer || (!this.data.teachingLevelCompleted && !this.data.teachingLevelSkipped);
   }
 
   static isTutorialCompleted(tutorialId: string): boolean {
     return this.data.completedTutorials.includes(tutorialId);
   }
 
+  static isTutorialSkipped(tutorialId: string): boolean {
+    return this.data.skippedTutorials.includes(tutorialId);
+  }
+
   static isTeachingLevelCompleted(): boolean {
     return this.data.teachingLevelCompleted;
+  }
+
+  static isTeachingLevelSkipped(): boolean {
+    return this.data.teachingLevelSkipped;
+  }
+
+  static isTeachingLevelFinished(): boolean {
+    return this.data.teachingLevelCompleted || this.data.teachingLevelSkipped;
   }
 
   static getCurrentTutorial(): TutorialData | null {
@@ -93,6 +107,7 @@ export class TutorialManager {
         currentStepId: tutorial.steps[0].id,
         currentStepIndex: 0,
         completed: false,
+        skipped: false,
         rewardsClaimed: false,
         attempts: 0
       };
@@ -266,9 +281,17 @@ export class TutorialManager {
       this.data.completedTutorials.push(tutorial.id);
       this.data.progress[tutorial.id].completed = true;
       this.data.progress[tutorial.id].completedAt = Date.now();
+      this.data.progress[tutorial.id].skipped = false;
+      delete this.data.progress[tutorial.id].skippedAt;
+
+      const skipIdx = this.data.skippedTutorials.indexOf(tutorial.id);
+      if (skipIdx >= 0) {
+        this.data.skippedTutorials.splice(skipIdx, 1);
+      }
 
       if (tutorial.isTeachingLevel) {
         this.data.teachingLevelCompleted = true;
+        this.data.teachingLevelSkipped = false;
         this.data.firstTimePlayer = false;
       }
     }
@@ -343,15 +366,26 @@ export class TutorialManager {
 
   static skipTutorial(): void {
     if (this.currentTutorial) {
+      const tutorialId = this.currentTutorial.id;
+      const isTeachingLevel = this.currentTutorial.isTeachingLevel;
+
       this.data.firstTimePlayer = false;
-      this.data.teachingLevelCompleted = true;
-      if (!this.data.completedTutorials.includes(this.currentTutorial.id)) {
-        this.data.completedTutorials.push(this.currentTutorial.id);
-        this.data.progress[this.currentTutorial.id].completed = true;
-        this.data.progress[this.currentTutorial.id].completedAt = Date.now();
+
+      if (!this.data.skippedTutorials.includes(tutorialId)) {
+        this.data.skippedTutorials.push(tutorialId);
       }
+
+      if (this.data.progress[tutorialId]) {
+        this.data.progress[tutorialId].skipped = true;
+        this.data.progress[tutorialId].skippedAt = Date.now();
+      }
+
+      if (isTeachingLevel) {
+        this.data.teachingLevelSkipped = true;
+      }
+
       this.save();
-      this.emit('tutorial-skipped', { tutorialId: this.currentTutorial.id });
+      this.emit('tutorial-skipped', { tutorialId });
     }
     this.currentTutorial = null;
     this.currentStepIndex = 0;
@@ -365,10 +399,15 @@ export class TutorialManager {
     if (idx >= 0) {
       this.data.completedTutorials.splice(idx, 1);
     }
+    const skipIdx = this.data.skippedTutorials.indexOf(tutorialId);
+    if (skipIdx >= 0) {
+      this.data.skippedTutorials.splice(skipIdx, 1);
+    }
     delete this.data.rewardsClaimed[tutorialId];
 
     if (tutorialId === 'beginner-tutorial') {
       this.data.teachingLevelCompleted = false;
+      this.data.teachingLevelSkipped = false;
     }
 
     this.save();

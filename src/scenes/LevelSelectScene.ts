@@ -102,14 +102,46 @@ export class LevelSelectScene extends Phaser.Scene {
 
   private addTutorialCard(): void {
     const isCompleted = TutorialManager.isTeachingLevelCompleted();
+    const isSkipped = TutorialManager.isTeachingLevelSkipped();
     const cardWidth = 670;
     const cardHeight = 120;
     const x = 375;
     const y = 260;
 
     const card = this.add.graphics();
-    card.fillStyle(isCompleted ? 0x2e7d32 : 0x4caf50, 1);
-    card.lineStyle(3, isCompleted ? 0x1b5e20 : 0x81c784, 1);
+
+    let cardColor: number;
+    let borderColor: number;
+    let titleText: string;
+    let descText: string;
+    let btnLabel: string;
+    let showBtn: boolean;
+
+    if (isCompleted) {
+      cardColor = 0x2e7d32;
+      borderColor = 0x1b5e20;
+      titleText = '新手教学（已完成）';
+      descText = '恭喜你已经掌握了基本操作！';
+      btnLabel = '再来一次';
+      showBtn = true;
+    } else if (isSkipped) {
+      cardColor = 0xff9800;
+      borderColor = 0xf57c00;
+      titleText = '新手教学（已跳过）';
+      descText = '跳过不影响游戏，随时可以回来学习';
+      btnLabel = '重新学习';
+      showBtn = true;
+    } else {
+      cardColor = 0x4caf50;
+      borderColor = 0x81c784;
+      titleText = '新手教学';
+      descText = '点击开始学习游戏基本操作';
+      btnLabel = '开始';
+      showBtn = true;
+    }
+
+    card.fillStyle(cardColor, 1);
+    card.lineStyle(3, borderColor, 1);
     card.strokeRoundedRect(x - cardWidth / 2, y - cardHeight / 2, cardWidth, cardHeight, 15);
     card.fillRoundedRect(x - cardWidth / 2, y - cardHeight / 2, cardWidth, cardHeight, 15);
 
@@ -118,33 +150,54 @@ export class LevelSelectScene extends Phaser.Scene {
       color: '#ffffff'
     }).setOrigin(0, 0.5);
 
-    this.add.text(x - 220, y - 30, isCompleted ? '新手教学（已完成）' : '新手教学', {
+    this.add.text(x - 220, y - 30, titleText, {
       font: 'bold 22px Arial',
       color: '#ffffff'
     }).setOrigin(0, 0.5);
 
-    this.add.text(x - 220, y + 10, isCompleted ? '恭喜你已经掌握了基本操作！' : '点击开始学习游戏基本操作', {
+    this.add.text(x - 220, y + 10, descText, {
       font: '16px Arial',
       color: '#e8f5e9'
     }).setOrigin(0, 0.5);
 
     if (isCompleted) {
-      this.add.text(x + 250, y, '✓ 已完成', {
-        font: 'bold 18px Arial',
+      this.add.text(x + 200, y - 10, '✓ 完成', {
+        font: 'bold 16px Arial',
         color: '#ffffff'
       }).setOrigin(0.5);
-    } else {
+      this.add.text(x + 200, y + 20, '奖励已领取', {
+        font: '13px Arial',
+        color: '#c8e6c9'
+      }).setOrigin(0.5);
+    } else if (isSkipped) {
+      this.add.text(x + 200, y - 10, '⏭ 已跳过', {
+        font: 'bold 16px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+      this.add.text(x + 200, y + 20, '奖励待领取', {
+        font: '13px Arial',
+        color: '#fff3e0'
+      }).setOrigin(0.5);
+    }
+
+    if (showBtn) {
+      const btnX = x + 280;
+      const btnY = y;
+      const btnW = 110;
+      const btnH = 48;
+
       const startBtn = this.add.graphics();
       startBtn.fillStyle(0xffffff, 1);
-      startBtn.fillRoundedRect(x + 180, y - 25, 120, 50, 12);
+      startBtn.fillRoundedRect(btnX - btnW / 2, btnY - btnH / 2, btnW, btnH, 12);
       startBtn.setInteractive(
-        new Phaser.Geom.Rectangle(x + 180, y - 25, 120, 50),
+        new Phaser.Geom.Rectangle(btnX - btnW / 2, btnY - btnH / 2, btnW, btnH),
         Phaser.Geom.Rectangle.Contains
       );
 
-      this.add.text(x + 240, y, '开始', {
-        font: 'bold 20px Arial',
-        color: '#4caf50'
+      const btnTextColor = isCompleted ? '#2e7d32' : (isSkipped ? '#e65100' : '#4caf50');
+      this.add.text(btnX, btnY, btnLabel, {
+        font: 'bold 18px Arial',
+        color: btnTextColor
       }).setOrigin(0.5);
 
       startBtn.on('pointerup', () => {
@@ -157,11 +210,9 @@ export class LevelSelectScene extends Phaser.Scene {
       Phaser.Geom.Rectangle.Contains
     );
 
-    if (!isCompleted) {
-      card.on('pointerup', () => {
-        this.scene.start('TutorialScene', { levelId: 0 });
-      });
-    }
+    card.on('pointerup', () => {
+      this.scene.start('TutorialScene', { levelId: 0 });
+    });
   }
 
   private addLevelGrid(): void {
