@@ -1,5 +1,6 @@
-import { SaveData, LevelProgress } from '../types/GameTypes';
+import { SaveData, LevelProgress, ChapterProgress, Reward } from '../types/GameTypes';
 import { Levels } from '../data/Levels';
+import { Chapters, getChapterById, getChapterByLevelId, getNextChapter, getRewardsByChapterId } from '../data/Chapters';
 
 const STORAGE_KEY = 'plant_specimen_puzzle_save';
 
@@ -10,13 +11,41 @@ export class SaveManager {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
-        this.data = JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        this.data = this.migrateSaveData(parsed);
       } catch {
         this.data = this.createDefaultSave();
       }
     } else {
       this.data = this.createDefaultSave();
     }
+    this.save();
+  }
+
+  private static migrateSaveData(oldData: any): SaveData {
+    const defaultData = this.createDefaultSave();
+
+    if (!oldData.chapterProgress) {
+      oldData.chapterProgress = defaultData.chapterProgress;
+    }
+    if (!oldData.badges) {
+      oldData.badges = defaultData.badges;
+    }
+    if (!oldData.unlockedChapters) {
+      oldData.unlockedChapters = [1];
+    }
+    if (!oldData.galleryUnlocked) {
+      oldData.galleryUnlocked = [];
+    }
+
+    Object.keys(oldData.progress || {}).forEach(levelId => {
+      const progress = oldData.progress[levelId];
+      if (progress?.completed && !oldData.galleryUnlocked.includes(Number(levelId))) {
+        oldData.galleryUnlocked.push(Number(levelId));
+      }
+    });
+
+    return oldData as SaveData;
   }
 
   private static createDefaultSave(): SaveData {
@@ -32,10 +61,30 @@ export class SaveManager {
       };
     });
 
+    const chapterProgress: Record<number, ChapterProgress> = {};
+    Chapters.forEach((chapter, index) => {
+      chapterProgress[chapter.id] = {
+        chapterId: chapter.id,
+        unlocked: index === 0,
+        completed: false,
+        totalStars: 0,
+        rewardsClaimed: false
+      };
+    });
+
+    const badges: Record<number, boolean> = {};
+    [201, 202, 203].forEach(id => {
+      badges[id] = false;
+    });
+
     return {
       progress,
+      chapterProgress,
+      badges,
       totalScore: 0,
-      unlockedLevels: [1]
+      unlockedLevels: [1],
+      unlockedChapters: [1],
+      galleryUnlocked: []
     };
   }
 
@@ -51,9 +100,63 @@ export class SaveManager {
     return this.data.progress[levelId]?.unlocked ?? false;
   }
 
-  static completeLevel(levelId: number, score: number, time: number, stars: number): void {
+  static getChapterProgress(chapterId: number): ChapterProgress | undefined {
+    return this.data.chapterProgress[chapterId];
+  }
+
+  static getAllChapterProgress(): Record<number, ChapterProgress> {
+    return { ...this.data.chapterProgress };
+  }
+
+  static isChapterUnlocked(chapterId: number): boolean {
+    return this.data.chapterProgress[chapterId]?.unlocked ?? false;
+  }
+
+  static isChapterCompleted(chapterId: number): boolean {
+    return this.data.chapterProgress[chapterId]?.completed ?? false;
+  }
+
+  static getTotalStars(): number {
+    return Object.values(this.data.progress).reduce((sum, p) => sum + p.stars, 0);
+  }
+
+  static getChapterStars(chapterId: number): number {
+    const chapter = getChapterById(chapterId);
+    if (!chapter) return 0;
+    return chapter.levelIds.reduce((sum, levelId) => {
+      return sum + (this.data.progress[levelId]?.stars || 0);
+    }, 0);
+  }
+
+  static getTotalScore(): number {
+    return this.data.totalScore;
+  }
+
+  static getUnlockedLevels(): number[] {
+    return [...this.data.unlockedLevels];
+  }
+
+  static getUnlockedChapters(): number[] {
+    return [...this.data.unlockedChapters];
+  }
+
+  static isGalleryUnlocked(specimenId: number): boolean {
+    return this.data.galleryUnlocked.includes(specimenId);
+  }
+
+  static getUnlockedGalleryItems(): number[] {
+    return [...this.data.galleryUnlocked];
+  }
+
+  static hasBadge(badgeId: number): boolean {
+    return this.data.badges[badgeId] ?? false;
+  }
+
+  static completeLevel(levelId: number, score: number, time: number, stars: number): { chapterCompleted: boolean; completedChapterId: number | null } {
     const progress = this.data.progress[levelId];
-    if (!progress) return;
+    if (!progress) return { chapterCompleted: false, completedChapterId: null };
+
+    const isFirstCompletion = !progress.completed;
 
     progress.completed = true;
     if (score > progress.bestScore) {
@@ -66,10 +169,9 @@ export class SaveManager {
       progress.stars = stars;
     }
 
-    this.data.totalScore = Object.values(this.data.progress).reduce(
-      (sum, p) => sum + p.bestScore,
-      0
-    );
+    if (isFirstCompletion && !this.data.galleryUnlocked.includes(levelId)) {
+      this.data.galleryUnlocked.push(levelId);
+    }
 
     const nextLevelId = levelId + 1;
     if (this.data.progress[nextLevelId]) {
@@ -79,15 +181,99 @@ export class SaveManager {
       }
     }
 
+    this.recalculateTotalScore();
+    this.updateChapterProgress();
+
+    const result = this.checkChapterCompletion(levelId);
+
     this.save();
+    return result;
   }
 
-  static getTotalScore(): number {
-    return this.data.totalScore;
+  private static recalculateTotalScore(): void {
+    this.data.totalScore = Object.values(this.data.progress).reduce(
+      (sum, p) => sum + p.bestScore,
+      0
+    );
   }
 
-  static getUnlockedLevels(): number[] {
-    return [...this.data.unlockedLevels];
+  private static updateChapterProgress(): void {
+    Chapters.forEach(chapter => {
+      const chapterProgress = this.data.chapterProgress[chapter.id];
+      if (chapterProgress) {
+        chapterProgress.totalStars = this.getChapterStars(chapter.id);
+      }
+    });
+  }
+
+  private static checkChapterCompletion(levelId: number): { chapterCompleted: boolean; completedChapterId: number | null } {
+    const chapter = getChapterByLevelId(levelId);
+    if (!chapter) return { chapterCompleted: false, completedChapterId: null };
+
+    const chapterProgress = this.data.chapterProgress[chapter.id];
+    if (!chapterProgress || chapterProgress.completed) {
+      return { chapterCompleted: false, completedChapterId: null };
+    }
+
+    const allLevelsCompleted = chapter.levelIds.every(id => {
+      return this.data.progress[id]?.completed ?? false;
+    });
+
+    if (allLevelsCompleted) {
+      chapterProgress.completed = true;
+      chapterProgress.completedAt = Date.now();
+
+      const nextChapter = getNextChapter(chapter.id);
+      if (nextChapter) {
+        const totalStars = this.getTotalStars();
+        if (totalStars >= nextChapter.requiredStars) {
+          this.data.chapterProgress[nextChapter.id].unlocked = true;
+          if (!this.data.unlockedChapters.includes(nextChapter.id)) {
+            this.data.unlockedChapters.push(nextChapter.id);
+          }
+
+          const firstLevelId = nextChapter.levelIds[0];
+          if (this.data.progress[firstLevelId]) {
+            this.data.progress[firstLevelId].unlocked = true;
+            if (!this.data.unlockedLevels.includes(firstLevelId)) {
+              this.data.unlockedLevels.push(firstLevelId);
+            }
+          }
+        }
+      }
+
+      this.save();
+      return { chapterCompleted: true, completedChapterId: chapter.id };
+    }
+
+    return { chapterCompleted: false, completedChapterId: null };
+  }
+
+  static claimChapterRewards(chapterId: number): Reward[] {
+    const chapterProgress = this.data.chapterProgress[chapterId];
+    if (!chapterProgress || !chapterProgress.completed || chapterProgress.rewardsClaimed) {
+      return [];
+    }
+
+    const rewards = getRewardsByChapterId(chapterId);
+
+    rewards.forEach(reward => {
+      if (reward.type === 'score' && reward.value) {
+        this.data.totalScore += reward.value;
+      } else if (reward.type === 'badge') {
+        this.data.badges[reward.id] = true;
+      }
+    });
+
+    chapterProgress.rewardsClaimed = true;
+    this.save();
+
+    return rewards;
+  }
+
+  static canClaimRewards(chapterId: number): boolean {
+    const chapterProgress = this.data.chapterProgress[chapterId];
+    return chapterProgress?.completed === true && chapterProgress.rewardsClaimed === false;
   }
 
   private static save(): void {

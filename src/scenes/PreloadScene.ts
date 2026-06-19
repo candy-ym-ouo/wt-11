@@ -169,7 +169,7 @@ export class PreloadScene extends Phaser.Scene {
           progress = 100;
           interval.remove(false);
           this.time.delayedCall(300, () => {
-            this.scene.start('LevelSelectScene');
+            this.scene.start('ChapterSelectScene');
           });
         }
         this.updateProgressBar(progress / 100);

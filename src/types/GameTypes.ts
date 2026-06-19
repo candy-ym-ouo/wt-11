@@ -62,12 +62,6 @@ export interface LevelProgress {
   completed: boolean;
 }
 
-export interface SaveData {
-  progress: Record<number, LevelProgress>;
-  totalScore: number;
-  unlockedLevels: number[];
-}
-
 export interface GalleryItem {
   id: number;
   name: string;
@@ -75,4 +69,54 @@ export interface GalleryItem {
   description: string;
   specimenId: number;
   unlocked: boolean;
+  chapterId: number;
+}
+
+export interface Reward {
+  type: 'score' | 'specimen' | 'badge';
+  id: number;
+  name: string;
+  description: string;
+  value?: number;
+}
+
+export interface ChapterData {
+  id: number;
+  name: string;
+  description: string;
+  theme: string;
+  primaryColor: number;
+  secondaryColor: number;
+  levelIds: number[];
+  requiredStars: number;
+  rewards: Reward[];
+  backgroundImage?: string;
+  unlocked: boolean;
+}
+
+export interface ChapterProgress {
+  chapterId: number;
+  unlocked: boolean;
+  completed: boolean;
+  totalStars: number;
+  rewardsClaimed: boolean;
+  completedAt?: number;
+}
+
+export interface Badge {
+  id: number;
+  name: string;
+  description: string;
+  icon: string;
+  unlocked: boolean;
+}
+
+export interface SaveData {
+  progress: Record<number, LevelProgress>;
+  chapterProgress: Record<number, ChapterProgress>;
+  badges: Record<number, boolean>;
+  totalScore: number;
+  unlockedLevels: number[];
+  unlockedChapters: number[];
+  galleryUnlocked: number[];
 }

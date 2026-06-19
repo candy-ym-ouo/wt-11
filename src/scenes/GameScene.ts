@@ -513,7 +513,7 @@ export class GameScene extends Phaser.Scene {
       this.snappedCount
     );
 
-    SaveManager.completeLevel(
+    const chapterResult = SaveManager.completeLevel(
       this.levelRule.id,
       result.score,
       this.elapsedTime,
@@ -523,7 +523,7 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.zoomTo(1.05, 400, 'Cubic.easeInOut', true);
     this.time.delayedCall(450, () => {
       this.cameras.main.zoomTo(1.0, 400, 'Cubic.easeInOut', true);
-      this.showVictory(result.score, result.stars, this.elapsedTime);
+      this.showVictory(result.score, result.stars, this.elapsedTime, chapterResult);
     });
   }
 
@@ -584,7 +584,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private showVictory(score: number, stars: number, time: number): void {
+  private showVictory(score: number, stars: number, time: number, chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null }): void {
     const { overlay } = this.createModal('🎉 修复完成！', '#4caf50', 0x4caf50);
 
     this.drawStars(375, 480, stars, 50);
@@ -608,7 +608,27 @@ export class GameScene extends Phaser.Scene {
       color: '#eaeaea'
     }).setOrigin(0.5);
 
-    this.createResultButtons(overlay, true);
+    if (chapterResult?.chapterCompleted && chapterResult.completedChapterId) {
+      const chapterBadge = this.add.graphics();
+      chapterBadge.fillStyle(0xff9800, 1);
+      chapterBadge.fillRoundedRect(180, 730, 390, 45, 12);
+
+      this.add.text(375, 752, '🎊 章节完成！点击查看章节奖励', {
+        font: 'bold 18px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+
+      chapterBadge.setInteractive(
+        new Phaser.Geom.Rectangle(180, 730, 390, 45),
+        Phaser.Geom.Rectangle.Contains
+      );
+
+      chapterBadge.on('pointerup', () => {
+        this.scene.start('ChapterCompleteScene', { chapterId: chapterResult.completedChapterId });
+      });
+    }
+
+    this.createResultButtons(overlay, true, chapterResult);
   }
 
   private showGameOver(score: number, snapped: number, total: number): void {
@@ -643,11 +663,31 @@ export class GameScene extends Phaser.Scene {
 
   private createResultButtons(
     overlay: Phaser.GameObjects.Graphics,
-    isVictory: boolean
+    isVictory: boolean,
+    chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null }
   ): void {
     const btnW = 230;
     const btnH = 68;
-    const btnY = 780;
+    const btnY = chapterResult?.chapterCompleted ? 810 : 780;
+
+    if (chapterResult?.chapterCompleted && chapterResult.completedChapterId) {
+      const chapterBtn = this.add.graphics();
+      chapterBtn.fillStyle(0xff9800, 1);
+      chapterBtn.fillRoundedRect(135, btnY - 70, 480, 58, 14);
+      chapterBtn.setInteractive(
+        new Phaser.Geom.Rectangle(135, btnY - 70, 480, 58),
+        Phaser.Geom.Rectangle.Contains
+      );
+
+      this.add.text(135 + 240, btnY - 41, '🎁 查看章节奖励', {
+        font: 'bold 20px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+
+      chapterBtn.on('pointerup', () => {
+        this.scene.start('ChapterCompleteScene', { chapterId: chapterResult.completedChapterId });
+      });
+    }
 
     const retryColor = isVictory ? 0x2196f3 : 0x4caf50;
     const retryLabel = isVictory ? '再玩一次' : '重新挑战';

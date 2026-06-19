@@ -2,9 +2,11 @@ import Phaser from 'phaser';
 import { GameConfig } from './config/GameConfig';
 import { BootScene } from './scenes/BootScene';
 import { PreloadScene } from './scenes/PreloadScene';
+import { ChapterSelectScene } from './scenes/ChapterSelectScene';
 import { LevelSelectScene } from './scenes/LevelSelectScene';
 import { GameScene } from './scenes/GameScene';
 import { GalleryScene } from './scenes/GalleryScene';
+import { ChapterCompleteScene } from './scenes/ChapterCompleteScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -19,9 +21,11 @@ const config: Phaser.Types.Core.GameConfig = {
   scene: [
     BootScene,
     PreloadScene,
+    ChapterSelectScene,
     LevelSelectScene,
     GameScene,
-    GalleryScene
+    GalleryScene,
+    ChapterCompleteScene
   ],
   physics: {
     default: 'arcade',
