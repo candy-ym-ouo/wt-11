@@ -13,7 +13,8 @@ import {
   DailyQuest,
   SpecimenResearch,
   ResearchLabProgress,
-  TutorialSaveData
+  TutorialSaveData,
+  CustomPuzzleRecord
 } from '../types/GameTypes';
 import { TutorialManager } from './TutorialManager';
 import { ConservationManager } from './ConservationManager';
@@ -357,6 +358,10 @@ export class SaveManager {
       }
     }
 
+    if (!oldData.customPuzzle) {
+      oldData.customPuzzle = { records: {}, totalPlays: 0, totalScore: 0 };
+    }
+
     return oldData as SaveData;
   }
 
@@ -423,7 +428,8 @@ export class SaveManager {
       tutorial: tutorialData,
       conservation: conservationData,
       familyCollection: familyCollectionData,
-      seasonPass: seasonPassData
+      seasonPass: seasonPassData,
+      customPuzzle: { records: {}, totalPlays: 0, totalScore: 0 }
     };
   }
 
@@ -2281,5 +2287,29 @@ export class SaveManager {
   static reset(): void {
     this.data = this.createDefaultSave();
     this.save();
+  }
+
+  static saveCustomPuzzleRecord(key: string, record: CustomPuzzleRecord): void {
+    const existing = this.data.customPuzzle.records[key];
+    if (existing) {
+      existing.bestScore = Math.max(existing.bestScore, record.bestScore);
+      existing.bestTime = Math.min(existing.bestTime, record.bestTime);
+      existing.stars = Math.max(existing.stars, record.stars);
+      existing.playCount += record.playCount;
+      existing.lastPlayedAt = record.lastPlayedAt;
+    } else {
+      this.data.customPuzzle.records[key] = { ...record };
+    }
+    this.data.customPuzzle.totalPlays += record.playCount;
+    this.data.customPuzzle.totalScore += record.bestScore;
+    this.save();
+  }
+
+  static getCustomPuzzleRecord(key: string): CustomPuzzleRecord | undefined {
+    return this.data.customPuzzle.records[key];
+  }
+
+  static getAllCustomPuzzleRecords(): Record<string, CustomPuzzleRecord> {
+    return this.data.customPuzzle.records;
   }
 }

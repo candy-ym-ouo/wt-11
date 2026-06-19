@@ -858,6 +858,66 @@ export interface SeasonPassUpdateResult {
   newlyUnlockedRewards: { level: number; tier: SeasonPassRewardTier; reward: SeasonPassReward; tierConfig: SeasonPassTier }[];
 }
 
+export interface SliceScheme {
+  id: string;
+  name: string;
+  rows: number;
+  cols: number;
+  icon: string;
+  description: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+}
+
+export interface DifficultyScheme {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+  timeLimit: number;
+  snapPositionThreshold: number;
+  snapRotationThreshold: number;
+  scoreMultiplier: number;
+  color: number;
+}
+
+export interface SettlementRule {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  baseScore: number;
+  timeBonusPerSecond: number;
+  perfectSnapBonus: number;
+  starThresholds: number[];
+  fragmentDropBonus: number;
+  materialDropBonus: number;
+}
+
+export interface CustomPuzzleConfig {
+  specimenId: number;
+  sliceSchemeId: string;
+  difficultySchemeId: string;
+  settlementRuleId: string;
+}
+
+export interface CustomPuzzleRecord {
+  specimenId: number;
+  sliceSchemeId: string;
+  difficultySchemeId: string;
+  settlementRuleId: string;
+  bestScore: number;
+  bestTime: number;
+  stars: number;
+  playCount: number;
+  lastPlayedAt?: number;
+}
+
+export interface CustomPuzzleSaveData {
+  records: Record<string, CustomPuzzleRecord>;
+  totalPlays: number;
+  totalScore: number;
+}
+
 export interface SaveData {
   progress: Record<number, LevelProgress>;
   chapterProgress: Record<number, ChapterProgress>;
@@ -877,4 +937,5 @@ export interface SaveData {
   conservation: ConservationSaveData;
   familyCollection: FamilyCollectionSaveData;
   seasonPass: SeasonPassSaveData;
+  customPuzzle: CustomPuzzleSaveData;
 }

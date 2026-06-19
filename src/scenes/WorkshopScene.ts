@@ -9,7 +9,7 @@ import {
 import { DailyQuest } from '../types/GameTypes';
 import { DailyQuestManager } from '../utils/DailyQuestManager';
 
-type TabKey = 'fragments' | 'materials' | 'recipes';
+type TabKey = 'fragments' | 'materials' | 'recipes' | 'custom_puzzle';
 
 export class WorkshopScene extends Phaser.Scene {
   private currentTab: TabKey = 'fragments';
@@ -84,19 +84,21 @@ export class WorkshopScene extends Phaser.Scene {
 
   private addTabBar(): void {
     const tabY = 210;
-    const tabW = 200;
+    const tabW = 150;
     const tabH = 44;
-    const spacing = 15;
-    const tabs: TabKey[] = ['fragments', 'materials', 'recipes'];
+    const spacing = 10;
+    const tabs: TabKey[] = ['fragments', 'materials', 'recipes', 'custom_puzzle'];
     const labels: Record<TabKey, string> = {
       fragments: '🧩 碎片',
       materials: '🧪 材料',
-      recipes: '📜 配方'
+      recipes: '📜 配方',
+      custom_puzzle: '🧩 拼图'
     };
     const colors: Record<TabKey, number> = {
       fragments: 0x4caf50,
       materials: 0x2196f3,
-      recipes: 0xff9800
+      recipes: 0xff9800,
+      custom_puzzle: 0xe94560
     };
     const totalW = tabW * tabs.length + spacing * (tabs.length - 1);
     const startX = (750 - totalW) / 2;
@@ -146,6 +148,9 @@ export class WorkshopScene extends Phaser.Scene {
         break;
       case 'recipes':
         this.addRecipeContent();
+        break;
+      case 'custom_puzzle':
+        this.addCustomPuzzleContent();
         break;
     }
   }
@@ -584,6 +589,109 @@ export class WorkshopScene extends Phaser.Scene {
     overlay.on('pointerup', close);
   }
 
+  private addCustomPuzzleContent(): void {
+    const startY = 280;
+
+    const introBg = this.add.graphics();
+    introBg.fillStyle(0x0f3460, 0.9);
+    introBg.fillRoundedRect(45, startY, 660, 160, 12);
+    introBg.lineStyle(2, 0xe94560, 0.6);
+    introBg.strokeRoundedRect(45, startY, 660, 160, 12);
+
+    this.add.text(375, startY + 30, '🧩 自定义拼图工坊', {
+      font: 'bold 24px Arial',
+      color: '#e94560'
+    }).setOrigin(0.5);
+
+    this.add.text(375, startY + 70, '选择植物素材，自由搭配切片规格与难度方案', {
+      font: '16px Arial',
+      color: '#cccccc'
+    }).setOrigin(0.5);
+
+    this.add.text(375, startY + 95, '每种组合独立记录最佳成绩与掉落加成', {
+      font: '14px Arial',
+      color: '#aaaaaa'
+    }).setOrigin(0.5);
+
+    const enterBtn = this.add.graphics();
+    enterBtn.fillStyle(0xe94560, 1);
+    enterBtn.fillRoundedRect(225, startY + 120, 300, 48, 12);
+    enterBtn.setInteractive(
+      new Phaser.Geom.Rectangle(225, startY + 120, 300, 48),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    this.add.text(375, startY + 144, '🚀 进入拼图工坊', {
+      font: 'bold 20px Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+
+    enterBtn.on('pointerover', () => {
+      enterBtn.clear();
+      enterBtn.fillStyle(0xff6b8a, 1);
+      enterBtn.fillRoundedRect(225, startY + 120, 300, 48, 12);
+    });
+
+    enterBtn.on('pointerout', () => {
+      enterBtn.clear();
+      enterBtn.fillStyle(0xe94560, 1);
+      enterBtn.fillRoundedRect(225, startY + 120, 300, 48, 12);
+    });
+
+    enterBtn.on('pointerup', () => {
+      this.scene.start('CustomPuzzleScene');
+    });
+
+    const records = SaveManager.getAllCustomPuzzleRecords();
+    const recordKeys = Object.keys(records);
+
+    if (recordKeys.length > 0) {
+      const recordY = startY + 185;
+      this.add.text(375, recordY, '📊 最近记录', {
+        font: 'bold 18px Arial',
+        color: '#ff9800'
+      }).setOrigin(0.5);
+
+      const displayRecords = recordKeys.slice(0, 5);
+      displayRecords.forEach((key, index) => {
+        const record = records[key];
+        const specimen = getPlantSpecimen(record.specimenId);
+        const rowY = recordY + 35 + index * 55;
+
+        const card = this.add.graphics();
+        card.fillStyle(0x0f3460, 0.8);
+        card.fillRoundedRect(55, rowY, 640, 48, 8);
+
+        if (specimen) {
+          this.add.text(75, rowY + 24, `${specimen.name}`, {
+            font: 'bold 16px Arial',
+            color: '#ffffff'
+          }).setOrigin(0, 0.5);
+        }
+
+        this.add.text(260, rowY + 24, `🏆 ${record.bestScore.toLocaleString()}`, {
+          font: 'bold 14px Arial',
+          color: '#ffd700'
+        }).setOrigin(0, 0.5);
+
+        this.add.text(400, rowY + 24, `⏱ ${record.bestTime.toFixed(1)}s`, {
+          font: '14px Arial',
+          color: '#2196f3'
+        }).setOrigin(0, 0.5);
+
+        this.add.text(520, rowY + 24, `⭐ ${record.stars}星`, {
+          font: 'bold 14px Arial',
+          color: '#ff9800'
+        }).setOrigin(0, 0.5);
+
+        this.add.text(640, rowY + 24, `${record.playCount}次`, {
+          font: '13px Arial',
+          color: '#888888'
+        }).setOrigin(0, 0.5);
+      });
+    }
+  }
+
   private addBackButton(): void {
     const btnX = 375;
     const btnY = 1255;
@@ -633,6 +741,8 @@ export class WorkshopScene extends Phaser.Scene {
         const rows = WorkshopRecipes.length;
         return Math.max(0, rows * 300 - 950);
       }
+      case 'custom_puzzle':
+        return 0;
       default:
         return 0;
     }

@@ -21,6 +21,8 @@ import { TutorialScene } from './scenes/TutorialScene';
 import { ConservationScene } from './scenes/ConservationScene';
 import { PlantFamilyScene } from './scenes/PlantFamilyScene';
 import { SeasonPassScene } from './scenes/SeasonPassScene';
+import { CustomPuzzleScene } from './scenes/CustomPuzzleScene';
+import { CustomPuzzleGameScene } from './scenes/CustomPuzzleGameScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -53,7 +55,9 @@ const config: Phaser.Types.Core.GameConfig = {
     TutorialScene,
     ConservationScene,
     PlantFamilyScene,
-    SeasonPassScene
+    SeasonPassScene,
+    CustomPuzzleScene,
+    CustomPuzzleGameScene
   ],
   physics: {
     default: 'arcade',
