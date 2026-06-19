@@ -111,6 +111,32 @@ export interface Badge {
   unlocked: boolean;
 }
 
+export interface Fragment {
+  id: number;
+  specimenId: number;
+  name: string;
+  rarity: 'common' | 'rare' | 'epic';
+}
+
+export interface Material {
+  id: number;
+  name: string;
+  icon: string;
+  description: string;
+}
+
+export interface WorkshopRecipe {
+  specimenId: number;
+  requiredFragments: { fragmentId: number; count: number }[];
+  requiredMaterials: { materialId: number; count: number }[];
+}
+
+export interface WorkshopProgress {
+  fragments: Record<number, number>;
+  materials: Record<number, number>;
+  restoredSpecimens: number[];
+}
+
 export interface SaveData {
   progress: Record<number, LevelProgress>;
   chapterProgress: Record<number, ChapterProgress>;
@@ -119,4 +145,5 @@ export interface SaveData {
   unlockedLevels: number[];
   unlockedChapters: number[];
   galleryUnlocked: number[];
+  workshop: WorkshopProgress;
 }

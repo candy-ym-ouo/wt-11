@@ -336,12 +336,22 @@ export class ChapterSelectScene extends Phaser.Scene {
 
   private addBottomButtons(): void {
     const btnY = 1230;
-    const btnW = 280;
-    const btnH = 65;
-    const spacing = 30;
+    const btnW = 200;
+    const btnH = 60;
+    const spacing = 20;
+
+    const workshopBtn = this.createBottomButton(
+      375 - btnW - spacing,
+      btnY,
+      btnW,
+      btnH,
+      '🔧 工坊',
+      0xff9800,
+      () => this.scene.start('WorkshopScene')
+    );
 
     const galleryBtn = this.createBottomButton(
-      375 - btnW / 2 - spacing / 2,
+      375,
       btnY,
       btnW,
       btnH,
@@ -351,11 +361,11 @@ export class ChapterSelectScene extends Phaser.Scene {
     );
 
     const levelsBtn = this.createBottomButton(
-      375 + btnW / 2 + spacing / 2,
+      375 + btnW + spacing,
       btnY,
       btnW,
       btnH,
-      '🎮 全部关卡',
+      '🎮 关卡',
       0x2196f3,
       () => this.scene.start('LevelSelectScene')
     );

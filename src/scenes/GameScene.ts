@@ -5,6 +5,7 @@ import { getPlantSpecimen } from '../data/PlantSpecimens';
 import { SaveManager } from '../utils/SaveManager';
 import { calculateScore, formatTime, getDifficultyColor, getDifficultyText } from '../utils/GameUtils';
 import { LevelRule, PlantSpecimen, PuzzlePieceData } from '../types/GameTypes';
+import { getDropRule, getFragmentsBySpecimenId, Fragments, Materials } from '../data/WorkshopConfig';
 
 export class GameScene extends Phaser.Scene {
   private levelRule!: LevelRule;
@@ -520,10 +521,13 @@ export class GameScene extends Phaser.Scene {
       result.stars
     );
 
+    const drops = this.calculateDrops(result.stars);
+    SaveManager.addWorkshopDrops(drops);
+
     this.cameras.main.zoomTo(1.05, 400, 'Cubic.easeInOut', true);
     this.time.delayedCall(450, () => {
       this.cameras.main.zoomTo(1.0, 400, 'Cubic.easeInOut', true);
-      this.showVictory(result.score, result.stars, this.elapsedTime, chapterResult);
+      this.showVictory(result.score, result.stars, this.elapsedTime, chapterResult, drops);
     });
   }
 
@@ -539,6 +543,45 @@ export class GameScene extends Phaser.Scene {
     );
 
     this.showGameOver(result.score, this.snappedCount, this.pieces.length);
+  }
+
+  private calculateDrops(stars: number): { fragments: { id: number; count: number }[]; materials: { id: number; count: number }[] } {
+    const rule = getDropRule(this.levelRule.difficulty, stars);
+    if (!rule) return { fragments: [], materials: [] };
+
+    const specimenFragments = getFragmentsBySpecimenId(this.specimen.id);
+    const fragmentDrops: { id: number; count: number }[] = [];
+    const materialDrops: { id: number; count: number }[] = [];
+
+    rule.fragmentDrops.forEach(drop => {
+      const matching = specimenFragments.filter(f => f.rarity === drop.rarity);
+      if (matching.length > 0) {
+        const frag = matching[Phaser.Math.Between(0, matching.length - 1)];
+        const count = Phaser.Math.Between(drop.minCount, drop.maxCount);
+        if (count > 0) {
+          const existing = fragmentDrops.find(d => d.id === frag.id);
+          if (existing) {
+            existing.count += count;
+          } else {
+            fragmentDrops.push({ id: frag.id, count });
+          }
+        }
+      }
+    });
+
+    rule.materialDrops.forEach(drop => {
+      const count = Phaser.Math.Between(drop.minCount, drop.maxCount);
+      if (count > 0) {
+        const existing = materialDrops.find(d => d.id === drop.materialId);
+        if (existing) {
+          existing.count += count;
+        } else {
+          materialDrops.push({ id: drop.materialId, count });
+        }
+      }
+    });
+
+    return { fragments: fragmentDrops, materials: materialDrops };
   }
 
   private createModal(
@@ -584,31 +627,69 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private showVictory(score: number, stars: number, time: number, chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null }): void {
+  private showVictory(score: number, stars: number, time: number, chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null }, drops?: { fragments: { id: number; count: number }[]; materials: { id: number; count: number }[] }): void {
     const { overlay } = this.createModal('🎉 修复完成！', '#4caf50', 0x4caf50);
 
     this.drawStars(375, 480, stars, 50);
 
     const scoreBg = this.add.graphics();
     scoreBg.fillStyle(0x0f3460, 0.6);
-    scoreBg.fillRoundedRect(130, 560, 490, 160, 16);
+    scoreBg.fillRoundedRect(130, 560, 490, 100, 16);
 
-    this.add.text(375, 600, `最终得分`, {
+    this.add.text(375, 590, `最终得分`, {
       font: '20px Arial',
       color: '#aaaaaa'
     }).setOrigin(0.5);
 
-    this.add.text(375, 645, score.toLocaleString(), {
-      font: 'bold 52px Arial',
+    this.add.text(375, 630, score.toLocaleString(), {
+      font: 'bold 40px Arial',
       color: '#ffd700'
     }).setOrigin(0.5);
 
-    this.add.text(375, 695, `用时 ${formatTime(time)}  ·  修复 ${this.pieces.length}/${this.pieces.length} 片`, {
-      font: '18px Arial',
+    this.add.text(375, 665, `用时 ${formatTime(time)}  ·  修复 ${this.pieces.length}/${this.pieces.length} 片`, {
+      font: '16px Arial',
       color: '#eaeaea'
     }).setOrigin(0.5);
 
-    let bannerY = 730;
+    let dropBannerY = 690;
+    if (drops && (drops.fragments.length > 0 || drops.materials.length > 0)) {
+      const dropBg = this.add.graphics();
+      dropBg.fillStyle(0x1a2a4a, 0.9);
+      dropBg.fillRoundedRect(130, dropBannerY, 490, 28 + (drops.fragments.length + drops.materials.length) * 22, 12);
+      dropBg.lineStyle(2, 0xff9800, 0.5);
+      dropBg.strokeRoundedRect(130, dropBannerY, 490, 28 + (drops.fragments.length + drops.materials.length) * 22, 12);
+
+      this.add.text(375, dropBannerY + 14, '🧩 获得碎片与材料', {
+        font: 'bold 14px Arial',
+        color: '#ff9800'
+      }).setOrigin(0.5);
+
+      let itemY = dropBannerY + 34;
+      drops.fragments.forEach(drop => {
+        const frag = Fragments.find(f => f.id === drop.id);
+        if (frag) {
+          this.add.text(165, itemY, `🧩 ${frag.name} ×${drop.count}`, {
+            font: '13px Arial',
+            color: '#4caf50'
+          }).setOrigin(0, 0.5);
+          itemY += 22;
+        }
+      });
+      drops.materials.forEach(drop => {
+        const mat = Materials.find(m => m.id === drop.id);
+        if (mat) {
+          this.add.text(165, itemY, `${mat.icon} ${mat.name} ×${drop.count}`, {
+            font: '13px Arial',
+            color: '#2196f3'
+          }).setOrigin(0, 0.5);
+          itemY += 22;
+        }
+      });
+
+      dropBannerY = dropBannerY + 28 + (drops.fragments.length + drops.materials.length) * 22 + 10;
+    }
+
+    let bannerY = dropBannerY;
     if (chapterResult?.chapterCompleted && chapterResult.completedChapterId) {
       const chapterBadge = this.add.graphics();
       chapterBadge.fillStyle(0xff9800, 1);

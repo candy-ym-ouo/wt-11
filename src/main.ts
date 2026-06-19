@@ -7,6 +7,7 @@ import { LevelSelectScene } from './scenes/LevelSelectScene';
 import { GameScene } from './scenes/GameScene';
 import { GalleryScene } from './scenes/GalleryScene';
 import { ChapterCompleteScene } from './scenes/ChapterCompleteScene';
+import { WorkshopScene } from './scenes/WorkshopScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -25,7 +26,8 @@ const config: Phaser.Types.Core.GameConfig = {
     LevelSelectScene,
     GameScene,
     GalleryScene,
-    ChapterCompleteScene
+    ChapterCompleteScene,
+    WorkshopScene
   ],
   physics: {
     default: 'arcade',

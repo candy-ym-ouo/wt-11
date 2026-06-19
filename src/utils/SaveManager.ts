@@ -1,6 +1,7 @@
-import { SaveData, LevelProgress, ChapterProgress, Reward } from '../types/GameTypes';
+import { SaveData, LevelProgress, ChapterProgress, Reward, WorkshopProgress } from '../types/GameTypes';
 import { Levels } from '../data/Levels';
 import { Chapters, getChapterById, getChapterByLevelId, getNextChapter, getRewardsByChapterId } from '../data/Chapters';
+import { WorkshopRecipes, getRecipeBySpecimenId } from '../data/WorkshopConfig';
 
 const STORAGE_KEY = 'plant_specimen_puzzle_save';
 
@@ -40,6 +41,9 @@ export class SaveManager {
     }
     if (!oldData.galleryUnlocked) {
       oldData.galleryUnlocked = [];
+    }
+    if (!oldData.workshop) {
+      oldData.workshop = defaultData.workshop;
     }
 
     Object.keys(oldData.progress || {}).forEach(levelId => {
@@ -88,7 +92,12 @@ export class SaveManager {
       totalScore: 0,
       unlockedLevels: [1],
       unlockedChapters: [1],
-      galleryUnlocked: []
+      galleryUnlocked: [],
+      workshop: {
+        fragments: {},
+        materials: {},
+        restoredSpecimens: []
+      }
     };
   }
 
@@ -298,6 +307,109 @@ export class SaveManager {
   static canClaimRewards(chapterId: number): boolean {
     const chapterProgress = this.data.chapterProgress[chapterId];
     return chapterProgress?.completed === true && chapterProgress.rewardsClaimed === false;
+  }
+
+  static getFragmentCount(fragmentId: number): number {
+    return this.data.workshop.fragments[fragmentId] || 0;
+  }
+
+  static getAllFragments(): Record<number, number> {
+    return { ...this.data.workshop.fragments };
+  }
+
+  static addFragments(fragmentId: number, count: number): void {
+    if (!this.data.workshop.fragments[fragmentId]) {
+      this.data.workshop.fragments[fragmentId] = 0;
+    }
+    this.data.workshop.fragments[fragmentId] += count;
+    this.save();
+  }
+
+  static removeFragments(fragmentId: number, count: number): boolean {
+    const current = this.data.workshop.fragments[fragmentId] || 0;
+    if (current < count) return false;
+    this.data.workshop.fragments[fragmentId] = current - count;
+    if (this.data.workshop.fragments[fragmentId] <= 0) {
+      delete this.data.workshop.fragments[fragmentId];
+    }
+    this.save();
+    return true;
+  }
+
+  static getMaterialCount(materialId: number): number {
+    return this.data.workshop.materials[materialId] || 0;
+  }
+
+  static getAllMaterials(): Record<number, number> {
+    return { ...this.data.workshop.materials };
+  }
+
+  static addMaterials(materialId: number, count: number): void {
+    if (!this.data.workshop.materials[materialId]) {
+      this.data.workshop.materials[materialId] = 0;
+    }
+    this.data.workshop.materials[materialId] += count;
+    this.save();
+  }
+
+  static removeMaterials(materialId: number, count: number): boolean {
+    const current = this.data.workshop.materials[materialId] || 0;
+    if (current < count) return false;
+    this.data.workshop.materials[materialId] = current - count;
+    if (this.data.workshop.materials[materialId] <= 0) {
+      delete this.data.workshop.materials[materialId];
+    }
+    this.save();
+    return true;
+  }
+
+  static isSpecimenRestored(specimenId: number): boolean {
+    return this.data.workshop.restoredSpecimens.includes(specimenId);
+  }
+
+  static getRestoredSpecimens(): number[] {
+    return [...this.data.workshop.restoredSpecimens];
+  }
+
+  static canRestoreSpecimen(specimenId: number): boolean {
+    if (this.isSpecimenRestored(specimenId)) return false;
+    const recipe = getRecipeBySpecimenId(specimenId);
+    if (!recipe) return false;
+
+    for (const req of recipe.requiredFragments) {
+      if (this.getFragmentCount(req.fragmentId) < req.count) return false;
+    }
+    for (const req of recipe.requiredMaterials) {
+      if (this.getMaterialCount(req.materialId) < req.count) return false;
+    }
+    return true;
+  }
+
+  static restoreSpecimen(specimenId: number): boolean {
+    if (!this.canRestoreSpecimen(specimenId)) return false;
+
+    const recipe = getRecipeBySpecimenId(specimenId)!;
+
+    for (const req of recipe.requiredFragments) {
+      this.removeFragments(req.fragmentId, req.count);
+    }
+    for (const req of recipe.requiredMaterials) {
+      this.removeMaterials(req.materialId, req.count);
+    }
+
+    this.data.workshop.restoredSpecimens.push(specimenId);
+
+    if (!this.data.galleryUnlocked.includes(specimenId)) {
+      this.data.galleryUnlocked.push(specimenId);
+    }
+
+    this.save();
+    return true;
+  }
+
+  static addWorkshopDrops(drops: { fragments: { id: number; count: number }[]; materials: { id: number; count: number }[] }): void {
+    drops.fragments.forEach(f => this.addFragments(f.id, f.count));
+    drops.materials.forEach(m => this.addMaterials(m.id, m.count));
   }
 
   private static save(): void {
