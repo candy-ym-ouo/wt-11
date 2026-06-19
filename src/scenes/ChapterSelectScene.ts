@@ -1,12 +1,14 @@
 import Phaser from 'phaser';
 import { Chapters, getChapterById, Badges, getChapterTotalStars } from '../data/Chapters';
 import { SaveManager } from '../utils/SaveManager';
-import { ChapterData } from '../types/GameTypes';
+import { ChapterData, ConservationHealthLevel } from '../types/GameTypes';
 import { EventManager } from '../utils/EventManager';
 import { getActiveEvent } from '../data/Events';
 import { getTotalTowerFloors, getTowerStarsRequired } from '../data/TowerConfig';
 import { ExhibitionManager } from '../utils/ExhibitionManager';
 import { getAllExhibitionThemes } from '../data/ExhibitionConfig';
+import { ConservationManager } from '../utils/ConservationManager';
+import { getPlantSpecimen } from '../data/PlantSpecimens';
 
 export class ChapterSelectScene extends Phaser.Scene {
   constructor() {
@@ -23,6 +25,162 @@ export class ChapterSelectScene extends Phaser.Scene {
     this.addAchievementBanner();
     this.addChapterCards();
     this.addBottomButtons();
+
+    ConservationManager.processDecay();
+    this.showEmergencyRemindersIfNeeded();
+  }
+
+  private showEmergencyRemindersIfNeeded(): void {
+    const reminders = ConservationManager.getReminders();
+    const urgentOrHigh = reminders.filter(r => r.priority === 'urgent' || r.priority === 'high');
+
+    if (urgentOrHigh.length === 0) return;
+
+    const displayCount = Math.min(urgentOrHigh.length, 3);
+    const container = this.add.container(0, 0);
+
+    const overlay = this.add.graphics();
+    overlay.fillStyle(0x000000, 0.7);
+    overlay.fillRect(0, 0, 750, 1334);
+    overlay.setInteractive();
+    container.add(overlay);
+
+    const modalH = 450 + displayCount * 70;
+    const modal = this.add.graphics();
+    modal.fillStyle(0x16213e, 1);
+    modal.fillRoundedRect(60, 350, 630, modalH, 24);
+    modal.lineStyle(3, 0xff1744, 0.9);
+    modal.strokeRoundedRect(60, 350, 630, modalH, 24);
+    container.add(modal);
+
+    this.add.text(375, 400, '🚨 养护警报', {
+      font: 'bold 32px Arial',
+      color: '#ff1744'
+    }).setOrigin(0.5);
+
+    this.add.text(375, 445, `${urgentOrHigh.length} 个标本状态告急，奖励已衰减！`, {
+      font: '17px Arial',
+      color: '#ffcc80'
+    }).setOrigin(0.5);
+
+    const m = ConservationManager.getGlobalRewardMultiplier();
+    const multiplierBg = this.add.graphics();
+    multiplierBg.fillStyle(0x550000, 0.7);
+    multiplierBg.fillRoundedRect(90, 470, 570, 40, 8);
+    container.add(multiplierBg);
+
+    this.add.text(110, 490, `当前全局奖励倍率: 积分×${m.scoreMultiplier.toFixed(1)} 碎片×${m.fragmentMultiplier.toFixed(1)} 研究×${m.researchMultiplier.toFixed(1)}`, {
+      font: 'bold 14px Arial',
+      color: m.scoreMultiplier < 0.5 ? '#ff1744' : '#ff9800'
+    }).setOrigin(0, 0.5);
+
+    let itemY = 540;
+    const labelMap: Record<ConservationHealthLevel, { label: string; color: string; bgColor: number }> = {
+      thriving: { label: '🌿 生机盎然', color: '#4caf50', bgColor: 0x1b5e20 },
+      healthy: { label: '✅ 状态良好', color: '#2196f3', bgColor: 0x0f3460 },
+      fair: { label: '⚡ 略有衰退', color: '#ffc107', bgColor: 0x4a3800 },
+      declining: { label: '⚠️ 明显退化', color: '#ff9800', bgColor: 0x663300 },
+      critical: { label: '🚨 濒危警告', color: '#ff1744', bgColor: 0x550000 }
+    };
+
+    for (let i = 0; i < displayCount; i++) {
+      const r = urgentOrHigh[i];
+      const specimen = getPlantSpecimen(r.specimenId);
+      const health = ConservationManager.getHealth(r.specimenId);
+      const info = labelMap[r.healthLevel];
+
+      const itemBg = this.add.graphics();
+      itemBg.fillStyle(info.bgColor, 0.85);
+      itemBg.fillRoundedRect(90, itemY, 570, 60, 10);
+      itemBg.lineStyle(1, info.bgColor, 1);
+      itemBg.strokeRoundedRect(90, itemY, 570, 60, 10);
+      container.add(itemBg);
+
+      const previewKey = `specimen-${r.specimenId}-preview`;
+      if (this.textures.exists(previewKey)) {
+        const img = this.add.image(120, itemY + 30, previewKey);
+        img.setDisplaySize(40, 40);
+        if (r.healthLevel === 'critical') img.setAlpha(0.5);
+        container.add(img);
+      }
+
+      this.add.text(160, itemY + 20, specimen?.name || `标本 #${r.specimenId}`, {
+        font: 'bold 16px Arial',
+        color: '#ffffff'
+      }).setOrigin(0, 0.5);
+
+      this.add.text(160, itemY + 42, info.label, {
+        font: '13px Arial',
+        color: info.color
+      }).setOrigin(0, 0.5);
+
+      const barW = 110;
+      const barH = 10;
+      const barX = 420;
+      const barY = itemY + 25;
+      const barBg = this.add.graphics();
+      barBg.fillStyle(0x333344, 1);
+      barBg.fillRoundedRect(barX, barY, barW, barH, barH / 2);
+      container.add(barBg);
+      if (health > 0) {
+        const healthColors: Record<ConservationHealthLevel, number> = {
+          thriving: 0x4caf50, healthy: 0x2196f3, fair: 0xffc107, declining: 0xff9800, critical: 0xff1744
+        };
+        const barFill = this.add.graphics();
+        barFill.fillStyle(healthColors[r.healthLevel], 1);
+        barFill.fillRoundedRect(barX, barY, Math.max(4, (barW * health) / 100), barH, barH / 2);
+        container.add(barFill);
+      }
+      this.add.text(545, itemY + 30, `${Math.round(health)}%`, {
+        font: 'bold 14px Arial',
+        color: info.color
+      }).setOrigin(0, 0.5);
+
+      itemBg.setInteractive(new Phaser.Geom.Rectangle(90, itemY, 570, 60), Phaser.Geom.Rectangle.Contains);
+      itemBg.on('pointerup', () => {
+        container.destroy();
+        this.scene.start('ConservationScene');
+      });
+
+      itemY += 70;
+    }
+
+    const btnY = 350 + modalH - 80;
+
+    const ignoreBtn = this.add.graphics();
+    ignoreBtn.fillStyle(0x333344, 1);
+    ignoreBtn.fillRoundedRect(100, btnY, 240, 55, 12);
+    ignoreBtn.setInteractive(new Phaser.Geom.Rectangle(100, btnY, 240, 55), Phaser.Geom.Rectangle.Contains);
+    container.add(ignoreBtn);
+
+    this.add.text(220, btnY + 27, '稍后处理', {
+      font: 'bold 17px Arial',
+      color: '#cccccc'
+    }).setOrigin(0.5);
+
+    const careBtn = this.add.graphics();
+    careBtn.fillStyle(0xff1744, 1);
+    careBtn.fillRoundedRect(410, btnY, 240, 55, 12);
+    careBtn.setInteractive(new Phaser.Geom.Rectangle(410, btnY, 240, 55), Phaser.Geom.Rectangle.Contains);
+    container.add(careBtn);
+
+    this.add.text(530, btnY + 27, '🌿 前往养护', {
+      font: 'bold 17px Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+
+    const close = () => {
+      urgentOrHigh.forEach(r => ConservationManager.dismissReminder(r.specimenId));
+      container.destroy();
+    };
+
+    ignoreBtn.on('pointerup', close);
+    overlay.on('pointerup', close);
+
+    careBtn.on('pointerup', () => {
+      container.destroy();
+      this.scene.start('ConservationScene');
+    });
   }
 
   private addBackground(): void {

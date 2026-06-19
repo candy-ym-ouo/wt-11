@@ -574,9 +574,9 @@ export class SaveManager {
     return this.data.badges[badgeId] ?? false;
   }
 
-  static completeLevel(levelId: number, score: number, time: number, stars: number): { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[]; researchRewards: { pointsGained: number; expGained: number }; achievementResult: AchievementUnlockResult } {
+  static completeLevel(levelId: number, score: number, time: number, stars: number): { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[]; researchRewards: { pointsGained: number; expGained: number }; achievementResult: AchievementUnlockResult; conservationInfo: { specimenId: number | null; healthLevel: ConservationHealthLevel | null; scoreMultiplier: number; researchMultiplier: number; finalScore: number; finalPoints: number } } {
     const progress = this.data.progress[levelId];
-    if (!progress) return { chapterCompleted: false, completedChapterId: null, newlyUnlockedChapterId: null, updatedQuests: [], researchRewards: { pointsGained: 0, expGained: 0 }, achievementResult: { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 } };
+    if (!progress) return { chapterCompleted: false, completedChapterId: null, newlyUnlockedChapterId: null, updatedQuests: [], researchRewards: { pointsGained: 0, expGained: 0 }, achievementResult: { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 }, conservationInfo: { specimenId: null, healthLevel: null, scoreMultiplier: 1, researchMultiplier: 1, finalScore: 0, finalPoints: 0 } };
 
     const isFirstCompletion = !progress.completed;
     const starsImproved = stars > progress.stars;
@@ -633,9 +633,32 @@ export class SaveManager {
       baseExp += 15;
     }
 
+    let finalScore = score;
+    let scoreMultiplier = 1;
+    let researchMultiplier = 1;
+    let healthLevel: ConservationHealthLevel | null = null;
+    let finalResearchPoints = basePoints;
+    let finalResearchExp = baseExp;
+
+    if (specimenId && ConservationManager.getRegisteredSpecimenIds().includes(specimenId)) {
+      healthLevel = ConservationManager.getHealthLevel(specimenId);
+      const multiplier = ConservationManager.getRewardMultiplierForSpecimen(specimenId);
+      scoreMultiplier = multiplier.scoreMultiplier;
+      researchMultiplier = multiplier.researchMultiplier;
+
+      finalScore = Math.max(1, Math.floor(score * scoreMultiplier));
+      finalResearchPoints = Math.max(1, Math.floor(basePoints * multiplier.researchMultiplier));
+      finalResearchExp = Math.max(1, Math.floor(baseExp * multiplier.researchMultiplier));
+
+      if (finalScore !== score) {
+        progress.bestScore = Math.max(progress.bestScore - score + finalScore, finalScore);
+        this.recalculateTotalScore();
+      }
+    }
+
     if (specimenId && this.isGalleryUnlocked(specimenId)) {
       const specimenResearch = this.getOrCreateSpecimenResearch(specimenId);
-      specimenResearch.expPoints += Math.floor(baseExp * 0.6);
+      specimenResearch.expPoints += Math.floor(finalResearchExp * 0.6);
       if (!specimenResearch.firstStudiedAt) {
         specimenResearch.firstStudiedAt = Date.now();
       }
@@ -664,11 +687,11 @@ export class SaveManager {
 
     const currentLevelConfig = getResearchLevel(this.data.researchLab.totalExp);
     const bonus = currentLevelConfig.researchPointBonus;
-    const actualPoints = Math.floor(basePoints * bonus);
+    const actualPoints = Math.floor(finalResearchPoints * bonus);
     this.data.researchLab.researchPoints += actualPoints;
 
     const oldResearcherLevel = this.data.researchLab.researcherLevel;
-    this.data.researchLab.totalExp += baseExp;
+    this.data.researchLab.totalExp += finalResearchExp;
     const newLevelConfig = getResearchLevel(this.data.researchLab.totalExp);
     this.data.researchLab.researcherLevel = newLevelConfig.level;
 
@@ -685,7 +708,7 @@ export class SaveManager {
       }
     }
 
-    const researchRewards = { pointsGained: actualPoints, expGained: baseExp };
+    const researchRewards = { pointsGained: actualPoints, expGained: finalResearchExp };
 
     const completedLevelsCount = Object.values(this.data.progress).filter(p => p.completed).length;
     const totalStars = this.getTotalStars();
@@ -714,7 +737,15 @@ export class SaveManager {
       newlyUnlockedChapterId: unlockResult,
       updatedQuests,
       researchRewards,
-      achievementResult
+      achievementResult,
+      conservationInfo: {
+        specimenId: specimenId ?? null,
+        healthLevel,
+        scoreMultiplier,
+        researchMultiplier,
+        finalScore,
+        finalPoints: actualPoints
+      }
     };
   }
 

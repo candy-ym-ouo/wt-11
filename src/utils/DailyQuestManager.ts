@@ -484,24 +484,36 @@ export class DailyQuestManager {
     return quest.status === 'completed';
   }
 
-  static claimQuest(questId: string): { success: boolean; rewards: DailyQuestReward[]; quest?: DailyQuest } {
+  static claimQuest(questId: string): { success: boolean; rewards: DailyQuestReward[]; finalRewards: DailyQuestReward[]; quest?: DailyQuest; conservationApplied: boolean; conservationMultiplier: { score: number; fragment: number } } {
     const quest = this.getQuestById(questId);
     if (!quest || !this.canClaimQuest(questId)) {
-      return { success: false, rewards: [] };
+      return { success: false, rewards: [], finalRewards: [], conservationApplied: false, conservationMultiplier: { score: 1, fragment: 1 } };
     }
 
+    const globalMultiplier = ConservationManager.getGlobalRewardMultiplier();
+    const conservationApplied = globalMultiplier.scoreMultiplier < 1 || globalMultiplier.fragmentMultiplier < 1;
+    const finalRewards: DailyQuestReward[] = [];
+
     for (const reward of quest.rewards) {
+      let finalValue = reward.value;
+
       switch (reward.type) {
         case 'score':
-          SaveManager.addScore(reward.value);
+          finalValue = Math.max(1, Math.floor(reward.value * globalMultiplier.scoreMultiplier));
+          SaveManager.addScore(finalValue);
           break;
         case 'fragment':
-          SaveManager.addFragments(reward.id, reward.value);
+          finalValue = Math.max(0, Math.floor(reward.value * globalMultiplier.fragmentMultiplier));
+          if (finalValue > 0) {
+            SaveManager.addFragments(reward.id, finalValue);
+          }
           break;
         case 'material':
           SaveManager.addMaterials(reward.id, reward.value);
           break;
       }
+
+      finalRewards.push({ ...reward, value: finalValue });
     }
 
     quest.status = 'claimed';
@@ -513,19 +525,32 @@ export class DailyQuestManager {
     }
 
     SaveManager.save();
-    return { success: true, rewards: quest.rewards, quest };
+    return {
+      success: true,
+      rewards: quest.rewards,
+      finalRewards,
+      quest,
+      conservationApplied,
+      conservationMultiplier: { score: globalMultiplier.scoreMultiplier, fragment: globalMultiplier.fragmentMultiplier }
+    };
   }
 
-  static claimAllQuests(): { success: boolean; totalRewards: DailyQuestReward[]; claimedQuests: DailyQuest[] } {
+  static claimAllQuests(): { success: boolean; totalRewards: DailyQuestReward[]; claimedQuests: DailyQuest[]; conservationApplied: boolean; conservationMultiplier: { score: number; fragment: number } } {
     const claimableQuests = this.getQuestsByStatus('completed');
     const totalRewards: DailyQuestReward[] = [];
     const claimedQuests: DailyQuest[] = [];
+    let globalConservationApplied = false;
+    let globalConservationMultiplier = { score: 1, fragment: 1 };
 
     for (const quest of claimableQuests) {
       const result = this.claimQuest(quest.id);
       if (result.success && result.quest) {
         claimedQuests.push(result.quest);
-        for (const reward of result.rewards) {
+        if (result.conservationApplied) {
+          globalConservationApplied = true;
+          globalConservationMultiplier = result.conservationMultiplier;
+        }
+        for (const reward of result.finalRewards) {
           const existing = totalRewards.find(
             r => r.type === reward.type && r.id === reward.id
           );
@@ -539,7 +564,13 @@ export class DailyQuestManager {
     }
 
     SaveManager.save();
-    return { success: claimedQuests.length > 0, totalRewards, claimedQuests };
+    return {
+      success: claimedQuests.length > 0,
+      totalRewards,
+      claimedQuests,
+      conservationApplied: globalConservationApplied,
+      conservationMultiplier: globalConservationMultiplier
+    };
   }
 
   static getDailyStats(): {

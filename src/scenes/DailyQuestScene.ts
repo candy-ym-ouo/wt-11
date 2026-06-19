@@ -465,18 +465,33 @@ export class DailyQuestScene extends Phaser.Scene {
   private claimQuest(questId: string): void {
     const result = DailyQuestManager.claimQuest(questId);
     if (result.success && result.quest) {
-      this.showRewardPopup(result.rewards, result.quest.title);
+      this.showRewardPopup(
+        result.finalRewards,
+        result.quest.title,
+        result.conservationApplied,
+        result.conservationMultiplier
+      );
     }
   }
 
   private claimAllQuests(): void {
     const result = DailyQuestManager.claimAllQuests();
     if (result.success) {
-      this.showRewardPopup(result.totalRewards, '每日委托全部完成');
+      this.showRewardPopup(
+        result.totalRewards,
+        '每日委托全部完成',
+        result.conservationApplied,
+        result.conservationMultiplier
+      );
     }
   }
 
-  private showRewardPopup(rewards: DailyQuestReward[], title: string): void {
+  private showRewardPopup(
+    rewards: DailyQuestReward[],
+    title: string,
+    conservationApplied: boolean = false,
+    conservationMultiplier: { score: number; fragment: number } = { score: 1, fragment: 1 }
+  ): void {
     this.countdownTimer.remove();
 
     const overlay = this.add.graphics();
@@ -504,7 +519,30 @@ export class DailyQuestScene extends Phaser.Scene {
       color: '#eaeaea'
     }).setOrigin(0.5);
 
-    const rewardStartY = popupY - 60;
+    let rewardStartY = popupY - 60;
+    if (conservationApplied) {
+      const warnBg = this.add.graphics();
+      warnBg.fillStyle(0x550000, 0.9);
+      warnBg.fillRoundedRect(popupX - 260, popupY - 115, 520, 42, 10);
+      warnBg.setInteractive(new Phaser.Geom.Rectangle(popupX - 260, popupY - 115, 520, 42), Phaser.Geom.Rectangle.Contains);
+
+      this.add.text(popupX - 240, popupY - 95, '⚠️ 养护不足，奖励已衰减', {
+        font: 'bold 14px Arial',
+        color: '#ff9800'
+      }).setOrigin(0, 0.5);
+
+      this.add.text(popupX + 100, popupY - 95, `前往养护 →`, {
+        font: 'bold 12px Arial',
+        color: '#ffffff'
+      }).setOrigin(0, 0.5);
+
+      warnBg.on('pointerup', () => {
+        overlay.destroy();
+        this.scene.start('ConservationScene');
+      });
+
+      rewardStartY = popupY - 30;
+    }
     const rewardSpacing = 90;
     const maxPerRow = 3;
     const totalRows = Math.ceil(rewards.length / maxPerRow);

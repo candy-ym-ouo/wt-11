@@ -261,6 +261,58 @@ export class ConservationManager {
     };
   }
 
+  static applySpecimenRewardMultiplier(specimenId: number, baseScore: number, baseFragments: number, baseResearch: number): {
+    finalScore: number;
+    finalFragments: number;
+    finalResearch: number;
+    multiplierApplied: boolean;
+    scoreMultiplier: number;
+    fragmentMultiplier: number;
+    researchMultiplier: number;
+  } {
+    if (!this.data.specimens[specimenId]) {
+      return {
+        finalScore: baseScore,
+        finalFragments: baseFragments,
+        finalResearch: baseResearch,
+        multiplierApplied: false,
+        scoreMultiplier: 1,
+        fragmentMultiplier: 1,
+        researchMultiplier: 1,
+      };
+    }
+
+    const m = getRewardMultiplier(this.getHealth(specimenId));
+    return {
+      finalScore: Math.max(1, Math.floor(baseScore * m.scoreMultiplier)),
+      finalFragments: Math.max(0, Math.floor(baseFragments * m.fragmentMultiplier)),
+      finalResearch: Math.max(1, Math.floor(baseResearch * m.researchMultiplier)),
+      multiplierApplied: true,
+      scoreMultiplier: m.scoreMultiplier,
+      fragmentMultiplier: m.fragmentMultiplier,
+      researchMultiplier: m.researchMultiplier,
+    };
+  }
+
+  static applyGlobalRewardMultiplier(baseScore: number, baseFragments: number, baseResearch: number): {
+    finalScore: number;
+    finalFragments: number;
+    finalResearch: number;
+    scoreMultiplier: number;
+    fragmentMultiplier: number;
+    researchMultiplier: number;
+  } {
+    const m = this.getGlobalRewardMultiplier();
+    return {
+      finalScore: Math.max(1, Math.floor(baseScore * m.scoreMultiplier)),
+      finalFragments: Math.max(0, Math.floor(baseFragments * m.fragmentMultiplier)),
+      finalResearch: Math.max(1, Math.floor(baseResearch * m.researchMultiplier)),
+      scoreMultiplier: m.scoreMultiplier,
+      fragmentMultiplier: m.fragmentMultiplier,
+      researchMultiplier: m.researchMultiplier,
+    };
+  }
+
   static getCooldownRemaining(specimenId: number, actionType: CareActionType): number {
     const state = this.data.specimens[specimenId];
     if (!state) return 0;

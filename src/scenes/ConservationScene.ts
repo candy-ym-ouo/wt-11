@@ -119,10 +119,37 @@ export class ConservationScene extends Phaser.Scene {
       }).setOrigin(0, 0.5);
 
       const health = ConservationManager.getHealth(reminder.specimenId);
-      this.drawMiniHealthBar(580, y, 100, 14, health);
+      this.drawMiniHealthBar(560, y, 70, 14, health);
+
+      const dismissBtn = this.add.graphics();
+      dismissBtn.fillStyle(0x333344, 0.9);
+      dismissBtn.fillRoundedRect(640, y - cardH / 2 + 8, 55, cardH - 16, 6);
+      dismissBtn.setInteractive(new Phaser.Geom.Rectangle(640, y - cardH / 2 + 8, 55, cardH - 16), Phaser.Geom.Rectangle.Contains);
+
+      this.add.text(667, y, '✕', {
+        font: 'bold 16px Arial',
+        color: '#999999'
+      }).setOrigin(0.5);
+
+      dismissBtn.on('pointerover', () => {
+        dismissBtn.clear();
+        dismissBtn.fillStyle(0xff1744, 0.9);
+        dismissBtn.fillRoundedRect(640, y - cardH / 2 + 8, 55, cardH - 16, 6);
+      });
+
+      dismissBtn.on('pointerout', () => {
+        dismissBtn.clear();
+        dismissBtn.fillStyle(0x333344, 0.9);
+        dismissBtn.fillRoundedRect(640, y - cardH / 2 + 8, 55, cardH - 16, 6);
+      });
+
+      dismissBtn.on('pointerup', () => {
+        ConservationManager.dismissReminder(reminder.specimenId);
+        this.scene.restart();
+      });
 
       card.setInteractive(
-        new Phaser.Geom.Rectangle(45, y - cardH / 2, 660, cardH),
+        new Phaser.Geom.Rectangle(45, y - cardH / 2, 590, cardH),
         Phaser.Geom.Rectangle.Contains
       );
       card.on('pointerup', () => {

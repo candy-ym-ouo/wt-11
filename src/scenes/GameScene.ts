@@ -4,7 +4,7 @@ import { getLevelRule } from '../data/LevelRules';
 import { getPlantSpecimen } from '../data/PlantSpecimens';
 import { SaveManager } from '../utils/SaveManager';
 import { calculateScore, formatTime, getDifficultyColor, getDifficultyText } from '../utils/GameUtils';
-import { LevelRule, PlantSpecimen, PuzzlePieceData, EventLevelRule, DailyQuest, TowerFloorData, TowerResultData, TowerScoringCondition, TowerRuleModifier, AchievementUnlockResult, TutorialStep } from '../types/GameTypes';
+import { LevelRule, PlantSpecimen, PuzzlePieceData, EventLevelRule, DailyQuest, TowerFloorData, TowerResultData, TowerScoringCondition, TowerRuleModifier, AchievementUnlockResult, TutorialStep, ConservationHealthLevel } from '../types/GameTypes';
 import { getDropRule, getFragmentsBySpecimenId, Fragments, Materials } from '../data/WorkshopConfig';
 import { getEventLevelRule, isEventLevel } from '../data/EventLevelRules';
 import { getEventById } from '../data/Events';
@@ -13,6 +13,7 @@ import { getTowerFloor } from '../data/TowerConfig';
 import { TutorialManager } from '../utils/TutorialManager';
 import { getGameTutorial } from '../data/TutorialConfig';
 import { AchievementNotification } from '../utils/AchievementNotification';
+import { ConservationManager } from '../utils/ConservationManager';
 
 export class GameScene extends Phaser.Scene {
   private levelRule!: LevelRule;
@@ -1087,12 +1088,13 @@ export class GameScene extends Phaser.Scene {
       this.pieces.length,
       this.snappedCount
     );
-    const finalScore = Math.floor(result.score * this.scoreMultiplier);
+    let finalScore = Math.floor(result.score * this.scoreMultiplier);
 
-    let chapterResult: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[]; achievementResult: AchievementUnlockResult } | undefined;
+    let chapterResult: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[]; researchRewards: { pointsGained: number; expGained: number }; achievementResult: AchievementUnlockResult; conservationInfo: { specimenId: number | null; healthLevel: ConservationHealthLevel | null; scoreMultiplier: number; researchMultiplier: number; finalScore: number; finalPoints: number } } | undefined;
     let eventResult: { newlyUnlockedLevelId: number | null; updatedTotalScore: number; achievementResult: AchievementUnlockResult } | undefined;
     let updatedQuests: DailyQuest[] = [];
     let achievementResult: AchievementUnlockResult = { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 };
+    let conservationMultiplier: { scoreMultiplier: number; fragmentMultiplier: number; researchMultiplier: number } | null = null;
 
     if (this.isEventLevel && this.eventId) {
       eventResult = SaveManager.completeEventLevel(
@@ -1112,15 +1114,30 @@ export class GameScene extends Phaser.Scene {
       );
       updatedQuests = chapterResult.updatedQuests || [];
       achievementResult = chapterResult.achievementResult;
+
+      if (chapterResult.conservationInfo.specimenId !== null) {
+        finalScore = chapterResult.conservationInfo.finalScore;
+        const multiplier = ConservationManager.getRewardMultiplierForSpecimen(chapterResult.conservationInfo.specimenId);
+        conservationMultiplier = multiplier;
+      }
     }
 
-    const drops = this.calculateDrops(result.stars);
+    let drops = this.calculateDrops(result.stars);
+    if (conservationMultiplier && !this.isEventLevel) {
+      drops = {
+        ...drops,
+        fragments: drops.fragments.map(f => ({
+          ...f,
+          count: Math.max(0, Math.floor(f.count * conservationMultiplier!.fragmentMultiplier))
+        })).filter(f => f.count > 0)
+      };
+    }
     SaveManager.addWorkshopDrops(drops);
 
     this.cameras.main.zoomTo(1.05, 400, 'Cubic.easeInOut', true);
     this.time.delayedCall(450, () => {
       this.cameras.main.zoomTo(1.0, 400, 'Cubic.easeInOut', true);
-      this.showVictory(finalScore, result.stars, this.elapsedTime, chapterResult, drops, eventResult, updatedQuests, achievementResult);
+      this.showVictory(finalScore, result.stars, this.elapsedTime, chapterResult, drops, eventResult, updatedQuests, achievementResult, conservationMultiplier);
     });
   }
 
@@ -1350,7 +1367,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private showVictory(score: number, stars: number, time: number, chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[]; achievementResult: AchievementUnlockResult }, drops?: { fragments: { id: number; count: number }[]; materials: { id: number; count: number }[] }, eventResult?: { newlyUnlockedLevelId: number | null; updatedTotalScore: number }, updatedQuests: DailyQuest[] = [], achievementResult: AchievementUnlockResult = { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 }): void {
+  private showVictory(score: number, stars: number, time: number, chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[]; achievementResult: AchievementUnlockResult; conservationInfo?: { specimenId: number | null; healthLevel: ConservationHealthLevel | null; scoreMultiplier: number; researchMultiplier: number; finalScore: number; finalPoints: number } }, drops?: { fragments: { id: number; count: number }[]; materials: { id: number; count: number }[] }, eventResult?: { newlyUnlockedLevelId: number | null; updatedTotalScore: number }, updatedQuests: DailyQuest[] = [], achievementResult: AchievementUnlockResult = { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 }, conservationMultiplier?: { scoreMultiplier: number; fragmentMultiplier: number; researchMultiplier: number } | null): void {
     const { overlay } = this.createModal('🎉 修复完成！', '#4caf50', 0x4caf50);
 
     this.drawStars(375, 480, stars, 50);
@@ -1375,6 +1392,46 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     let dropBannerY = 690;
+
+    if (conservationMultiplier && (conservationMultiplier.scoreMultiplier < 1 || conservationMultiplier.fragmentMultiplier < 1 || conservationMultiplier.researchMultiplier < 1)) {
+      const warnBg = this.add.graphics();
+      const healthLevel = chapterResult?.conservationInfo?.healthLevel;
+      const labelMap: Record<string, { label: string; color: string; bgColor: number }> = {
+        thriving: { label: '🌿 养护极佳', color: '#4caf50', bgColor: 0x1b5e20 },
+        healthy: { label: '✅ 养护良好', color: '#2196f3', bgColor: 0x0f3460 },
+        fair: { label: '⚡ 养护尚可', color: '#ffc107', bgColor: 0x4a3800 },
+        declining: { label: '⚠️ 养护不足', color: '#ff9800', bgColor: 0x663300 },
+        critical: { label: '🚨 濒危警告', color: '#ff1744', bgColor: 0x550000 }
+      };
+      const info = healthLevel ? labelMap[healthLevel] : labelMap.fair;
+      warnBg.fillStyle(info.bgColor, 0.9);
+      warnBg.fillRoundedRect(130, dropBannerY, 490, 58, 12);
+      warnBg.lineStyle(2, info.bgColor, 1);
+      warnBg.strokeRoundedRect(130, dropBannerY, 490, 58, 12);
+
+      this.add.text(150, dropBannerY + 18, info.label, {
+        font: 'bold 15px Arial',
+        color: info.color
+      }).setOrigin(0, 0.5);
+
+      this.add.text(150, dropBannerY + 42, `奖励倍率: 积分×${conservationMultiplier.scoreMultiplier.toFixed(1)} 碎片×${conservationMultiplier.fragmentMultiplier.toFixed(1)} 研究×${conservationMultiplier.researchMultiplier.toFixed(1)}`, {
+        font: '12px Arial',
+        color: conservationMultiplier.scoreMultiplier < 0.7 ? '#ff1744' : '#ffc107'
+      }).setOrigin(0, 0.5);
+
+      this.add.text(600, dropBannerY + 30, '前往养护→', {
+        font: 'bold 12px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+
+      warnBg.setInteractive(new Phaser.Geom.Rectangle(130, dropBannerY, 490, 58), Phaser.Geom.Rectangle.Contains);
+      warnBg.on('pointerup', () => {
+        overlay.destroy();
+        this.scene.start('ConservationScene');
+      });
+
+      dropBannerY += 68;
+    }
     if (drops && (drops.fragments.length > 0 || drops.materials.length > 0)) {
       const dropBg = this.add.graphics();
       dropBg.fillStyle(0x1a2a4a, 0.9);
