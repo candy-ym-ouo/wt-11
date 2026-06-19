@@ -29,7 +29,7 @@ import {
 } from '../data/ResearchLabConfig';
 import { TowerFloors, getTowerFloor } from '../data/TowerConfig';
 import { TowerSaveData, TowerFloorProgress, TowerReward, TowerResultData, ExhibitionSaveData, ExhibitionProgress, ExhibitionSpecimenSubmission, ExhibitionReward } from '../types/GameTypes';
-import { ExhibitionThemes, getExhibitionTheme, getBadgesByThemeId } from '../data/ExhibitionConfig';
+import { ExhibitionThemes, getExhibitionTheme, getBadgesByThemeId, getExhibitionBadge } from '../data/ExhibitionConfig';
 
 const STORAGE_KEY = 'plant_specimen_puzzle_save';
 
@@ -1448,7 +1448,7 @@ export class SaveManager {
     const theme = getExhibitionTheme(themeId);
     if (!theme) return false;
     if (!theme.requiredSpecimenIds.includes(specimenId)) return false;
-    if (!this.isSpecimenRestored(specimenId) && !this.isGalleryUnlocked(specimenId)) return false;
+    if (!this.isSpecimenRestored(specimenId)) return false;
     if (this.isSpecimenSubmitted(themeId, specimenId)) return false;
     return true;
   }
@@ -1579,25 +1579,36 @@ export class SaveManager {
     if (!themeProgress) return { isNewHighScore: false, oldScore: 0 };
 
     const oldScore = themeProgress.totalScore;
-    const isNewHighScore = scores.totalScore > oldScore;
+    const isNewHighScore = scores.totalScore !== oldScore;
 
-    if (isNewHighScore) {
-      themeProgress.completionScore = scores.completionScore;
-      themeProgress.speedScore = scores.speedScore;
-      themeProgress.starScore = scores.starScore;
-      themeProgress.totalScore = scores.totalScore;
+    themeProgress.completionScore = scores.completionScore;
+    themeProgress.speedScore = scores.speedScore;
+    themeProgress.starScore = scores.starScore;
+    themeProgress.totalScore = scores.totalScore;
 
-      const scoreDiff = scores.totalScore - (this.data.exhibition.totalExhibitionScore - oldScore + scores.totalScore > 0 ? 0 : 0);
-      if (scoreDiff > 0) {
-        this.data.exhibition.totalExhibitionScore += scoreDiff;
-      } else {
-        this.data.exhibition.totalExhibitionScore = Object.values(this.data.exhibition.themeProgress)
-          .reduce((sum, p) => sum + p.totalScore, 0);
-      }
-    }
+    this.data.exhibition.totalExhibitionScore = Object.values(this.data.exhibition.themeProgress)
+      .reduce((sum, p) => sum + (p?.totalScore ?? 0), 0);
 
     this.save();
     return { isNewHighScore, oldScore };
+  }
+
+  static unlockExhibitionBadge(badgeId: number, themeId: string): boolean {
+    const badgeRecord = getExhibitionBadge(badgeId);
+    if (!badgeRecord) return false;
+
+    const themeProgress = this.data.exhibition.themeProgress[themeId];
+    if (!themeProgress) return false;
+
+    if (!themeProgress.badgesUnlocked.includes(badgeId)) {
+      themeProgress.badgesUnlocked.push(badgeId);
+    }
+
+    this.data.exhibition.badges[badgeId] = true;
+    this.data.badges[badgeId] = true;
+
+    this.save();
+    return true;
   }
 
   static save(): void {

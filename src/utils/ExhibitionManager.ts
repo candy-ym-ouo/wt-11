@@ -181,12 +181,7 @@ export class ExhibitionManager {
 
     const newlyUnlockedBadges = this.checkBadgeUnlocks(themeId);
     for (const badge of newlyUnlockedBadges) {
-      const themeProg = SaveManager.getExhibitionThemeProgress(themeId);
-      if (themeProg && !themeProg.badgesUnlocked.includes(badge.id)) {
-        themeProg.badgesUnlocked.push(badge.id);
-      }
-      SaveManager['data'].exhibition.badges[badge.id] = true;
-      SaveManager['data'].badges[badge.id] = true;
+      SaveManager.unlockExhibitionBadge(badge.id, themeId);
     }
 
     const theme = getExhibitionTheme(themeId);
@@ -199,17 +194,17 @@ export class ExhibitionManager {
       }
     }
 
-    SaveManager.save();
-
+    const finalProgress = SaveManager.getExhibitionThemeProgress(themeId);
     const submittedSpecimens = SaveManager.getSubmittedSpecimens(themeId);
+    const finalScores = SaveManager.getExhibitionThemeProgress(themeId);
 
     return {
       themeId,
       submittedSpecimens,
-      completionScore: scores.completionScore,
-      speedScore: scores.speedScore,
-      starScore: scores.starScore,
-      totalScore: scores.totalScore,
+      completionScore: finalScores?.completionScore ?? scores.completionScore,
+      speedScore: finalScores?.speedScore ?? scores.speedScore,
+      starScore: finalScores?.starScore ?? scores.starScore,
+      totalScore: finalScores?.totalScore ?? scores.totalScore,
       newlyUnlockedBadges,
       newRewards,
       isFirstParticipation,
@@ -225,6 +220,7 @@ export class ExhibitionManager {
     totalRequired: number;
     eligibleSpecimens: number[];
     missingSpecimens: number[];
+    needRestoreSpecimens: number[];
     badges: { badge: ExhibitionBadge; unlocked: boolean }[];
     rewards: { reward: any; claimable: boolean; claimed: boolean }[];
   } {
@@ -236,15 +232,17 @@ export class ExhibitionManager {
     let totalRequired = 0;
     const eligibleSpecimens: number[] = [];
     const missingSpecimens: number[] = [];
+    const needRestoreSpecimens: number[] = [];
 
     if (theme) {
       totalRequired = theme.requiredSpecimenIds.length;
       for (const specimenId of theme.requiredSpecimenIds) {
-        const specimen = getPlantSpecimen(specimenId);
         if (SaveManager.isSpecimenSubmitted(themeId, specimenId)) {
           submittedCount++;
         } else if (SaveManager.canSubmitToExhibition(themeId, specimenId)) {
           eligibleSpecimens.push(specimenId);
+        } else if (SaveManager.isGalleryUnlocked(specimenId) && !SaveManager.isSpecimenRestored(specimenId)) {
+          needRestoreSpecimens.push(specimenId);
         } else {
           missingSpecimens.push(specimenId);
         }
@@ -270,6 +268,7 @@ export class ExhibitionManager {
       totalRequired,
       eligibleSpecimens,
       missingSpecimens,
+      needRestoreSpecimens,
       badges,
       rewards
     };

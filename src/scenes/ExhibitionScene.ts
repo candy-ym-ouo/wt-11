@@ -163,17 +163,20 @@ export class ExhibitionScene extends Phaser.Scene {
       color: '#ffffff'
     }).setOrigin(0.5);
 
+    const savedTotalScore = info.progress?.totalScore ?? 0;
+    const displayScore = savedTotalScore > 0 ? savedTotalScore : info.scores.totalScore;
+
     const scoreBg = this.add.graphics();
     scoreBg.fillStyle(0x000000, 0.4);
     scoreBg.fillRoundedRect(x - width / 2 + 350, y + height / 2 - 55, 130, 48, 8);
 
-    this.add.text(x - width / 2 + 415, y + height / 2 - 43, `${info.scores.totalScore}`, {
+    this.add.text(x - width / 2 + 415, y + height / 2 - 43, `${displayScore}`, {
       font: 'bold 22px Arial',
       color: '#ffd700'
     }).setOrigin(0.5);
-    this.add.text(x - width / 2 + 415, y + height / 2 - 22, '当前积分', {
+    this.add.text(x - width / 2 + 415, y + height / 2 - 22, savedTotalScore > 0 ? '已结算' : '当前积分', {
       font: '11px Arial',
-      color: 'rgba(255,255,255,0.7)'
+      color: savedTotalScore > 0 ? '#4caf50' : 'rgba(255,255,255,0.7)'
     }).setOrigin(0.5);
 
     const enterBtn = this.add.graphics();
@@ -264,7 +267,16 @@ export class ExhibitionScene extends Phaser.Scene {
       wordWrap: { width: 450 }
     }).setOrigin(0, 0.5);
 
-    this.addScoreBreakdown(375, 355, info.scores, theme);
+    const displayScores = (info.progress?.totalScore !== undefined && info.progress.totalScore > 0)
+      ? {
+          completionScore: info.progress.completionScore,
+          speedScore: info.progress.speedScore,
+          starScore: info.progress.starScore,
+          totalScore: info.progress.totalScore
+        }
+      : info.scores;
+
+    this.addScoreBreakdown(375, 355, displayScores, theme);
 
     this.addSpecimenList(themeId, info, 560);
 
@@ -384,10 +396,11 @@ export class ExhibitionScene extends Phaser.Scene {
     specimenId: number
   ): void {
     const specimen = getPlantSpecimen(specimenId);
-    const isRestored = SaveManager.isSpecimenRestored(specimenId) || SaveManager.isGalleryUnlocked(specimenId);
+    const isRestored = SaveManager.isSpecimenRestored(specimenId);
     const isSubmitted = SaveManager.isSpecimenSubmitted(themeId, specimenId);
     const submission = SaveManager.getExhibitionSpecimenSubmission(themeId, specimenId);
     const canSubmit = SaveManager.canSubmitToExhibition(themeId, specimenId);
+    const isGalleryUnlocked = SaveManager.isGalleryUnlocked(specimenId);
 
     const card = this.add.graphics();
 
@@ -400,7 +413,7 @@ export class ExhibitionScene extends Phaser.Scene {
     } else if (canSubmit) {
       bgColor = 0x1565c0;
       borderColor = 0x2196f3;
-    } else if (isRestored) {
+    } else if (isGalleryUnlocked) {
       bgColor = 0x5d4037;
       borderColor = 0x795548;
     }
@@ -414,13 +427,18 @@ export class ExhibitionScene extends Phaser.Scene {
       const previewKey = `specimen-${specimenId}-preview`;
       const img = this.add.image(x, y - 20, previewKey);
       img.setDisplaySize(60, 60);
+    } else if (isGalleryUnlocked) {
+      const previewKey = `specimen-${specimenId}-preview`;
+      const img = this.add.image(x, y - 20, previewKey);
+      img.setDisplaySize(60, 60);
+      img.setAlpha(0.5);
     } else {
       this.add.text(x, y - 20, '🔒', { font: '32px Arial' }).setOrigin(0.5);
     }
 
     this.add.text(x, y + 30, specimen?.name || '???', {
       font: 'bold 14px Arial',
-      color: isRestored || isSubmitted ? '#ffffff' : '#888888'
+      color: (isRestored || isSubmitted || isGalleryUnlocked) ? '#ffffff' : '#888888'
     }).setOrigin(0.5);
 
     let statusText = '';
@@ -433,9 +451,9 @@ export class ExhibitionScene extends Phaser.Scene {
     } else if (canSubmit) {
       statusText = '点击提交';
       statusColor = '#64b5f6';
-    } else if (isRestored) {
-      statusText = '已提交';
-      statusColor = '#aaaaaa';
+    } else if (isGalleryUnlocked && !isRestored) {
+      statusText = '需在工坊修复';
+      statusColor = '#ffcc80';
     } else {
       statusText = '未解锁';
       statusColor = '#ff8a80';
@@ -586,6 +604,17 @@ export class ExhibitionScene extends Phaser.Scene {
 
   private addActionButtons(themeId: string, info: any, y: number): void {
     const eligibleCount = info.eligibleSpecimens.length;
+    const needRestoreCount = info.needRestoreSpecimens?.length || 0;
+
+    if (needRestoreCount > 0) {
+      const hintText = this.add.graphics();
+      hintText.fillStyle(0x795548, 0.3);
+      hintText.fillRoundedRect(45, y - 70, 660, 32, 8);
+      this.add.text(375, y - 54, `⚠️ 还有 ${needRestoreCount} 个标本需在工坊修复后方可参展`, {
+        font: 'bold 14px Arial',
+        color: '#ffcc80'
+      }).setOrigin(0.5);
+    }
 
     if (eligibleCount > 0) {
       const submitBtn = this.add.graphics();
