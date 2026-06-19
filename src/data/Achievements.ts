@@ -500,6 +500,17 @@ export const Achievements: Achievement[] = [
     condition: { type: 'complete_exhibition', target: 1 },
     rewardScore: 800,
     unlocked: false
+  },
+  {
+    id: 6010,
+    name: '好学萌新',
+    description: '完成新手教学关卡',
+    icon: '📖',
+    category: 'special',
+    rarity: 'common',
+    condition: { type: 'complete_tutorial', target: 1, tutorialId: 'beginner-tutorial' },
+    rewardScore: 300,
+    unlocked: false
   }
 ];
 

@@ -514,6 +514,7 @@ export interface AchievementCondition {
   difficulty?: string;
   specimenId?: number;
   days?: number;
+  tutorialId?: string;
 }
 
 export interface Achievement {
@@ -561,6 +562,100 @@ export interface AchievementUnlockResult {
   scoreGained: number;
 }
 
+export type TutorialActionType = 
+  | 'click' 
+  | 'drag' 
+  | 'rotate' 
+  | 'snap' 
+  | 'wait' 
+  | 'complete';
+
+export interface TutorialHighlight {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  type: 'rect' | 'circle';
+  pulse?: boolean;
+}
+
+export interface TutorialArrow {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  color?: number;
+}
+
+export interface TutorialStep {
+  id: string;
+  title: string;
+  content: string;
+  actionType: TutorialActionType;
+  targetElement?: string;
+  targetPieceId?: number;
+  highlight?: TutorialHighlight;
+  arrow?: TutorialArrow;
+  autoNext?: boolean;
+  autoNextDelay?: number;
+  showDemo?: boolean;
+  demoData?: {
+    pieceId: number;
+    targetX: number;
+    targetY: number;
+    targetRotation?: number;
+  };
+  validation?: {
+    type: 'piece_snapped' | 'piece_rotated' | 'piece_dragged' | 'level_completed' | 'custom';
+    pieceId?: number;
+    customCheck?: string;
+  };
+  position?: {
+    x: number;
+    y: number;
+    align?: 'top' | 'bottom' | 'left' | 'right' | 'center';
+  };
+  canSkip?: boolean;
+}
+
+export interface TutorialData {
+  id: string;
+  name: string;
+  description: string;
+  levelId: number;
+  isTeachingLevel: boolean;
+  steps: TutorialStep[];
+  rewards: Reward[];
+  requiredForProgress: boolean;
+  unlockMessage?: string;
+}
+
+export interface TutorialProgress {
+  tutorialId: string;
+  currentStepId: string;
+  currentStepIndex: number;
+  completed: boolean;
+  completedAt?: number;
+  rewardsClaimed: boolean;
+  attempts: number;
+}
+
+export interface TutorialSaveData {
+  completedTutorials: string[];
+  currentTutorialId: string | null;
+  progress: Record<string, TutorialProgress>;
+  teachingLevelCompleted: boolean;
+  firstTimePlayer: boolean;
+  rewardsClaimed: Record<string, boolean>;
+}
+
+export interface TutorialCompletionResult {
+  newlyCompleted: boolean;
+  rewards: Reward[];
+  unlockedLevelId?: number;
+  achievementResult?: AchievementUnlockResult;
+}
+
 export interface SaveData {
   progress: Record<number, LevelProgress>;
   chapterProgress: Record<number, ChapterProgress>;
@@ -576,4 +671,5 @@ export interface SaveData {
   tower: TowerSaveData;
   exhibition: ExhibitionSaveData;
   achievement: AchievementSaveData;
+  tutorial: TutorialSaveData;
 }

@@ -456,6 +456,41 @@ export class AchievementManager {
     return { newlyUnlocked, newlyUnlockedTitles, scoreGained };
   }
 
+  static onTutorialComplete(): AchievementUnlockResult {
+    const newlyUnlocked: Achievement[] = [];
+    let scoreGained = 0;
+
+    const specialAchievements = getAchievementsByCategory('special');
+
+    specialAchievements.forEach(achievement => {
+      if (this.isAchievementUnlocked(achievement.id)) return;
+
+      const cond = achievement.condition;
+      let unlocked = false;
+
+      switch (cond.type) {
+        case 'complete_tutorial':
+          unlocked = true;
+          break;
+        default:
+          break;
+      }
+
+      if (unlocked) {
+        this.unlockAchievement(achievement.id);
+        newlyUnlocked.push({ ...achievement, unlocked: true, unlockedAt: Date.now() });
+        if (achievement.rewardScore) {
+          scoreGained += achievement.rewardScore;
+        }
+      }
+    });
+
+    this.checkMultiCategoryAchievement(newlyUnlocked);
+    const newlyUnlockedTitles = this.checkTitles();
+
+    return { newlyUnlocked, newlyUnlockedTitles, scoreGained };
+  }
+
   private static checkLoginAchievements(): AchievementUnlockResult {
     const newlyUnlocked: Achievement[] = [];
     let scoreGained = 0;

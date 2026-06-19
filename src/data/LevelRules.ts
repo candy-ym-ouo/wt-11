@@ -2,6 +2,17 @@ import { LevelRule } from '../types/GameTypes';
 
 export const LevelRules: LevelRule[] = [
   {
+    id: 0,
+    name: '教学关卡',
+    specimenId: 1,
+    difficulty: 'easy',
+    rows: 2,
+    cols: 2,
+    timeLimit: 600,
+    snapPositionThreshold: 80,
+    snapRotationThreshold: 30
+  },
+  {
     id: 1,
     name: '第一关',
     specimenId: 1,

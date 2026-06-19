@@ -221,7 +221,7 @@ export class PuzzlePieceSprite extends Phaser.GameObjects.Container {
     return diff;
   }
 
-  private canSnap(): boolean {
+  canSnap(): boolean {
     const [tx, ty] = this.getEffectiveTarget();
     const dist = Phaser.Math.Distance.Between(this.x, this.y, tx, ty);
     const angleDiff = this.getAngleDifference();

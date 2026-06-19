@@ -12,8 +12,10 @@ import {
   EventReward,
   DailyQuest,
   SpecimenResearch,
-  ResearchLabProgress
+  ResearchLabProgress,
+  TutorialSaveData
 } from '../types/GameTypes';
+import { TutorialManager } from './TutorialManager';
 import { Levels, EventGalleryItems } from '../data/Levels';
 import { Chapters, getChapterById, getChapterByLevelId, getNextChapter, getRewardsByChapterId } from '../data/Chapters';
 import { WorkshopRecipes, getRecipeBySpecimenId } from '../data/WorkshopConfig';
@@ -55,6 +57,7 @@ export class SaveManager {
     this.syncChapterUnlocks();
     DailyQuestManager.init(this.data.dailyQuest);
     AchievementManager.init(this.data.achievement);
+    TutorialManager.init(this.data.tutorial);
     this.save();
   }
 
@@ -230,6 +233,29 @@ export class SaveManager {
       }
     }
 
+    if (!oldData.tutorial) {
+      oldData.tutorial = defaultData.tutorial;
+    } else {
+      if (!oldData.tutorial.completedTutorials) {
+        oldData.tutorial.completedTutorials = defaultData.tutorial.completedTutorials;
+      }
+      if (oldData.tutorial.currentTutorialId === undefined) {
+        oldData.tutorial.currentTutorialId = defaultData.tutorial.currentTutorialId;
+      }
+      if (!oldData.tutorial.progress) {
+        oldData.tutorial.progress = defaultData.tutorial.progress;
+      }
+      if (oldData.tutorial.teachingLevelCompleted === undefined) {
+        oldData.tutorial.teachingLevelCompleted = defaultData.tutorial.teachingLevelCompleted;
+      }
+      if (oldData.tutorial.firstTimePlayer === undefined) {
+        oldData.tutorial.firstTimePlayer = defaultData.tutorial.firstTimePlayer;
+      }
+      if (!oldData.tutorial.rewardsClaimed) {
+        oldData.tutorial.rewardsClaimed = defaultData.tutorial.rewardsClaimed;
+      }
+    }
+
     return oldData as SaveData;
   }
 
@@ -269,6 +295,7 @@ export class SaveManager {
     const exhibitionSaveData = this.createDefaultExhibitionSave();
 
     const achievementData = AchievementManager.createDefaultAchievementSave();
+    const tutorialData = TutorialManager.createDefaultTutorialSave();
 
     return {
       progress,
@@ -288,7 +315,8 @@ export class SaveManager {
       researchLab: researchLabData,
       tower: towerSaveData,
       exhibition: exhibitionSaveData,
-      achievement: achievementData
+      achievement: achievementData,
+      tutorial: tutorialData
     };
   }
 
@@ -1771,6 +1799,43 @@ export class SaveManager {
 
   static getUnlockedTitlesCount(): number {
     return Object.values(this.data.achievement.unlockedTitles).filter(Boolean).length;
+  }
+
+  static getTutorialSaveData(): TutorialSaveData {
+    return { ...this.data.tutorial, progress: { ...this.data.tutorial.progress } };
+  }
+
+  static updateTutorialData(tutorialData: TutorialSaveData): void {
+    this.data.tutorial = tutorialData;
+    this.save();
+  }
+
+  static grantBadge(badgeId: number): void {
+    this.data.badges[badgeId] = true;
+    this.save();
+  }
+
+  static unlockGalleryItem(specimenId: number): void {
+    if (!this.data.galleryUnlocked.includes(specimenId)) {
+      this.data.galleryUnlocked.push(specimenId);
+      this.save();
+    }
+  }
+
+  static isTutorialCompleted(tutorialId: string): boolean {
+    return this.data.tutorial.completedTutorials.includes(tutorialId);
+  }
+
+  static isTeachingLevelCompleted(): boolean {
+    return this.data.tutorial.teachingLevelCompleted;
+  }
+
+  static isFirstTimePlayer(): boolean {
+    return this.data.tutorial.firstTimePlayer;
+  }
+
+  static getCompletedTutorialsCount(): number {
+    return this.data.tutorial.completedTutorials.length;
   }
 
   static save(): void {

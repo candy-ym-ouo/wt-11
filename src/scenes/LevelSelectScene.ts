@@ -5,6 +5,7 @@ import { getDifficultyColor, getDifficultyText } from '../utils/GameUtils';
 import { LevelData } from '../types/GameTypes';
 import { Chapters, getChapterById, getChapterByLevelId } from '../data/Chapters';
 import { DailyQuestManager } from '../utils/DailyQuestManager';
+import { TutorialManager } from '../utils/TutorialManager';
 
 export class LevelSelectScene extends Phaser.Scene {
   private currentChapterId: number | null = null;
@@ -25,6 +26,7 @@ export class LevelSelectScene extends Phaser.Scene {
     this.addBackground();
     this.addTitle();
     this.addChapterTabs();
+    this.addTutorialCard();
     this.addLevelGrid();
     this.addBottomButtons();
   }
@@ -98,6 +100,70 @@ export class LevelSelectScene extends Phaser.Scene {
     });
   }
 
+  private addTutorialCard(): void {
+    const isCompleted = TutorialManager.isTeachingLevelCompleted();
+    const cardWidth = 670;
+    const cardHeight = 120;
+    const x = 375;
+    const y = 260;
+
+    const card = this.add.graphics();
+    card.fillStyle(isCompleted ? 0x2e7d32 : 0x4caf50, 1);
+    card.lineStyle(3, isCompleted ? 0x1b5e20 : 0x81c784, 1);
+    card.strokeRoundedRect(x - cardWidth / 2, y - cardHeight / 2, cardWidth, cardHeight, 15);
+    card.fillRoundedRect(x - cardWidth / 2, y - cardHeight / 2, cardWidth, cardHeight, 15);
+
+    this.add.text(x - 280, y - 30, '🎓', {
+      font: '40px Arial',
+      color: '#ffffff'
+    }).setOrigin(0, 0.5);
+
+    this.add.text(x - 220, y - 30, isCompleted ? '新手教学（已完成）' : '新手教学', {
+      font: 'bold 22px Arial',
+      color: '#ffffff'
+    }).setOrigin(0, 0.5);
+
+    this.add.text(x - 220, y + 10, isCompleted ? '恭喜你已经掌握了基本操作！' : '点击开始学习游戏基本操作', {
+      font: '16px Arial',
+      color: '#e8f5e9'
+    }).setOrigin(0, 0.5);
+
+    if (isCompleted) {
+      this.add.text(x + 250, y, '✓ 已完成', {
+        font: 'bold 18px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+    } else {
+      const startBtn = this.add.graphics();
+      startBtn.fillStyle(0xffffff, 1);
+      startBtn.fillRoundedRect(x + 180, y - 25, 120, 50, 12);
+      startBtn.setInteractive(
+        new Phaser.Geom.Rectangle(x + 180, y - 25, 120, 50),
+        Phaser.Geom.Rectangle.Contains
+      );
+
+      this.add.text(x + 240, y, '开始', {
+        font: 'bold 20px Arial',
+        color: '#4caf50'
+      }).setOrigin(0.5);
+
+      startBtn.on('pointerup', () => {
+        this.scene.start('TutorialScene', { levelId: 0 });
+      });
+    }
+
+    card.setInteractive(
+      new Phaser.Geom.Rectangle(x - cardWidth / 2, y - cardHeight / 2, cardWidth, cardHeight),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    if (!isCompleted) {
+      card.on('pointerup', () => {
+        this.scene.start('TutorialScene', { levelId: 0 });
+      });
+    }
+  }
+
   private addLevelGrid(): void {
     const chapter = this.currentChapterId ? getChapterById(this.currentChapterId) : null;
     let levelsToShow: LevelData[];
@@ -108,7 +174,7 @@ export class LevelSelectScene extends Phaser.Scene {
       levelsToShow = Levels;
     }
 
-    const startY = chapter ? 260 : 260;
+    const startY = chapter ? 400 : 400;
     const cardWidth = 320;
     const cardHeight = 240;
     const padding = 30;

@@ -3,6 +3,7 @@ import { LevelRules } from '../data/LevelRules';
 import { PlantSpecimens } from '../data/PlantSpecimens';
 import { SpecimenTextureGenerator } from '../utils/SpecimenTextureGenerator';
 import { EventLevelRules } from '../data/EventLevelRules';
+import { TutorialManager } from '../utils/TutorialManager';
 
 export class PreloadScene extends Phaser.Scene {
   private progressBar!: Phaser.GameObjects.Graphics;
@@ -177,7 +178,11 @@ export class PreloadScene extends Phaser.Scene {
           progress = 100;
           interval.remove(false);
           this.time.delayedCall(300, () => {
-            this.scene.start('ChapterSelectScene');
+            if (TutorialManager.shouldShowTeachingLevel()) {
+              this.scene.start('TutorialScene', { levelId: 0 });
+            } else {
+              this.scene.start('ChapterSelectScene');
+            }
           });
         }
         this.updateProgressBar(progress / 100);

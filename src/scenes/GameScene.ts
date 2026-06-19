@@ -4,12 +4,15 @@ import { getLevelRule } from '../data/LevelRules';
 import { getPlantSpecimen } from '../data/PlantSpecimens';
 import { SaveManager } from '../utils/SaveManager';
 import { calculateScore, formatTime, getDifficultyColor, getDifficultyText } from '../utils/GameUtils';
-import { LevelRule, PlantSpecimen, PuzzlePieceData, EventLevelRule, DailyQuest, TowerFloorData, TowerResultData, TowerScoringCondition, TowerRuleModifier, AchievementUnlockResult } from '../types/GameTypes';
+import { LevelRule, PlantSpecimen, PuzzlePieceData, EventLevelRule, DailyQuest, TowerFloorData, TowerResultData, TowerScoringCondition, TowerRuleModifier, AchievementUnlockResult, TutorialStep } from '../types/GameTypes';
 import { getDropRule, getFragmentsBySpecimenId, Fragments, Materials } from '../data/WorkshopConfig';
 import { getEventLevelRule, isEventLevel } from '../data/EventLevelRules';
 import { getEventById } from '../data/Events';
 import { DailyQuestManager } from '../utils/DailyQuestManager';
 import { getTowerFloor } from '../data/TowerConfig';
+import { TutorialManager } from '../utils/TutorialManager';
+import { getGameTutorial } from '../data/TutorialConfig';
+import { AchievementNotification } from '../utils/AchievementNotification';
 
 export class GameScene extends Phaser.Scene {
   private levelRule!: LevelRule;
@@ -49,6 +52,20 @@ export class GameScene extends Phaser.Scene {
   private comboBonusMultiplier: number = 1;
   private mirrorPieces: PuzzlePieceSprite[] = [];
   private realPiecesCount: number = 0;
+
+  private tutorialContainer!: Phaser.GameObjects.Container;
+  private tutorialOverlay!: Phaser.GameObjects.Graphics;
+  private tutorialBox!: Phaser.GameObjects.Graphics;
+  private tutorialTitle!: Phaser.GameObjects.Text;
+  private tutorialContent!: Phaser.GameObjects.Text;
+  private nextButton!: Phaser.GameObjects.Graphics;
+  private skipButton!: Phaser.GameObjects.Graphics;
+  private highlightGraphics!: Phaser.GameObjects.Graphics;
+  private arrowGraphics!: Phaser.GameObjects.Graphics;
+  private progressIndicator!: Phaser.GameObjects.Text;
+  private levelTutorialSteps: TutorialStep[] = [];
+  private currentLevelTutorialIndex: number = 0;
+  private isShowingLevelTutorial: boolean = false;
 
   private static readonly TARGET_AREA_X = 375;
   private static readonly TARGET_AREA_Y = 420;
@@ -140,7 +157,20 @@ export class GameScene extends Phaser.Scene {
     this.createPuzzlePieces();
     this.addControlButtons();
     this.setupEvents();
-    this.startTimer();
+
+    if (!this.isEventLevel && !this.isTowerFloor && TutorialManager.shouldShowLevelTutorial(this.levelRule.id)) {
+      const tutorialSteps = getGameTutorial(this.levelRule.id);
+      if (tutorialSteps && tutorialSteps.length > 0) {
+        this.levelTutorialSteps = tutorialSteps;
+        this.currentLevelTutorialIndex = 0;
+        this.setupLevelTutorialUI();
+        this.showLevelTutorialStep();
+      } else {
+        this.startTimer();
+      }
+    } else {
+      this.startTimer();
+    }
   }
 
   private addBackground(): void {
@@ -2004,5 +2034,213 @@ export class GameScene extends Phaser.Scene {
         this.scene.start('LevelSelectScene');
       }
     });
+  }
+
+  private setupLevelTutorialUI(): void {
+    this.isShowingLevelTutorial = true;
+
+    this.highlightGraphics = this.add.graphics();
+    this.highlightGraphics.setDepth(100);
+
+    this.arrowGraphics = this.add.graphics();
+    this.arrowGraphics.setDepth(100);
+
+    this.tutorialOverlay = this.add.graphics();
+    this.tutorialOverlay.fillStyle(0x000000, 0.4);
+    this.tutorialOverlay.fillRect(0, 0, 750, 1334);
+    this.tutorialOverlay.setDepth(90);
+    this.tutorialOverlay.setInteractive();
+
+    this.tutorialContainer = this.add.container(0, 0);
+    this.tutorialContainer.setDepth(110);
+
+    this.tutorialBox = this.add.graphics();
+    this.tutorialBox.fillStyle(0x1a2a4a, 0.98);
+    this.tutorialBox.fillRoundedRect(50, 1050, 650, 180, 20);
+    this.tutorialBox.lineStyle(3, 0x4caf50, 1);
+    this.tutorialBox.strokeRoundedRect(50, 1050, 650, 180, 20);
+    this.tutorialContainer.add(this.tutorialBox);
+
+    this.tutorialTitle = this.add.text(375, 1085, '', {
+      font: 'bold 24px Arial',
+      color: '#4caf50'
+    }).setOrigin(0.5);
+    this.tutorialContainer.add(this.tutorialTitle);
+
+    this.tutorialContent = this.add.text(375, 1125, '', {
+      font: '18px Arial',
+      color: '#ffffff',
+      wordWrap: { width: 580, useAdvancedWrap: true },
+      align: 'center'
+    }).setOrigin(0.5, 0);
+    this.tutorialContainer.add(this.tutorialContent);
+
+    this.progressIndicator = this.add.text(650, 1080, '', {
+      font: '14px Arial',
+      color: '#aaaaaa'
+    }).setOrigin(1, 0.5);
+    this.tutorialContainer.add(this.progressIndicator);
+
+    this.nextButton = this.add.graphics();
+    this.nextButton.fillStyle(0x4caf50, 1);
+    this.nextButton.fillRoundedRect(520, 1180, 160, 40, 12);
+    this.nextButton.setInteractive(
+      new Phaser.Geom.Rectangle(520, 1180, 160, 40),
+      Phaser.Geom.Rectangle.Contains
+    );
+    this.tutorialContainer.add(this.nextButton);
+
+    const nextBtnText = this.add.text(600, 1200, '开始', {
+      font: 'bold 18px Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+    this.tutorialContainer.add(nextBtnText);
+
+    this.nextButton.on('pointerup', () => {
+      this.advanceLevelTutorialStep();
+    });
+
+    this.skipButton = this.add.graphics();
+    this.skipButton.fillStyle(0x666666, 0.8);
+    this.skipButton.fillRoundedRect(70, 1180, 160, 40, 12);
+    this.skipButton.setInteractive(
+      new Phaser.Geom.Rectangle(70, 1180, 160, 40),
+      Phaser.Geom.Rectangle.Contains
+    );
+    this.tutorialContainer.add(this.skipButton);
+
+    const skipBtnText = this.add.text(150, 1200, '跳过', {
+      font: 'bold 16px Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+    this.tutorialContainer.add(skipBtnText);
+
+    this.skipButton.on('pointerup', () => {
+      this.hideLevelTutorialUI();
+      this.startTimer();
+    });
+  }
+
+  private showLevelTutorialStep(): void {
+    const step = this.levelTutorialSteps[this.currentLevelTutorialIndex];
+    if (!step) {
+      this.hideLevelTutorialUI();
+      this.startTimer();
+      return;
+    }
+
+    this.tutorialTitle.setText(step.title);
+    this.tutorialContent.setText(step.content);
+
+    const currentIndex = this.currentLevelTutorialIndex + 1;
+    const totalSteps = this.levelTutorialSteps.length;
+    this.progressIndicator.setText(`${currentIndex}/${totalSteps}`);
+
+    this.updateLevelTutorialHighlight(step);
+    this.updateLevelTutorialArrow(step);
+
+    if (step.autoNext && step.autoNextDelay) {
+      this.time.delayedCall(step.autoNextDelay, () => {
+        this.advanceLevelTutorialStep();
+      });
+    }
+
+    const isLastStep = this.currentLevelTutorialIndex >= this.levelTutorialSteps.length - 1;
+    const nextBtnText = this.tutorialContainer.getAt(5) as Phaser.GameObjects.Text;
+    if (nextBtnText) {
+      nextBtnText.setText(isLastStep ? '开始游戏' : '继续');
+    }
+  }
+
+  private updateLevelTutorialHighlight(step: TutorialStep): void {
+    this.highlightGraphics.clear();
+
+    if (step.highlight) {
+      const h = step.highlight;
+      this.highlightGraphics.lineStyle(4, 0x4caf50, 1);
+      this.highlightGraphics.fillStyle(0x4caf50, 0.2);
+
+      if (h.type === 'rect') {
+        this.highlightGraphics.strokeRoundedRect(h.x - h.width / 2, h.y - h.height / 2, h.width, h.height, 8);
+        this.highlightGraphics.fillRoundedRect(h.x - h.width / 2, h.y - h.height / 2, h.width, h.height, 8);
+      } else {
+        this.highlightGraphics.strokeCircle(h.x, h.y, h.width / 2);
+        this.highlightGraphics.fillCircle(h.x, h.y, h.width / 2);
+      }
+
+      if (h.pulse) {
+        this.highlightGraphics.setAlpha(0.6);
+        this.tweens.add({
+          targets: this.highlightGraphics,
+          alpha: 1,
+          duration: 600,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.easeInOut'
+        });
+      }
+    }
+  }
+
+  private updateLevelTutorialArrow(step: TutorialStep): void {
+    this.arrowGraphics.clear();
+
+    if (step.arrow) {
+      const a = step.arrow;
+      const color = a.color || 0x4caf50;
+
+      this.arrowGraphics.lineStyle(4, color, 1);
+      this.arrowGraphics.fillStyle(color, 1);
+
+      const angle = Math.atan2(a.endY - a.startY, a.endX - a.startX);
+      const headLen = 20;
+      const headAngle = Math.PI / 6;
+
+      this.arrowGraphics.beginPath();
+      this.arrowGraphics.moveTo(a.startX, a.startY);
+      this.arrowGraphics.lineTo(a.endX, a.endY);
+      this.arrowGraphics.strokePath();
+
+      this.arrowGraphics.beginPath();
+      this.arrowGraphics.moveTo(a.endX, a.endY);
+      this.arrowGraphics.lineTo(
+        a.endX - headLen * Math.cos(angle - headAngle),
+        a.endY - headLen * Math.sin(angle - headAngle)
+      );
+      this.arrowGraphics.lineTo(
+        a.endX - headLen * Math.cos(angle + headAngle),
+        a.endY - headLen * Math.sin(angle + headAngle)
+      );
+      this.arrowGraphics.closePath();
+      this.arrowGraphics.fillPath();
+    }
+  }
+
+  private advanceLevelTutorialStep(): void {
+    this.currentLevelTutorialIndex++;
+
+    if (this.currentLevelTutorialIndex >= this.levelTutorialSteps.length) {
+      this.hideLevelTutorialUI();
+      this.startTimer();
+    } else {
+      this.showLevelTutorialStep();
+    }
+  }
+
+  private hideLevelTutorialUI(): void {
+    this.isShowingLevelTutorial = false;
+    if (this.tutorialOverlay) {
+      this.tutorialOverlay.setAlpha(0);
+      this.tutorialOverlay.disableInteractive();
+    }
+    if (this.tutorialContainer) {
+      this.tutorialContainer.setAlpha(0);
+    }
+    if (this.highlightGraphics) {
+      this.highlightGraphics.clear();
+    }
+    if (this.arrowGraphics) {
+      this.arrowGraphics.clear();
+    }
   }
 }
