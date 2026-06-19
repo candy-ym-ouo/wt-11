@@ -51,7 +51,10 @@ export const EventGalleryItems: GalleryItem[] = EventLevelRules.map(rule => {
     description: specimen.description,
     specimenId: specimen.id,
     unlocked: false,
-    chapterId: event ? 999 : 1
+    chapterId: event ? 999 : 1,
+    isEventExclusive: true,
+    eventId: rule.eventId,
+    eventName: event?.name
   };
 });
 

@@ -1,11 +1,15 @@
 import Phaser from 'phaser';
-import { GalleryItems } from '../data/Levels';
+import { AllGalleryItems, EventGalleryItems } from '../data/Levels';
 import { SaveManager } from '../utils/SaveManager';
 import { GalleryItem } from '../types/GameTypes';
 import { Chapters, getChapterById } from '../data/Chapters';
+import { getActiveEvent } from '../data/Events';
+
+type FilterMode = 'all' | 'chapter' | 'event';
 
 export class GalleryScene extends Phaser.Scene {
   private selectedChapterId: number | null = null;
+  private filterMode: FilterMode = 'all';
 
   constructor() {
     super('GalleryScene');
@@ -46,29 +50,39 @@ export class GalleryScene extends Phaser.Scene {
     statsBg.fillRoundedRect(45, 130, 660, 60, 12);
 
     const unlockedCount = SaveManager.getUnlockedGalleryItems().length;
-    const totalCount = GalleryItems.length;
+    const totalCount = AllGalleryItems.length;
     const totalStars = SaveManager.getTotalStars();
+    const eventUnlocked = SaveManager.getUnlockedEventGalleryItems().length;
+    const eventTotal = EventGalleryItems.length;
 
-    this.add.text(85, 160, '📚', { font: '24px Arial' }).setOrigin(0, 0.5);
-    this.add.text(120, 160, `收集进度: ${unlockedCount} / ${totalCount}`, {
-      font: 'bold 18px Arial',
+    this.add.text(65, 160, '📚', { font: '22px Arial' }).setOrigin(0, 0.5);
+    this.add.text(95, 160, `${unlockedCount}/${totalCount}`, {
+      font: 'bold 16px Arial',
       color: '#4caf50'
     }).setOrigin(0, 0.5);
 
-    this.add.text(400, 160, '⭐', { font: '24px Arial' }).setOrigin(0, 0.5);
-    this.add.text(435, 160, `总星星: ${totalStars}`, {
-      font: 'bold 18px Arial',
+    this.add.text(240, 160, '⭐', { font: '22px Arial' }).setOrigin(0, 0.5);
+    this.add.text(270, 160, `${totalStars}`, {
+      font: 'bold 16px Arial',
       color: '#ffd700'
+    }).setOrigin(0, 0.5);
+
+    this.add.text(380, 160, '🌸', { font: '22px Arial' }).setOrigin(0, 0.5);
+    this.add.text(410, 160, `活动: ${eventUnlocked}/${eventTotal}`, {
+      font: 'bold 16px Arial',
+      color: '#e91e63'
     }).setOrigin(0, 0.5);
   }
 
   private addFilterTabs(): void {
     const tabY = 215;
-    const tabWidth = 180;
+    const tabWidth = 150;
     const tabHeight = 44;
-    const spacing = 10;
-    const tabs = Chapters.length + 1;
-    const totalWidth = tabWidth * tabs + spacing * (tabs - 1);
+    const spacing = 8;
+    const chapterTabs = Chapters.length;
+    const extraTabs = 2;
+    const totalTabs = chapterTabs + extraTabs;
+    const totalWidth = tabWidth * totalTabs + spacing * (totalTabs - 1);
     const startX = (750 - totalWidth) / 2 + tabWidth / 2;
 
     const allTab = this.createFilterTab(
@@ -77,17 +91,51 @@ export class GalleryScene extends Phaser.Scene {
       tabWidth,
       tabHeight,
       '全部',
-      this.selectedChapterId === null,
+      this.filterMode === 'all',
       0x607d8b,
       () => {
+        this.filterMode = 'all';
         this.selectedChapterId = null;
         this.scene.restart();
       }
     );
 
+    const activeEvent = getActiveEvent();
+    const eventColor = activeEvent ? activeEvent.primaryColor : 0xe91e63;
+    const eventUnlockedCount = SaveManager.getUnlockedEventGalleryItems().length;
+    const hasEventItems = EventGalleryItems.length > 0;
+
+    const eventTab = this.createFilterTab(
+      startX + 1 * (tabWidth + spacing),
+      tabY,
+      tabWidth,
+      tabHeight,
+      hasEventItems ? `🌸 活动限定` : '🌸 活动',
+      this.filterMode === 'event',
+      eventColor,
+      () => {
+        this.filterMode = 'event';
+        this.selectedChapterId = null;
+        this.scene.restart();
+      },
+      !hasEventItems
+    );
+
+    if (hasEventItems && eventUnlockedCount > 0) {
+      const badge = this.add.graphics();
+      badge.fillStyle(0xffeb3b, 1);
+      const badgeX = startX + 1 * (tabWidth + spacing) + tabWidth / 2 - 8;
+      const badgeY = tabY - tabHeight / 2 + 5;
+      badge.fillCircle(badgeX, badgeY, 12);
+      this.add.text(badgeX, badgeY, eventUnlockedCount.toString(), {
+        font: 'bold 11px Arial',
+        color: '#1a1a2e'
+      }).setOrigin(0.5);
+    }
+
     Chapters.forEach((chapter, index) => {
-      const x = startX + (index + 1) * (tabWidth + spacing);
-      const isSelected = this.selectedChapterId === chapter.id;
+      const x = startX + (index + extraTabs) * (tabWidth + spacing);
+      const isSelected = this.filterMode === 'chapter' && this.selectedChapterId === chapter.id;
       const unlocked = SaveManager.isChapterUnlocked(chapter.id);
 
       this.createFilterTab(
@@ -100,6 +148,7 @@ export class GalleryScene extends Phaser.Scene {
         chapter.primaryColor,
         () => {
           if (unlocked) {
+            this.filterMode = 'chapter';
             this.selectedChapterId = chapter.id;
             this.scene.restart();
           }
@@ -163,14 +212,21 @@ export class GalleryScene extends Phaser.Scene {
   }
 
   private addGalleryItems(): void {
-    let itemsToShow = GalleryItems;
-    if (this.selectedChapterId !== null) {
-      itemsToShow = GalleryItems.filter(item => item.chapterId === this.selectedChapterId);
+    let itemsToShow: GalleryItem[];
+    
+    if (this.filterMode === 'event') {
+      itemsToShow = EventGalleryItems;
+    } else if (this.filterMode === 'chapter' && this.selectedChapterId !== null) {
+      itemsToShow = AllGalleryItems.filter(item => 
+        item.chapterId === this.selectedChapterId && !item.isEventExclusive
+      );
+    } else {
+      itemsToShow = AllGalleryItems;
     }
 
     const startY = 290;
     const itemWidth = 320;
-    const itemHeight = 300;
+    const itemHeight = 310;
     const padding = 20;
     const cols = 2;
 
@@ -182,6 +238,13 @@ export class GalleryScene extends Phaser.Scene {
 
       this.createGalleryItem(x, y, itemWidth, itemHeight, item);
     });
+
+    if (itemsToShow.length === 0 && this.filterMode === 'event') {
+      this.add.text(375, 450, '暂无活动限定图鉴', {
+        font: '20px Arial',
+        color: '#888888'
+      }).setOrigin(0.5);
+    }
   }
 
   private createGalleryItem(
@@ -192,33 +255,50 @@ export class GalleryScene extends Phaser.Scene {
     item: GalleryItem
   ): void {
     const progress = SaveManager.getProgress(item.id);
-    const unlocked = SaveManager.isGalleryUnlocked(item.id);
+    const unlocked = SaveManager.isGalleryUnlocked(item.specimenId);
     const chapter = getChapterById(item.chapterId);
+    const isEvent = item.isEventExclusive;
 
     const card = this.add.graphics();
     card.fillStyle(unlocked ? 0x0f3460 : 0x333344, 1);
-    card.lineStyle(2, unlocked ? 0x4caf50 : 0x555566, 1);
+    
+    const borderColor = isEvent 
+      ? (unlocked ? 0xe91e63 : 0x662244) 
+      : (unlocked ? 0x4caf50 : 0x555566);
+    
+    card.lineStyle(2, borderColor, 1);
     card.strokeRoundedRect(x - width / 2, y - height / 2, width, height, 12);
     card.fillRoundedRect(x - width / 2, y - height / 2, width, height, 12);
 
-    if (chapter && !unlocked) {
-      const chapterBadge = this.add.graphics();
-      chapterBadge.fillStyle(chapter.primaryColor, 0.7);
-      chapterBadge.fillRoundedRect(x - width / 2 + 10, y - height / 2 + 10, 75, 26, 6);
+    const badgeBg = this.add.graphics();
+    const badgeColor = isEvent ? 0xe91e63 : (chapter?.primaryColor ?? 0x607d8b);
+    const badgeText = isEvent ? `🌸 ${item.eventName || '活动限定'}` : (chapter?.theme ?? '主线');
+    
+    badgeBg.fillStyle(badgeColor, unlocked ? 0.85 : 0.5);
+    badgeBg.fillRoundedRect(x - width / 2 + 10, y - height / 2 + 10, isEvent ? 110 : 75, 26, 6);
 
-      this.add.text(x - width / 2 + 47, y - height / 2 + 23, chapter.theme, {
-        font: 'bold 11px Arial',
-        color: '#ffffff'
-      }).setOrigin(0.5);
-    }
+    this.add.text(x - width / 2 + (isEvent ? 65 : 47), y - height / 2 + 23, badgeText, {
+      font: isEvent ? 'bold 11px Arial' : 'bold 11px Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5);
 
     const previewKey = `specimen-${item.specimenId}-preview`;
     const targetKey = `specimen-${item.specimenId}-target`;
-    const imageY = y - 75;
+    const imageY = y - 70;
 
     if (unlocked) {
       const img = this.add.image(x, imageY, previewKey);
       img.setDisplaySize(140, 140);
+      
+      if (isEvent) {
+        const cornerBadge = this.add.graphics();
+        cornerBadge.fillStyle(0xffd700, 1);
+        cornerBadge.fillCircle(x + width / 2 - 15, y - height / 2 + 60, 16);
+        this.add.text(x + width / 2 - 15, y - height / 2 + 60, '★', {
+          font: 'bold 18px Arial',
+          color: '#1a1a2e'
+        }).setOrigin(0.5);
+      }
     } else {
       this.add.image(x, imageY, 'lock').setScale(1.3);
     }
@@ -234,11 +314,16 @@ export class GalleryScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     if (unlocked && progress) {
-      this.drawStars(x, y + 85, progress.stars);
+      this.drawStars(x, y + 80, progress.stars);
 
-      this.add.text(x, y + 118, `最高分: ${progress.bestScore}`, {
+      this.add.text(x, y + 110, `最高分: ${progress.bestScore}`, {
         font: '14px Arial',
         color: '#ffd700'
+      }).setOrigin(0.5);
+    } else if (unlocked && isEvent && !progress) {
+      this.add.text(x, y + 85, '✨ 活动奖励解锁', {
+        font: '14px Arial',
+        color: '#ff80ab'
       }).setOrigin(0.5);
     }
 
@@ -275,30 +360,44 @@ export class GalleryScene extends Phaser.Scene {
     overlay.setInteractive();
     container.add(overlay);
 
+    const isEvent = item.isEventExclusive;
+    const headerColor = isEvent ? 0xe91e63 : 0xe94560;
+
     const modal = this.add.graphics();
     modal.fillStyle(0x16213e, 1);
-    modal.fillRoundedRect(75, 280, 600, 680, 20);
-    modal.lineStyle(3, 0xe94560, 1);
-    modal.strokeRoundedRect(75, 280, 600, 680, 20);
+    modal.fillRoundedRect(75, 280, 600, 720, 20);
+    modal.lineStyle(3, headerColor, 1);
+    modal.strokeRoundedRect(75, 280, 600, 720, 20);
     container.add(modal);
 
-    const img = this.add.image(375, 420, targetKey);
+    const img = this.add.image(375, 440, targetKey);
     img.setDisplaySize(360, 288);
     container.add(img);
 
-    const nameText = this.add.text(375, 585, item.name, {
+    if (isEvent) {
+      const eventBadge = this.add.graphics();
+      eventBadge.fillStyle(0xe91e63, 0.95);
+      eventBadge.fillRoundedRect(240, 300, 270, 36, 18);
+      this.add.text(375, 318, `🌸 ${item.eventName || '活动限定'} 专属图鉴`, {
+        font: 'bold 16px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+      container.add(eventBadge);
+    }
+
+    const nameText = this.add.text(375, 600, item.name, {
       font: 'bold 32px Arial',
       color: '#ffffff'
     }).setOrigin(0.5);
     container.add(nameText);
 
-    const familyText = this.add.text(375, 625, item.family, {
+    const familyText = this.add.text(375, 640, item.family, {
       font: '20px Arial',
       color: '#aaaaaa'
     }).setOrigin(0.5);
     container.add(familyText);
 
-    const descText = this.add.text(375, 710, item.description, {
+    const descText = this.add.text(375, 725, item.description, {
       font: '17px Arial',
       color: '#eaeaea',
       align: 'center',
@@ -306,64 +405,92 @@ export class GalleryScene extends Phaser.Scene {
     }).setOrigin(0.5);
     container.add(descText);
 
+    if (isEvent) {
+      const eventTagBg = this.add.graphics();
+      eventTagBg.fillStyle(0x2d0a1a, 0.8);
+      eventTagBg.fillRoundedRect(150, 800, 450, 40, 10);
+      eventTagBg.lineStyle(1, 0xe91e63, 0.5);
+      eventTagBg.strokeRoundedRect(150, 800, 450, 40, 10);
+      this.add.text(375, 820, '✨ 通过活动奖励获得的限定标本', {
+        font: '15px Arial',
+        color: '#ff80ab'
+      }).setOrigin(0.5);
+      container.add(eventTagBg);
+    }
+
     const progress = SaveManager.getProgress(item.id);
     if (progress) {
       const statsBg = this.add.graphics();
       statsBg.fillStyle(0x0f3460, 0.8);
-      statsBg.fillRoundedRect(125, 790, 500, 60, 12);
+      statsBg.fillRoundedRect(125, 860, 500, 60, 12);
       container.add(statsBg);
 
-      this.add.text(175, 820, '🏆 最高分', {
+      this.add.text(175, 890, '🏆 最高分', {
         font: '14px Arial',
         color: '#888888'
       }).setOrigin(0, 0.5);
-      container.add(this.add.text(275, 820, progress.bestScore.toLocaleString(), {
+      container.add(this.add.text(275, 890, progress.bestScore.toLocaleString(), {
         font: 'bold 20px Arial',
         color: '#ffd700'
       }).setOrigin(0, 0.5));
 
-      this.add.text(375, 820, '⏱️ 最快', {
+      this.add.text(375, 890, '⏱️ 最快', {
         font: '14px Arial',
         color: '#888888'
       }).setOrigin(0, 0.5);
       const mins = Math.floor(progress.bestTime / 60);
       const secs = Math.floor(progress.bestTime % 60);
-      container.add(this.add.text(435, 820, `${mins}:${secs.toString().padStart(2, '0')}`, {
+      container.add(this.add.text(435, 890, `${mins}:${secs.toString().padStart(2, '0')}`, {
         font: 'bold 20px Arial',
         color: '#2196f3'
       }).setOrigin(0, 0.5));
 
-      this.drawStars(545, 820, progress.stars);
+      this.drawStars(545, 890, progress.stars);
+    } else if (isEvent) {
+      const rewardInfoBg = this.add.graphics();
+      rewardInfoBg.fillStyle(0x0f3460, 0.8);
+      rewardInfoBg.fillRoundedRect(125, 860, 500, 50, 12);
+      this.add.text(375, 885, '🎁 通过参与活动积累积分解锁此图鉴', {
+        font: '15px Arial',
+        color: '#81c784'
+      }).setOrigin(0.5);
+      container.add(rewardInfoBg);
     }
 
     const closeBtn = this.add.graphics();
-    closeBtn.fillStyle(0xe94560, 1);
-    closeBtn.fillRoundedRect(275, 880, 200, 60, 15);
+    closeBtn.fillStyle(headerColor, 1);
+    closeBtn.fillRoundedRect(275, 950, 200, 60, 15);
     closeBtn.setInteractive(
-      new Phaser.Geom.Rectangle(275, 880, 200, 60),
+      new Phaser.Geom.Rectangle(275, 950, 200, 60),
       Phaser.Geom.Rectangle.Contains
     );
     container.add(closeBtn);
 
-    const closeBtnText = this.add.text(375, 910, '关闭', {
+    const closeBtnText = this.add.text(375, 980, '关闭', {
       font: 'bold 22px Arial',
       color: '#ffffff'
     }).setOrigin(0.5);
     container.add(closeBtnText);
 
-    const playBtn = this.add.graphics();
-    playBtn.fillStyle(0x4caf50, 1);
-    playBtn.fillRoundedRect(125, 950, 500, 55, 12);
-    playBtn.setInteractive(
-      new Phaser.Geom.Rectangle(125, 950, 500, 55),
-      Phaser.Geom.Rectangle.Contains
-    );
-    container.add(playBtn);
+    if (!isEvent) {
+      const playBtn = this.add.graphics();
+      playBtn.fillStyle(0x4caf50, 1);
+      playBtn.fillRoundedRect(125, 1020, 500, 55, 12);
+      playBtn.setInteractive(
+        new Phaser.Geom.Rectangle(125, 1020, 500, 55),
+        Phaser.Geom.Rectangle.Contains
+      );
+      container.add(playBtn);
 
-    this.add.text(375, 977, '🎮 挑战此关卡', {
-      font: 'bold 18px Arial',
-      color: '#ffffff'
-    }).setOrigin(0.5);
+      this.add.text(375, 1047, '🎮 挑战此关卡', {
+        font: 'bold 18px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+
+      playBtn.on('pointerup', () => {
+        this.scene.start('GameScene', { levelId: item.id });
+      });
+    }
 
     const close = () => {
       container.destroy();
@@ -371,10 +498,6 @@ export class GalleryScene extends Phaser.Scene {
 
     closeBtn.on('pointerup', close);
     overlay.on('pointerup', close);
-
-    playBtn.on('pointerup', () => {
-      this.scene.start('GameScene', { levelId: item.id });
-    });
   }
 
   private addBackButton(): void {

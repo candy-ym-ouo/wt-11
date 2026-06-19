@@ -241,11 +241,13 @@ export class SaveManager {
   }
 
   static isGalleryUnlocked(specimenId: number): boolean {
-    return this.data.galleryUnlocked.includes(specimenId);
+    return this.data.galleryUnlocked.includes(specimenId) 
+        || this.data.event.eventGalleryUnlocked.includes(specimenId);
   }
 
   static getUnlockedGalleryItems(): number[] {
-    return [...this.data.galleryUnlocked];
+    const combined = [...new Set([...this.data.galleryUnlocked, ...this.data.event.eventGalleryUnlocked])];
+    return combined;
   }
 
   static hasBadge(badgeId: number): boolean {

@@ -70,6 +70,9 @@ export interface GalleryItem {
   specimenId: number;
   unlocked: boolean;
   chapterId: number;
+  isEventExclusive?: boolean;
+  eventId?: string;
+  eventName?: string;
 }
 
 export interface Reward {

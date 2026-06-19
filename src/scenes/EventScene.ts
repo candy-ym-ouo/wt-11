@@ -23,6 +23,13 @@ export class EventScene extends Phaser.Scene {
       this.showNoActiveEvent();
       return;
     }
+
+    const access = EventManager.canAccessEvent(event.id);
+    if (!access.allowed) {
+      this.showLockedEvent(event, access);
+      return;
+    }
+
     this.eventData = event;
 
     this.addBackground();
@@ -34,6 +41,81 @@ export class EventScene extends Phaser.Scene {
     this.addLevelPreview();
     this.addBackButton();
     this.startCountdownTimer();
+  }
+
+  private showLockedEvent(event: EventData, access: { allowed: boolean; reason: string; required: number; current: number }): void {
+    this.cameras.main.setBackgroundColor('#1a1a2e');
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0x16213e, 1);
+    bg.fillRoundedRect(25, 80, 700, 1180, 20);
+
+    this.add.text(375, 200, '🔒', {
+      font: '120px Arial'
+    }).setOrigin(0.5);
+
+    this.add.text(375, 320, event.name, {
+      font: 'bold 36px Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+
+    this.add.text(375, 380, '活动未解锁', {
+      font: 'bold 28px Arial',
+      color: '#ff7043'
+    }).setOrigin(0.5);
+
+    this.add.text(375, 450, access.reason, {
+      font: '20px Arial',
+      color: '#aaaaaa'
+    }).setOrigin(0.5);
+
+    const progressBg = this.add.graphics();
+    progressBg.fillStyle(0x0f3460, 1);
+    progressBg.fillRoundedRect(125, 500, 500, 40, 20);
+
+    const progress = access.current / access.required;
+    const progressFill = this.add.graphics();
+    progressFill.fillStyle(0xff9800, 1);
+    progressFill.fillRoundedRect(125, 500, 500 * Math.min(progress, 1), 40, 20);
+
+    this.add.text(375, 520, `主线通关进度: ${access.current} / ${access.required}`, {
+      font: 'bold 16px Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+
+    this.add.text(375, 620, '💡 先去完成主线关卡解锁活动吧！', {
+      font: '18px Arial',
+      color: '#81c784'
+    }).setOrigin(0.5);
+
+    const backBtn = this.add.graphics();
+    backBtn.fillStyle(0xe94560, 1);
+    backBtn.fillRoundedRect(200, 750, 350, 70, 15);
+    backBtn.setInteractive(
+      new Phaser.Geom.Rectangle(200, 750, 350, 70),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    this.add.text(375, 785, '返回主线', {
+      font: 'bold 22px Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+
+    backBtn.on('pointerup', () => {
+      this.scene.start('ChapterSelectScene');
+    });
+
+    backBtn.on('pointerover', () => {
+      backBtn.clear();
+      backBtn.fillStyle(0xff6b8a, 1);
+      backBtn.fillRoundedRect(200, 750, 350, 70, 15);
+    });
+
+    backBtn.on('pointerout', () => {
+      backBtn.clear();
+      backBtn.fillStyle(0xe94560, 1);
+      backBtn.fillRoundedRect(200, 750, 350, 70, 15);
+    });
   }
 
   private showNoActiveEvent(): void {

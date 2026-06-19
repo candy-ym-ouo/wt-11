@@ -94,21 +94,36 @@ export class EventManager {
     return `${time.hours.toString().padStart(2, '0')}:${time.minutes.toString().padStart(2, '0')}:${time.seconds.toString().padStart(2, '0')}`;
   }
 
-  static canAccessEvent(eventId: string): boolean {
+  static canAccessEvent(eventId: string): { allowed: boolean; reason: string; required: number; current: number } {
     const event = getEventById(eventId);
-    if (!event) return false;
+    if (!event) return { allowed: false, reason: '活动不存在', required: 0, current: 0 };
+    
     const status = this.getEventStatus(event);
-    if (status !== 'active') return false;
+    if (status === 'not_started') return { allowed: false, reason: '活动尚未开始', required: event.requiredMainProgress, current: 0 };
+    if (status === 'ended') return { allowed: false, reason: '活动已结束', required: event.requiredMainProgress, current: 0 };
 
-    const progress = SaveManager.getCompletedEventLevelsCount('dummy') || 0;
-    const totalCompleted = Object.values(SaveManager.getAllProgress()).filter(p => p.completed).length;
-    return totalCompleted >= event.requiredMainProgress || progress >= 0;
+    const mainCompletedLevels = Object.values(SaveManager.getAllProgress())
+      .filter(p => p.completed && p.levelId < 1000).length;
+    
+    const required = event.requiredMainProgress;
+    const current = mainCompletedLevels;
+    
+    if (current < required) {
+      return { 
+        allowed: false, 
+        reason: `需通关 ${required} 个主线关卡`, 
+        required, 
+        current 
+      };
+    }
+    
+    return { allowed: true, reason: '', required, current };
   }
 
   static isEventAccessible(): boolean {
     const event = this.getCurrentEvent();
     if (!event) return false;
-    return this.canAccessEvent(event.id);
+    return this.canAccessEvent(event.id).allowed;
   }
 
   static generateRanking(eventId: string, forceRefresh: boolean = false): EventRankingData {

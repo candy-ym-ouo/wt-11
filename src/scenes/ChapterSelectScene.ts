@@ -82,63 +82,85 @@ export class ChapterSelectScene extends Phaser.Scene {
 
     const bannerY = 230;
     const bannerH = 90;
+    const access = EventManager.canAccessEvent(activeEvent.id);
+    const canEnter = access.allowed;
+    const eventStatus = EventManager.getEventStatus(activeEvent);
 
     const banner = this.add.graphics();
 
     const gradientSteps = 15;
     for (let i = 0; i < gradientSteps; i++) {
       const t = i / gradientSteps;
-      const r = Math.floor(((activeEvent.primaryColor >> 16) & 0xff) * (1 - t) + ((activeEvent.secondaryColor >> 16) & 0xff) * t);
-      const g = Math.floor(((activeEvent.primaryColor >> 8) & 0xff) * (1 - t) + ((activeEvent.secondaryColor >> 8) & 0xff) * t);
-      const b = Math.floor((activeEvent.primaryColor & 0xff) * (1 - t) + (activeEvent.secondaryColor & 0xff) * t);
+      const baseColor = canEnter ? activeEvent.primaryColor : 0x555555;
+      const baseColor2 = canEnter ? activeEvent.secondaryColor : 0x333333;
+      const r = Math.floor(((baseColor >> 16) & 0xff) * (1 - t) + ((baseColor2 >> 16) & 0xff) * t);
+      const g = Math.floor(((baseColor >> 8) & 0xff) * (1 - t) + ((baseColor2 >> 8) & 0xff) * t);
+      const b = Math.floor((baseColor & 0xff) * (1 - t) + (baseColor2 & 0xff) * t);
       const color = (r << 16) | (g << 8) | b;
-      banner.fillStyle(color, 0.95);
+      banner.fillStyle(color, canEnter ? 0.95 : 0.6);
       banner.fillRect(45 + (660 * i) / gradientSteps, bannerY - bannerH / 2, 660 / gradientSteps + 1, bannerH);
     }
     banner.fillRoundedRect(45, bannerY - bannerH / 2, 660, bannerH, 16);
 
-    banner.lineStyle(3, activeEvent.accentColor, 1);
+    const borderColor = canEnter ? activeEvent.accentColor : 0x666666;
+    banner.lineStyle(3, borderColor, 1);
     banner.strokeRoundedRect(45, bannerY - bannerH / 2, 660, bannerH, 16);
 
-    this.add.text(80, bannerY, activeEvent.banner, {
+    this.add.text(80, bannerY, canEnter ? activeEvent.banner : '🔒', {
       font: '42px Arial'
     }).setOrigin(0, 0.5);
 
     this.add.text(140, bannerY - 18, `🔥 ${activeEvent.name}`, {
       font: 'bold 22px Arial',
-      color: '#ffffff'
+      color: canEnter ? '#ffffff' : '#aaaaaa'
     }).setOrigin(0, 0.5);
 
-    const status = EventManager.getEventStatus(activeEvent);
-    let countdownLabel = '';
-    if (status === 'active') {
+    let statusLabel = '';
+    let statusColor = '#ffffff';
+    if (!canEnter) {
+      statusLabel = access.reason;
+      statusColor = '#ffcc80';
+    } else if (eventStatus === 'active') {
       const time = EventManager.getTimeRemaining(activeEvent.endTime);
-      countdownLabel = `剩余: ${EventManager.formatCountdown(time)}`;
-    } else if (status === 'not_started') {
+      statusLabel = `剩余: ${EventManager.formatCountdown(time)}`;
+      statusColor = 'rgba(255,255,255,0.85)';
+    } else if (eventStatus === 'not_started') {
       const time = EventManager.getTimeUntilStart(activeEvent.startTime);
-      countdownLabel = `距开始: ${EventManager.formatCountdown(time)}`;
+      statusLabel = `距开始: ${EventManager.formatCountdown(time)}`;
+      statusColor = 'rgba(255,255,255,0.85)';
     } else {
-      countdownLabel = '活动已结束';
+      statusLabel = '活动已结束';
+      statusColor = 'rgba(255,255,255,0.6)';
     }
-    this.add.text(140, bannerY + 15, countdownLabel, {
+
+    this.add.text(140, bannerY + 15, statusLabel, {
       font: '14px Arial',
-      color: 'rgba(255,255,255,0.85)'
+      color: statusColor
     }).setOrigin(0, 0.5);
+
+    if (!canEnter) {
+      const lockBg = this.add.graphics();
+      lockBg.fillStyle(0x000000, 0.5);
+      lockBg.fillRoundedRect(140, bannerY - 38, 200, 22, 6);
+      this.add.text(240, bannerY - 27, `进度: ${access.current}/${access.required}`, {
+        font: 'bold 12px Arial',
+        color: '#ffd54f'
+      }).setOrigin(0.5);
+    }
 
     const eventScore = SaveManager.getEventTotalScore(activeEvent.id);
-    const canEnter = status === 'active';
-    const btnColor = canEnter ? 0xffffff : 0xcccccc;
+    const btnColor = canEnter ? 0xffffff : 0x888888;
 
     const goBtn = this.add.graphics();
-    goBtn.fillStyle(btnColor, canEnter ? 1 : 0.6);
+    goBtn.fillStyle(btnColor, canEnter ? 1 : 0.5);
     goBtn.fillRoundedRect(610, bannerY - 25, 80, 50, 12);
 
-    this.add.text(650, bannerY, '进入 →', {
+    this.add.text(650, bannerY, canEnter ? '进入 →' : '未解锁', {
       font: 'bold 16px Arial',
-      color: '#' + activeEvent.primaryColor.toString(16).padStart(6, '0')
+      color: canEnter ? '#' + activeEvent.primaryColor.toString(16).padStart(6, '0') : '#555555'
     }).setOrigin(0.5);
 
-    if (eventScore > 0) {
+    if (eventScore > 0 && canEnter) {
       const scoreBadge = this.add.graphics();
       scoreBadge.fillStyle(0x000000, 0.4);
       scoreBadge.fillRoundedRect(500, bannerY - 25, 100, 22, 6);
@@ -149,7 +171,7 @@ export class ChapterSelectScene extends Phaser.Scene {
     }
 
     const claimable = SaveManager.getClaimableEventRewards(activeEvent.id);
-    if (claimable.length > 0 && status === 'active') {
+    if (claimable.length > 0 && canEnter) {
       const badge = this.add.graphics();
       badge.fillStyle(0xffeb3b, 1);
       badge.fillCircle(690, bannerY - 30, 14);
@@ -159,32 +181,34 @@ export class ChapterSelectScene extends Phaser.Scene {
       }).setOrigin(0.5);
     }
 
-    banner.setInteractive(
-      new Phaser.Geom.Rectangle(45, bannerY - bannerH / 2, 660, bannerH),
-      Phaser.Geom.Rectangle.Contains
-    );
-    goBtn.setInteractive(
-      new Phaser.Geom.Rectangle(610, bannerY - 25, 80, 50),
-      Phaser.Geom.Rectangle.Contains
-    );
+    if (canEnter) {
+      banner.setInteractive(
+        new Phaser.Geom.Rectangle(45, bannerY - bannerH / 2, 660, bannerH),
+        Phaser.Geom.Rectangle.Contains
+      );
+      goBtn.setInteractive(
+        new Phaser.Geom.Rectangle(610, bannerY - 25, 80, 50),
+        Phaser.Geom.Rectangle.Contains
+      );
 
-    const goToEvent = () => {
-      if (canEnter) {
-        this.scene.start('EventScene');
-      }
-    };
+      const goToEvent = () => {
+        if (canEnter) {
+          this.scene.start('EventScene');
+        }
+      };
 
-    banner.on('pointerup', goToEvent);
-    goBtn.on('pointerup', goToEvent);
+      banner.on('pointerup', goToEvent);
+      goBtn.on('pointerup', goToEvent);
 
-    banner.on('pointerover', () => {
-      if (canEnter) {
-        banner.lineStyle(3, 0xffffff, 1);
-      }
-    });
-    banner.on('pointerout', () => {
-      banner.lineStyle(3, activeEvent.accentColor, 1);
-    });
+      banner.on('pointerover', () => {
+        if (canEnter) {
+          banner.lineStyle(3, 0xffffff, 1);
+        }
+      });
+      banner.on('pointerout', () => {
+        banner.lineStyle(3, borderColor, 1);
+      });
+    }
   }
 
   private addChapterCards(): void {
