@@ -745,6 +745,119 @@ export interface ConservationSaveData {
   dismissedReminders: number[];
 }
 
+export type SeasonPassTrackType = 'restore' | 'score' | 'gallery';
+export type SeasonPassRewardType = 'score' | 'fragment' | 'material' | 'badge' | 'specimen' | 'research_point' | 'title';
+export type SeasonPassQuestStatus = 'pending' | 'in_progress' | 'completed' | 'claimed';
+export type SeasonPassRewardTier = 'free' | 'premium';
+
+export interface SeasonPassReward {
+  id: number;
+  type: SeasonPassRewardType;
+  name: string;
+  description: string;
+  icon: string;
+  rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  value?: number;
+  fragmentId?: number;
+  materialId?: number;
+  badgeId?: number;
+  specimenId?: number;
+  titleId?: number;
+}
+
+export interface SeasonPassTier {
+  level: number;
+  trackType: SeasonPassTrackType;
+  threshold: number;
+  freeReward?: SeasonPassReward;
+  premiumReward?: SeasonPassReward;
+}
+
+export interface SeasonPassQuest {
+  id: string;
+  title: string;
+  description: string;
+  trackType: SeasonPassTrackType;
+  targetCount: number;
+  currentProgress: number;
+  status: SeasonPassQuestStatus;
+  rewards: SeasonPassReward[];
+  difficulty: 'easy' | 'medium' | 'hard';
+  expiresAt: number;
+  createdAt: number;
+  completedAt?: number;
+  claimedAt?: number;
+  targetSpecimenId?: number;
+  targetLevelId?: number;
+  targetScore?: number;
+}
+
+export interface SeasonPassQuestConfig {
+  id: string;
+  title: string;
+  description: string;
+  trackType: SeasonPassTrackType;
+  targetCount: number;
+  rewards: SeasonPassReward[];
+  difficulty: 'easy' | 'medium' | 'hard';
+  durationDays: number;
+  targetSpecimenId?: number;
+  targetLevelId?: number;
+  targetScore?: number;
+}
+
+export interface SeasonPassProgress {
+  trackType: SeasonPassTrackType;
+  currentValue: number;
+  currentLevel: number;
+  maxLevel: number;
+  nextLevelThreshold: number;
+  totalXp: number;
+}
+
+export interface SeasonPassTrackProgress {
+  restore: SeasonPassProgress;
+  score: SeasonPassProgress;
+  gallery: SeasonPassProgress;
+}
+
+export interface SeasonPassSaveData {
+  seasonId: string;
+  seasonName: string;
+  isPremium: boolean;
+  startDate: number;
+  endDate: number;
+  trackProgress: SeasonPassTrackProgress;
+  rewardsClaimed: Record<string, Record<number, boolean>>;
+  quests: Record<string, SeasonPassQuest>;
+  lastRefreshDate: string;
+  refreshCount: number;
+  totalRestores: number;
+  totalScoreGain: number;
+  totalGalleryUnlocks: number;
+  completedQuests: number;
+  claimedQuests: number;
+  pendingRewards: SeasonPassReward[];
+}
+
+export interface SeasonPassClaimResult {
+  success: boolean;
+  trackType: SeasonPassTrackType;
+  level: number;
+  tier: SeasonPassRewardTier;
+  reward: SeasonPassReward;
+}
+
+export interface SeasonPassUpdateResult {
+  trackType: SeasonPassTrackType;
+  oldValue: number;
+  newValue: number;
+  oldLevel: number;
+  newLevel: number;
+  leveledUp: boolean;
+  newlyUnlockedRewards: { level: number; tier: SeasonPassRewardTier; reward: SeasonPassReward; tierConfig: SeasonPassTier }[];
+}
+
 export interface SaveData {
   progress: Record<number, LevelProgress>;
   chapterProgress: Record<number, ChapterProgress>;
@@ -763,4 +876,5 @@ export interface SaveData {
   tutorial: TutorialSaveData;
   conservation: ConservationSaveData;
   familyCollection: FamilyCollectionSaveData;
+  seasonPass: SeasonPassSaveData;
 }

@@ -10,6 +10,7 @@ import { getAllExhibitionThemes } from '../data/ExhibitionConfig';
 import { ConservationManager } from '../utils/ConservationManager';
 import { getPlantSpecimen } from '../data/PlantSpecimens';
 import { PlantFamilies } from '../data/PlantFamilies';
+import { SeasonPassManager } from '../utils/SeasonPassManager';
 
 export class ChapterSelectScene extends Phaser.Scene {
   constructor() {
@@ -24,6 +25,7 @@ export class ChapterSelectScene extends Phaser.Scene {
     this.addTowerBanner();
     this.addExhibitionBanner();
     this.addAchievementBanner();
+    this.addSeasonPassBanner();
     this.addChapterCards();
     this.addBottomButtons();
 
@@ -707,8 +709,100 @@ export class ChapterSelectScene extends Phaser.Scene {
     });
   }
 
+  private addSeasonPassBanner(): void {
+    const bannerY = 655;
+    const bannerH = 80;
+    const seasonInfo = SeasonPassManager.getSeasonInfo();
+    const stats = SeasonPassManager.getTotalStats();
+    const trackProgress = SeasonPassManager.getAllTrackProgress();
+    const isPremium = SeasonPassManager.isPremium();
+    const hasClaimable = SeasonPassManager.hasClaimableRewards();
+
+    const totalProgress = Math.floor(
+      ((trackProgress.restore.currentLevel + trackProgress.score.currentLevel + trackProgress.gallery.currentLevel) / 60) * 100
+    );
+
+    const banner = this.add.graphics();
+
+    const gradientSteps = 15;
+    for (let i = 0; i < gradientSteps; i++) {
+      const t = i / gradientSteps;
+      const baseColor = isPremium ? 0x9c27b0 : 0x4caf50;
+      const baseColor2 = isPremium ? 0xff9800 : 0x2196f3;
+      const r = Math.floor(((baseColor >> 16) & 0xff) * (1 - t) + ((baseColor2 >> 16) & 0xff) * t);
+      const g = Math.floor(((baseColor >> 8) & 0xff) * (1 - t) + ((baseColor2 >> 8) & 0xff) * t);
+      const b = Math.floor((baseColor & 0xff) * (1 - t) + (baseColor2 & 0xff) * t);
+      const color = (r << 16) | (g << 8) | b;
+      banner.fillStyle(color, 0.95);
+      banner.fillRect(45 + (660 * i) / gradientSteps, bannerY - bannerH / 2, 660 / gradientSteps + 1, bannerH);
+    }
+    banner.fillRoundedRect(45, bannerY - bannerH / 2, 660, bannerH, 16);
+
+    const borderColor = isPremium ? 0xffd700 : 0xffffff;
+    banner.lineStyle(3, borderColor, 0.7);
+    banner.strokeRoundedRect(45, bannerY - bannerH / 2, 660, bannerH, 16);
+
+    this.add.text(80, bannerY, isPremium ? '👑' : '🎫', {
+      font: '38px Arial'
+    }).setOrigin(0, 0.5);
+
+    this.add.text(140, bannerY - 15, `${seasonInfo.seasonName} · 赛季通行证`, {
+      font: 'bold 20px Arial',
+      color: '#ffffff'
+    }).setOrigin(0, 0.5);
+
+    const statusText = `进度 ${totalProgress}% · 修复 ${stats.totalRestores}次 · 图鉴 ${stats.totalGalleryUnlocks}种`;
+    this.add.text(140, bannerY + 15, statusText, {
+      font: '14px Arial',
+      color: 'rgba(255,255,255,0.9)'
+    }).setOrigin(0, 0.5);
+
+    const goBtn = this.add.graphics();
+    goBtn.fillStyle(0xffffff, 1);
+    goBtn.fillRoundedRect(610, bannerY - 22, 80, 44, 12);
+
+    const btnColor = isPremium ? '#9c27b0' : '#2e7d32';
+    this.add.text(650, bannerY, '查看 →', {
+      font: 'bold 15px Arial',
+      color: btnColor
+    }).setOrigin(0.5);
+
+    if (hasClaimable) {
+      const badge = this.add.graphics();
+      badge.fillStyle(0xff1744, 1);
+      badge.fillCircle(695, bannerY - 28, 14);
+      this.add.text(695, bannerY - 28, '!', {
+        font: 'bold 14px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+    }
+
+    banner.setInteractive(
+      new Phaser.Geom.Rectangle(45, bannerY - bannerH / 2, 660, bannerH),
+      Phaser.Geom.Rectangle.Contains
+    );
+    goBtn.setInteractive(
+      new Phaser.Geom.Rectangle(610, bannerY - 22, 80, 44),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    const goToSeasonPass = () => {
+      this.scene.start('SeasonPassScene');
+    };
+
+    banner.on('pointerup', goToSeasonPass);
+    goBtn.on('pointerup', goToSeasonPass);
+
+    banner.on('pointerover', () => {
+      banner.lineStyle(3, 0xffffff, 1);
+    });
+    banner.on('pointerout', () => {
+      banner.lineStyle(3, borderColor, 0.7);
+    });
+  }
+
   private addChapterCards(): void {
-    const startY = 660;
+    const startY = 770;
     const cardWidth = 660;
     const cardHeight = 280;
     const padding = 25;
@@ -970,10 +1064,10 @@ export class ChapterSelectScene extends Phaser.Scene {
 
   private addBottomButtons(): void {
     const btnY = 1230;
-    const btnW = 110;
+    const btnW = 95;
     const btnH = 60;
-    const spacing = 6;
-    const totalW = btnW * 6 + spacing * 5;
+    const spacing = 5;
+    const totalW = btnW * 7 + spacing * 6;
     const startX = 375 - totalW / 2 + btnW / 2;
 
     const labBtn = this.createBottomButton(
@@ -1016,8 +1110,18 @@ export class ChapterSelectScene extends Phaser.Scene {
       () => this.scene.start('GalleryScene')
     );
 
-    const familyBtn = this.createBottomButton(
+    const seasonBtn = this.createBottomButton(
       startX + 4 * (btnW + spacing),
+      btnY,
+      btnW,
+      btnH,
+      '🎫 通行证',
+      0x00bcd4,
+      () => this.scene.start('SeasonPassScene')
+    );
+
+    const familyBtn = this.createBottomButton(
+      startX + 5 * (btnW + spacing),
       btnY,
       btnW,
       btnH,
@@ -1027,7 +1131,7 @@ export class ChapterSelectScene extends Phaser.Scene {
     );
 
     const levelsBtn = this.createBottomButton(
-      startX + 5 * (btnW + spacing),
+      startX + 6 * (btnW + spacing),
       btnY,
       btnW,
       btnH,
@@ -1046,10 +1150,20 @@ export class ChapterSelectScene extends Phaser.Scene {
     if (hasClaimableRewards) {
       const badge = this.add.graphics();
       badge.fillStyle(0xffeb3b, 1);
-      badge.fillCircle(startX + 4 * (btnW + spacing) + btnW / 2 - 15, btnY - btnH / 2 + 10, 12);
-      this.add.text(startX + 4 * (btnW + spacing) + btnW / 2 - 15, btnY - btnH / 2 + 10, '!', {
+      badge.fillCircle(startX + 5 * (btnW + spacing) + btnW / 2 - 15, btnY - btnH / 2 + 10, 12);
+      this.add.text(startX + 5 * (btnW + spacing) + btnW / 2 - 15, btnY - btnH / 2 + 10, '!', {
         font: 'bold 12px Arial',
         color: '#1a1a2e'
+      }).setOrigin(0.5);
+    }
+
+    if (SeasonPassManager.hasClaimableRewards()) {
+      const badge = this.add.graphics();
+      badge.fillStyle(0xff1744, 1);
+      badge.fillCircle(startX + 4 * (btnW + spacing) + btnW / 2 - 10, btnY - btnH / 2 + 10, 12);
+      this.add.text(startX + 4 * (btnW + spacing) + btnW / 2 - 10, btnY - btnH / 2 + 10, '!', {
+        font: 'bold 12px Arial',
+        color: '#ffffff'
       }).setOrigin(0.5);
     }
   }

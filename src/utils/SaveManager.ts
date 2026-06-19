@@ -35,6 +35,8 @@ import { TowerFloors, getTowerFloor } from '../data/TowerConfig';
 import { TowerSaveData, TowerFloorProgress, TowerReward, TowerResultData, ExhibitionSaveData, ExhibitionProgress, ExhibitionSpecimenSubmission, ExhibitionReward, AchievementSaveData, AchievementUnlockResult, ConservationSaveData, ConservationHealthLevel, FamilyCollectionSaveData, FamilyProgress, FamilyReward } from '../types/GameTypes';
 import { ExhibitionThemes, getExhibitionTheme, getBadgesByThemeId, getExhibitionBadge } from '../data/ExhibitionConfig';
 import { AchievementManager } from './AchievementManager';
+import { SeasonPassManager } from './SeasonPassManager';
+import { SeasonPassSaveData } from '../types/GameTypes';
 
 const STORAGE_KEY = 'plant_specimen_puzzle_save';
 
@@ -62,6 +64,7 @@ export class SaveManager {
     AchievementManager.init(this.data.achievement);
     TutorialManager.init(this.data.tutorial);
     ConservationManager.init(this.data.conservation);
+    SeasonPassManager.init(this.data.seasonPass);
     this.save();
   }
 
@@ -313,6 +316,47 @@ export class SaveManager {
       }
     }
 
+    if (!oldData.seasonPass) {
+      oldData.seasonPass = defaultData.seasonPass;
+    } else {
+      if (!oldData.seasonPass.trackProgress) {
+        oldData.seasonPass.trackProgress = defaultData.seasonPass.trackProgress;
+      }
+      if (!oldData.seasonPass.rewardsClaimed) {
+        oldData.seasonPass.rewardsClaimed = defaultData.seasonPass.rewardsClaimed;
+      }
+      if (!oldData.seasonPass.quests) {
+        oldData.seasonPass.quests = defaultData.seasonPass.quests;
+      }
+      if (oldData.seasonPass.lastRefreshDate === undefined) {
+        oldData.seasonPass.lastRefreshDate = '';
+      }
+      if (oldData.seasonPass.refreshCount === undefined) {
+        oldData.seasonPass.refreshCount = 0;
+      }
+      if (oldData.seasonPass.totalRestores === undefined) {
+        oldData.seasonPass.totalRestores = 0;
+      }
+      if (oldData.seasonPass.totalScoreGain === undefined) {
+        oldData.seasonPass.totalScoreGain = 0;
+      }
+      if (oldData.seasonPass.totalGalleryUnlocks === undefined) {
+        oldData.seasonPass.totalGalleryUnlocks = 0;
+      }
+      if (oldData.seasonPass.completedQuests === undefined) {
+        oldData.seasonPass.completedQuests = 0;
+      }
+      if (oldData.seasonPass.claimedQuests === undefined) {
+        oldData.seasonPass.claimedQuests = 0;
+      }
+      if (!oldData.seasonPass.pendingRewards) {
+        oldData.seasonPass.pendingRewards = [];
+      }
+      if (oldData.seasonPass.isPremium === undefined) {
+        oldData.seasonPass.isPremium = false;
+      }
+    }
+
     return oldData as SaveData;
   }
 
@@ -355,6 +399,7 @@ export class SaveManager {
     const tutorialData = TutorialManager.createDefaultTutorialSave();
     const conservationData = ConservationManager.createDefaultSave();
     const familyCollectionData = this.createDefaultFamilyCollectionSave();
+    const seasonPassData = this.createDefaultSeasonPassSave();
 
     return {
       progress,
@@ -377,7 +422,54 @@ export class SaveManager {
       achievement: achievementData,
       tutorial: tutorialData,
       conservation: conservationData,
-      familyCollection: familyCollectionData
+      familyCollection: familyCollectionData,
+      seasonPass: seasonPassData
+    };
+  }
+
+  private static createDefaultSeasonPassSave(): SeasonPassSaveData {
+    const CURRENT_SEASON_ID = 'season_001';
+    const CURRENT_SEASON_NAME = '春华秋实赛季';
+    const SEASON_DURATION_DAYS = 60;
+    const MAX_TRACK_LEVEL = 20;
+
+    const now = Date.now();
+    const endDate = now + SEASON_DURATION_DAYS * 24 * 60 * 60 * 1000;
+
+    const createTrackProgress = (trackType: 'restore' | 'score' | 'gallery') => ({
+      trackType,
+      currentValue: 0,
+      currentLevel: 0,
+      maxLevel: MAX_TRACK_LEVEL,
+      nextLevelThreshold: 0,
+      totalXp: 0
+    });
+
+    return {
+      seasonId: CURRENT_SEASON_ID,
+      seasonName: CURRENT_SEASON_NAME,
+      isPremium: false,
+      startDate: now,
+      endDate,
+      trackProgress: {
+        restore: createTrackProgress('restore'),
+        score: createTrackProgress('score'),
+        gallery: createTrackProgress('gallery')
+      },
+      rewardsClaimed: {
+        restore: {},
+        score: {},
+        gallery: {}
+      },
+      quests: {},
+      lastRefreshDate: '',
+      refreshCount: 0,
+      totalRestores: 0,
+      totalScoreGain: 0,
+      totalGalleryUnlocks: 0,
+      completedQuests: 0,
+      claimedQuests: 0,
+      pendingRewards: []
     };
   }
 
@@ -780,6 +872,22 @@ export class SaveManager {
       ? this.updateFamilyProgress(specimenId, stars)
       : { familyCompleted: false, familyId: null, newlyUnlockedRewardIds: [], illustrationUnlocked: false };
 
+    SeasonPassManager.onRestore(specimenId, levelId);
+    const scoreDiff = progress.bestScore > 0 
+      ? Math.max(0, finalScore - (progress.bestScore - finalScore))
+      : finalScore;
+    SeasonPassManager.onScoreGain(scoreDiff, levelId, score);
+
+    const oldGalleryCount = this.getUnlockedGalleryItems().length;
+    if (specimenId && !this.isGalleryUnlocked(specimenId)) {
+      this.unlockGalleryItem(specimenId);
+      const newGalleryCount = this.getUnlockedGalleryItems().length;
+      if (newGalleryCount > oldGalleryCount) {
+        SeasonPassManager.onGalleryUnlock(specimenId);
+      }
+    }
+
+    this.data.seasonPass = SeasonPassManager.getSaveData();
     this.save();
     return {
       chapterCompleted: completionResult.chapterCompleted,
@@ -1007,6 +1115,8 @@ export class SaveManager {
 
     const familyProgressResult = this.updateFamilyProgress(specimenId, 0);
 
+    SeasonPassManager.onGalleryUnlock(specimenId);
+    this.data.seasonPass = SeasonPassManager.getSaveData();
     this.save();
     return { success: true, updatedQuests, achievementResult, familyProgressResult };
   }
@@ -2113,6 +2223,21 @@ export class SaveManager {
 
   static grantBadge(badgeId: number): void {
     this.data.badges[badgeId] = true;
+    this.save();
+  }
+
+  static unlockGallerySpecimen(specimenId: number): void {
+    if (!this.data.galleryUnlocked.includes(specimenId)) {
+      this.data.galleryUnlocked.push(specimenId);
+      this.syncFamilyProgress();
+      this.save();
+    }
+  }
+
+  static grantTitle(titleId: number): void {
+    if (this.data.achievement.unlockedTitles) {
+      this.data.achievement.unlockedTitles[titleId] = true;
+    }
     this.save();
   }
 
