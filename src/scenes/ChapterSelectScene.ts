@@ -11,6 +11,8 @@ import { ConservationManager } from '../utils/ConservationManager';
 import { getPlantSpecimen } from '../data/PlantSpecimens';
 import { PlantFamilies } from '../data/PlantFamilies';
 import { SeasonPassManager } from '../utils/SeasonPassManager';
+import { getChapterQuiz, canAttemptQuiz } from '../data/ChapterQuizzes';
+import { QuizManager } from '../utils/QuizManager';
 
 export class ChapterSelectScene extends Phaser.Scene {
   constructor() {
@@ -937,9 +939,119 @@ export class ChapterSelectScene extends Phaser.Scene {
       }).setOrigin(0.5);
     }
 
+    const chapterQuiz = getChapterQuiz(chapter.id);
+    const unlockedSpecimens = SaveManager.getUnlockedGalleryItems();
+    const canAttemptChapterQuiz = chapterQuiz && canAttemptQuiz(chapterQuiz.quizId, unlockedSpecimens);
+    const quizProgress = chapterQuiz ? QuizManager.getQuizProgress(chapterQuiz.quizId) : undefined;
+    const quizCompleted = quizProgress?.completed ?? false;
+
+    if (unlocked && chapterQuiz) {
+      const quizBtnY = y + height / 2 - 35;
+      const quizBtnW = 200;
+      const quizBtnH = 50;
+
+      const quizBtn = this.add.graphics();
+
+      const quizBtnColor = canAttemptChapterQuiz
+        ? (quizCompleted ? 0x4caf50 : 0xff9800)
+        : 0x666666;
+
+      quizBtn.fillStyle(quizBtnColor, 0.95);
+      quizBtn.fillRoundedRect(x - width / 2 + 30, quizBtnY - quizBtnH / 2, quizBtnW, quizBtnH, 10);
+      quizBtn.lineStyle(2, 0xffffff, 0.3);
+      quizBtn.strokeRoundedRect(x - width / 2 + 30, quizBtnY - quizBtnH / 2, quizBtnW, quizBtnH, 10);
+
+      const quizIcon = quizCompleted ? '✅' : '📖';
+      const quizLabel = quizCompleted ? '测验已完成' : '百科测验';
+      this.add.text(x - width / 2 + 130, quizBtnY, `${quizIcon} ${quizLabel}`, {
+        font: 'bold 16px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+
+      if (!canAttemptChapterQuiz) {
+        const lockedHint = this.add.text(x - width / 2 + 130, quizBtnY + 30, `需解锁: ${QuizManager.getRequiredSpecimenNames(chapterQuiz.quizId).join('、')}`, {
+          font: '12px Arial',
+          color: '#ffcc80'
+        }).setOrigin(0.5);
+      }
+
+      if (canAttemptChapterQuiz) {
+        quizBtn.setInteractive(
+          new Phaser.Geom.Rectangle(x - width / 2 + 30, quizBtnY - quizBtnH / 2, quizBtnW, quizBtnH),
+          Phaser.Geom.Rectangle.Contains
+        );
+
+        quizBtn.on('pointerover', () => {
+          quizBtn.clear();
+          quizBtn.fillStyle(this.lighten(quizBtnColor, 20), 0.95);
+          quizBtn.fillRoundedRect(x - width / 2 + 30, quizBtnY - quizBtnH / 2, quizBtnW, quizBtnH, 10);
+          quizBtn.lineStyle(3, 0xffffff, 0.8);
+          quizBtn.strokeRoundedRect(x - width / 2 + 30, quizBtnY - quizBtnH / 2, quizBtnW, quizBtnH, 10);
+        });
+
+        quizBtn.on('pointerout', () => {
+          quizBtn.clear();
+          quizBtn.fillStyle(quizBtnColor, 0.95);
+          quizBtn.fillRoundedRect(x - width / 2 + 30, quizBtnY - quizBtnH / 2, quizBtnW, quizBtnH, 10);
+          quizBtn.lineStyle(2, 0xffffff, 0.3);
+          quizBtn.strokeRoundedRect(x - width / 2 + 30, quizBtnY - quizBtnH / 2, quizBtnW, quizBtnH, 10);
+        });
+
+        quizBtn.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+          pointer.event.stopPropagation();
+          this.scene.start('QuizScene', { quizId: chapterQuiz.quizId });
+        });
+      }
+
+      const startBtnX = x + width / 2 - 30;
+      const startBtnW = 180;
+      const startBtnH = 50;
+
+      const startBtn = this.add.graphics();
+      startBtn.fillStyle(chapter.primaryColor, 0.95);
+      startBtn.fillRoundedRect(startBtnX - startBtnW, quizBtnY - startBtnH / 2, startBtnW, startBtnH, 10);
+      startBtn.lineStyle(2, 0xffffff, 0.3);
+      startBtn.strokeRoundedRect(startBtnX - startBtnW, quizBtnY - startBtnH / 2, startBtnW, startBtnH, 10);
+
+      this.add.text(startBtnX - startBtnW / 2, quizBtnY, '开始关卡 →', {
+        font: 'bold 16px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+
+      startBtn.setInteractive(
+        new Phaser.Geom.Rectangle(startBtnX - startBtnW, quizBtnY - startBtnH / 2, startBtnW, startBtnH),
+        Phaser.Geom.Rectangle.Contains
+      );
+
+      startBtn.on('pointerover', () => {
+        startBtn.clear();
+        startBtn.fillStyle(this.lighten(chapter.primaryColor, 20), 0.95);
+        startBtn.fillRoundedRect(startBtnX - startBtnW, quizBtnY - startBtnH / 2, startBtnW, startBtnH, 10);
+        startBtn.lineStyle(3, 0xffffff, 0.8);
+        startBtn.strokeRoundedRect(startBtnX - startBtnW, quizBtnY - startBtnH / 2, startBtnW, startBtnH, 10);
+      });
+
+      startBtn.on('pointerout', () => {
+        startBtn.clear();
+        startBtn.fillStyle(chapter.primaryColor, 0.95);
+        startBtn.fillRoundedRect(startBtnX - startBtnW, quizBtnY - startBtnH / 2, startBtnW, startBtnH, 10);
+        startBtn.lineStyle(2, 0xffffff, 0.3);
+        startBtn.strokeRoundedRect(startBtnX - startBtnW, quizBtnY - startBtnH / 2, startBtnW, startBtnH, 10);
+      });
+
+      startBtn.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+        pointer.event.stopPropagation();
+        if (canClaimRewards) {
+          this.claimRewards(chapter.id);
+        } else {
+          this.scene.start('LevelSelectScene', { chapterId: chapter.id });
+        }
+      });
+    }
+
     if (unlocked) {
       card.setInteractive(
-        new Phaser.Geom.Rectangle(x - width / 2, y - height / 2, width, height),
+        new Phaser.Geom.Rectangle(x - width / 2, y - height / 2, width, height - 70),
         Phaser.Geom.Rectangle.Contains
       );
 

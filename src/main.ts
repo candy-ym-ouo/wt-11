@@ -25,6 +25,8 @@ import { CustomPuzzleScene } from './scenes/CustomPuzzleScene';
 import { CustomPuzzleGameScene } from './scenes/CustomPuzzleGameScene';
 import { RepairLogScene } from './scenes/RepairLogScene';
 import { NotificationScene } from './scenes/NotificationScene';
+import { QuizScene } from './scenes/QuizScene';
+import { QuizResultScene } from './scenes/QuizResultScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -61,7 +63,9 @@ const config: Phaser.Types.Core.GameConfig = {
     CustomPuzzleScene,
     CustomPuzzleGameScene,
     RepairLogScene,
-    NotificationScene
+    NotificationScene,
+    QuizScene,
+    QuizResultScene
   ],
   physics: {
     default: 'arcade',

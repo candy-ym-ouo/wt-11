@@ -1009,6 +1009,98 @@ export interface NotificationSaveData {
   maxStored: number;
 }
 
+export interface QuizQuestion {
+  id: string;
+  specimenId: number;
+  question: string;
+  options: string[];
+  correctAnswerIndex: number;
+  explanation: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  category: 'biology' | 'ecology' | 'culture' | 'usage';
+}
+
+export interface ChapterQuizConfig {
+  chapterId: number;
+  quizId: string;
+  name: string;
+  description: string;
+  requiredSpecimenIds: number[];
+  questionIds: string[];
+  passingScore: number;
+  timeLimit: number;
+  rewards: QuizReward[];
+  icon: string;
+  primaryColor: number;
+  secondaryColor: number;
+}
+
+export interface QuizReward {
+  type: 'score' | 'research_point' | 'material' | 'fragment' | 'badge' | 'star_bonus';
+  id: number;
+  name: string;
+  description: string;
+  value: number;
+  rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  icon: string;
+  fragmentId?: number;
+  materialId?: number;
+  badgeId?: number;
+}
+
+export interface QuizProgress {
+  quizId: string;
+  bestScore: number;
+  bestTime: number;
+  completed: boolean;
+  attempts: number;
+  rewardsClaimed: boolean;
+  lastPlayedAt?: number;
+  completedAt?: number;
+  highestStreak: number;
+}
+
+export interface QuizSession {
+  quizId: string;
+  currentQuestionIndex: number;
+  questions: QuizQuestion[];
+  score: number;
+  correctCount: number;
+  incorrectCount: number;
+  currentStreak: number;
+  startTime: number;
+  elapsedTime: number;
+  answers: { questionId: string; selectedIndex: number; isCorrect: boolean; timeTaken: number }[];
+}
+
+export interface QuizResultData {
+  quizId: string;
+  score: number;
+  totalQuestions: number;
+  correctCount: number;
+  accuracy: number;
+  timeTaken: number;
+  passed: boolean;
+  isNewRecord: boolean;
+  isNewBestTime: boolean;
+  highestStreak: number;
+  rewards: QuizReward[];
+  bonusResearchExp: number;
+  bonusResearchPoints: number;
+  chapterStarBonus: number;
+  wrongAnswers: { question: QuizQuestion; selectedIndex: number }[];
+}
+
+export interface QuizSaveData {
+  quizProgress: Record<string, QuizProgress>;
+  totalQuizScore: number;
+  totalQuizzesCompleted: number;
+  totalCorrectAnswers: number;
+  totalQuestionsAnswered: number;
+  currentStreak: number;
+  bestStreak: number;
+}
+
 export interface SaveData {
   progress: Record<number, LevelProgress>;
   chapterProgress: Record<number, ChapterProgress>;
@@ -1031,4 +1123,5 @@ export interface SaveData {
   customPuzzle: CustomPuzzleSaveData;
   repairLog: RepairLogSaveData;
   notification: NotificationSaveData;
+  quiz: QuizSaveData;
 }

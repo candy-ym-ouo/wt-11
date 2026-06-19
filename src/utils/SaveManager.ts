@@ -15,7 +15,8 @@ import {
   ResearchLabProgress,
   TutorialSaveData,
   CustomPuzzleRecord,
-  RepairLogSaveData
+  RepairLogSaveData,
+  QuizSaveData
 } from '../types/GameTypes';
 import { TutorialManager } from './TutorialManager';
 import { ConservationManager } from './ConservationManager';
@@ -41,6 +42,7 @@ import { SeasonPassManager } from './SeasonPassManager';
 import { SeasonPassSaveData, NotificationSaveData } from '../types/GameTypes';
 import { RepairLogManager } from './RepairLogManager';
 import { NotificationManager } from './NotificationManager';
+import { QuizManager } from './QuizManager';
 
 const STORAGE_KEY = 'plant_specimen_puzzle_save';
 
@@ -71,7 +73,9 @@ export class SaveManager {
     SeasonPassManager.init(this.data.seasonPass);
     RepairLogManager.init(this.data.repairLog);
     NotificationManager.init(this.data.notification);
+    QuizManager.init(this.data.quiz);
     this.data.notification = NotificationManager.getSaveData();
+    this.data.quiz = QuizManager.getSaveData();
     this.save();
   }
 
@@ -392,6 +396,32 @@ export class SaveManager {
       }
     }
 
+    if (!oldData.quiz) {
+      oldData.quiz = QuizManager.createDefaultQuizSave();
+    } else {
+      if (!oldData.quiz.quizProgress) {
+        oldData.quiz.quizProgress = QuizManager.createDefaultQuizSave().quizProgress;
+      }
+      if (oldData.quiz.totalQuizScore === undefined) {
+        oldData.quiz.totalQuizScore = 0;
+      }
+      if (oldData.quiz.totalQuizzesCompleted === undefined) {
+        oldData.quiz.totalQuizzesCompleted = 0;
+      }
+      if (oldData.quiz.totalCorrectAnswers === undefined) {
+        oldData.quiz.totalCorrectAnswers = 0;
+      }
+      if (oldData.quiz.totalQuestionsAnswered === undefined) {
+        oldData.quiz.totalQuestionsAnswered = 0;
+      }
+      if (oldData.quiz.currentStreak === undefined) {
+        oldData.quiz.currentStreak = 0;
+      }
+      if (oldData.quiz.bestStreak === undefined) {
+        oldData.quiz.bestStreak = 0;
+      }
+    }
+
     return oldData as SaveData;
   }
 
@@ -461,7 +491,8 @@ export class SaveManager {
       seasonPass: seasonPassData,
       customPuzzle: { records: {}, totalPlays: 0, totalScore: 0 },
       repairLog: RepairLogManager.createDefaultSave(),
-      notification: NotificationManager.createDefaultNotificationSave()
+      notification: NotificationManager.createDefaultNotificationSave(),
+      quiz: QuizManager.createDefaultQuizSave()
     };
   }
 
@@ -2312,7 +2343,15 @@ export class SaveManager {
     return ConservationManager.getHealthLevel(specimenId);
   }
 
+  static getQuizSaveData(): QuizSaveData {
+    return {
+      ...this.data.quiz,
+      quizProgress: { ...this.data.quiz.quizProgress }
+    };
+  }
+
   static save(): void {
+    this.data.quiz = QuizManager.getSaveData();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
   }
 
