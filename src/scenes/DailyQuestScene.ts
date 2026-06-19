@@ -28,7 +28,7 @@ export class DailyQuestScene extends Phaser.Scene {
 
     const bg = this.add.graphics();
     bg.fillStyle(0x16213e, 1);
-    bg.fillRoundedRect(25, 120, 700, 1080, 20);
+    bg.fillRoundedRect(25, 120, 700, 1180, 20);
   }
 
   private addTitle(): void {
@@ -88,12 +88,13 @@ export class DailyQuestScene extends Phaser.Scene {
 
   private addQuestList(): void {
     const quests = DailyQuestManager.getAllQuests();
-    let y = 210;
+    const startY = 210;
     const cardHeight = 260;
     const spacing = 25;
 
     quests.forEach((quest, index) => {
-      this.createQuestCard(375, y + cardHeight / 2 + index * spacing, quest, index);
+      const y = startY + cardHeight / 2 + index * (cardHeight + spacing);
+      this.createQuestCard(375, y, quest, index);
     });
   }
 

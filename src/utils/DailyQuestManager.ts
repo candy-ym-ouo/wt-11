@@ -77,6 +77,7 @@ export class DailyQuestManager {
 
     this.resetDailyProgress();
     this.generateDailyQuests();
+    SaveManager.save();
   }
 
   private static resetDailyProgress(): void {
@@ -349,6 +350,10 @@ export class DailyQuestManager {
       }
     }
 
+    if (updatedQuests.length > 0) {
+      SaveManager.save();
+    }
+
     return updatedQuests;
   }
 
@@ -361,6 +366,8 @@ export class DailyQuestManager {
         quest.currentProgress = 0;
       }
     }
+
+    SaveManager.save();
   }
 
   static onSpecimenRestored(specimenId: number): DailyQuest[] {
@@ -384,6 +391,10 @@ export class DailyQuestManager {
         this.checkQuestCompletion(quest);
         updatedQuests.push(quest);
       }
+    }
+
+    if (updatedQuests.length > 0) {
+      SaveManager.save();
     }
 
     return updatedQuests;
@@ -433,6 +444,7 @@ export class DailyQuestManager {
       this.data.claimedQuestIds.push(questId);
     }
 
+    SaveManager.save();
     return { success: true, rewards: quest.rewards, quest };
   }
 
@@ -458,6 +470,7 @@ export class DailyQuestManager {
       }
     }
 
+    SaveManager.save();
     return { success: claimedQuests.length > 0, totalRewards, claimedQuests };
   }
 

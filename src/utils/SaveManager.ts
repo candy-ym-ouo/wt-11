@@ -728,7 +728,7 @@ export class SaveManager {
     return Object.values(eventProg.levelProgress).reduce((sum, p) => sum + p.stars, 0);
   }
 
-  private static save(): void {
+  static save(): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
   }
 
