@@ -14,7 +14,8 @@ import {
   SpecimenResearch,
   ResearchLabProgress,
   TutorialSaveData,
-  CustomPuzzleRecord
+  CustomPuzzleRecord,
+  RepairLogSaveData
 } from '../types/GameTypes';
 import { TutorialManager } from './TutorialManager';
 import { ConservationManager } from './ConservationManager';
@@ -38,6 +39,7 @@ import { ExhibitionThemes, getExhibitionTheme, getBadgesByThemeId, getExhibition
 import { AchievementManager } from './AchievementManager';
 import { SeasonPassManager } from './SeasonPassManager';
 import { SeasonPassSaveData } from '../types/GameTypes';
+import { RepairLogManager } from './RepairLogManager';
 
 const STORAGE_KEY = 'plant_specimen_puzzle_save';
 
@@ -66,6 +68,7 @@ export class SaveManager {
     TutorialManager.init(this.data.tutorial);
     ConservationManager.init(this.data.conservation);
     SeasonPassManager.init(this.data.seasonPass);
+    RepairLogManager.init(this.data.repairLog);
     this.save();
   }
 
@@ -362,6 +365,10 @@ export class SaveManager {
       oldData.customPuzzle = { records: {}, totalPlays: 0, totalScore: 0 };
     }
 
+    if (!oldData.repairLog) {
+      oldData.repairLog = { entries: [], totalEntries: 0 };
+    }
+
     return oldData as SaveData;
   }
 
@@ -429,7 +436,8 @@ export class SaveManager {
       conservation: conservationData,
       familyCollection: familyCollectionData,
       seasonPass: seasonPassData,
-      customPuzzle: { records: {}, totalPlays: 0, totalScore: 0 }
+      customPuzzle: { records: {}, totalPlays: 0, totalScore: 0 },
+      repairLog: RepairLogManager.createDefaultSave()
     };
   }
 
@@ -2311,5 +2319,25 @@ export class SaveManager {
 
   static getAllCustomPuzzleRecords(): Record<string, CustomPuzzleRecord> {
     return this.data.customPuzzle.records;
+  }
+
+  static getRepairLogSaveData(): RepairLogSaveData {
+    return { ...this.data.repairLog, entries: [...this.data.repairLog.entries] };
+  }
+
+  static getRepairLogEntries(limit?: number) {
+    return RepairLogManager.getEntries(limit);
+  }
+
+  static getRepairLogEntriesBySpecimen(specimenId: number) {
+    return RepairLogManager.getEntriesBySpecimen(specimenId);
+  }
+
+  static getRepairLogStats() {
+    return RepairLogManager.getStats();
+  }
+
+  static getRepairLogSpecimenStats(specimenId: number) {
+    return RepairLogManager.getSpecimenStats(specimenId);
   }
 }

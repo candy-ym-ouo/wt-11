@@ -499,6 +499,26 @@ export class GalleryScene extends Phaser.Scene {
       });
     }
 
+    const logBtn = this.add.graphics();
+    logBtn.fillStyle(0x2196f3, 1);
+    const logBtnY = isEvent ? 1020 : 1085;
+    logBtn.fillRoundedRect(125, logBtnY, 500, 50, 12);
+    logBtn.setInteractive(
+      new Phaser.Geom.Rectangle(125, logBtnY, 500, 50),
+      Phaser.Geom.Rectangle.Contains
+    );
+    container.add(logBtn);
+
+    this.add.text(375, logBtnY + 25, '📋 查看修复日志', {
+      font: 'bold 17px Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+
+    logBtn.on('pointerup', () => {
+      container.destroy();
+      this.scene.start('RepairLogScene', { specimenId: item.specimenId });
+    });
+
     const close = () => {
       container.destroy();
     };

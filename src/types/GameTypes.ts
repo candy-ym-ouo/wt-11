@@ -918,6 +918,47 @@ export interface CustomPuzzleSaveData {
   totalScore: number;
 }
 
+export type KeyOperationType =
+  | 'first_completion'
+  | 'new_record'
+  | 'new_best_time'
+  | 'star_upgrade'
+  | 'perfect_clear'
+  | 'conservation_bonus'
+  | 'combo_achieved'
+  | 'no_hints_used'
+  | 'event_level'
+  | 'tower_floor'
+  | 'mirror_broken';
+
+export interface RepairLogEntry {
+  id: string;
+  levelId: number;
+  specimenId: number;
+  specimenName: string;
+  score: number;
+  time: number;
+  stars: number;
+  previousStars: number;
+  previousBestScore: number;
+  previousBestTime: number;
+  scoreDelta: number;
+  timeDelta: number;
+  starChange: number;
+  keyOperations: KeyOperationType[];
+  difficulty: 'easy' | 'medium' | 'hard';
+  isEventLevel: boolean;
+  eventId: string | null;
+  isTowerFloor: boolean;
+  towerFloorId: number | null;
+  completedAt: number;
+}
+
+export interface RepairLogSaveData {
+  entries: RepairLogEntry[];
+  totalEntries: number;
+}
+
 export interface SaveData {
   progress: Record<number, LevelProgress>;
   chapterProgress: Record<number, ChapterProgress>;
@@ -938,4 +979,5 @@ export interface SaveData {
   familyCollection: FamilyCollectionSaveData;
   seasonPass: SeasonPassSaveData;
   customPuzzle: CustomPuzzleSaveData;
+  repairLog: RepairLogSaveData;
 }

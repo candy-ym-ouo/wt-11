@@ -14,6 +14,7 @@ import { TutorialManager } from '../utils/TutorialManager';
 import { getGameTutorial } from '../data/TutorialConfig';
 import { AchievementNotification } from '../utils/AchievementNotification';
 import { ConservationManager } from '../utils/ConservationManager';
+import { RepairLogManager } from '../utils/RepairLogManager';
 
 export class GameScene extends Phaser.Scene {
   private levelRule!: LevelRule;
@@ -1071,8 +1072,30 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (this.isTowerFloor && this.towerFloorData && this.towerFloorId) {
+      const towerPreviousProgress = SaveManager.getTowerFloorProgress(this.towerFloorId);
       const towerResult = this.calculateTowerScore();
       const completeResult = SaveManager.completeTowerFloor(this.towerFloorId, towerResult);
+
+      RepairLogManager.recordEntry({
+        levelId: this.towerFloorId,
+        specimenId: this.towerFloorData.specimenId,
+        specimenName: this.specimen.name,
+        score: towerResult.score,
+        time: this.elapsedTime,
+        stars: towerResult.stars,
+        previousStars: towerPreviousProgress?.stars ?? 0,
+        previousBestScore: towerPreviousProgress?.bestScore ?? 0,
+        previousBestTime: towerPreviousProgress?.bestTime ?? 0,
+        difficulty: 'hard',
+        isEventLevel: false,
+        eventId: null,
+        isTowerFloor: true,
+        towerFloorId: this.towerFloorId,
+        comboCount: this.maxCombo,
+        hintsUsed: this.hintsUsed,
+        hasConservationBonus: false,
+        mirrorBrokenCount: 0,
+      });
 
       this.cameras.main.zoomTo(1.05, 400, 'Cubic.easeInOut', true);
       this.time.delayedCall(450, () => {
@@ -1095,6 +1118,11 @@ export class GameScene extends Phaser.Scene {
     let updatedQuests: DailyQuest[] = [];
     let achievementResult: AchievementUnlockResult = { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 };
     let conservationMultiplier: { scoreMultiplier: number; fragmentMultiplier: number; researchMultiplier: number } | null = null;
+
+    const previousProgress = SaveManager.getProgress(this.levelRule.id);
+    const previousStars = previousProgress?.stars ?? 0;
+    const previousBestScore = previousProgress?.bestScore ?? 0;
+    const previousBestTime = previousProgress?.bestTime ?? 0;
 
     if (this.isEventLevel && this.eventId) {
       eventResult = SaveManager.completeEventLevel(
@@ -1133,6 +1161,27 @@ export class GameScene extends Phaser.Scene {
       };
     }
     SaveManager.addWorkshopDrops(drops);
+
+    RepairLogManager.recordEntry({
+      levelId: this.levelRule.id,
+      specimenId: this.specimen.id,
+      specimenName: this.specimen.name,
+      score: finalScore,
+      time: this.elapsedTime,
+      stars: result.stars,
+      previousStars,
+      previousBestScore,
+      previousBestTime,
+      difficulty: this.levelRule.difficulty,
+      isEventLevel: this.isEventLevel,
+      eventId: this.eventId,
+      isTowerFloor: false,
+      towerFloorId: null,
+      comboCount: this.comboCount,
+      hintsUsed: this.hintsUsed,
+      hasConservationBonus: conservationMultiplier !== null && conservationMultiplier.scoreMultiplier !== 1,
+      mirrorBrokenCount: this.mirrorPieces.length,
+    });
 
     this.cameras.main.zoomTo(1.05, 400, 'Cubic.easeInOut', true);
     this.time.delayedCall(450, () => {

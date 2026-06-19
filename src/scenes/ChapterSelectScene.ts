@@ -1064,10 +1064,10 @@ export class ChapterSelectScene extends Phaser.Scene {
 
   private addBottomButtons(): void {
     const btnY = 1230;
-    const btnW = 95;
+    const btnW = 83;
     const btnH = 60;
     const spacing = 5;
-    const totalW = btnW * 7 + spacing * 6;
+    const totalW = btnW * 8 + spacing * 7;
     const startX = 375 - totalW / 2 + btnW / 2;
 
     const labBtn = this.createBottomButton(
@@ -1138,6 +1138,16 @@ export class ChapterSelectScene extends Phaser.Scene {
       '🎮 关卡',
       0x2196f3,
       () => this.scene.start('LevelSelectScene')
+    );
+
+    const logBtn = this.createBottomButton(
+      startX + 7 * (btnW + spacing),
+      btnY,
+      btnW,
+      btnH,
+      '📋 日志',
+      0x607d8b,
+      () => this.scene.start('RepairLogScene')
     );
 
     const totalFamilies = SaveManager.getTotalFamiliesCompleted();
