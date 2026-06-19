@@ -46,12 +46,13 @@ export class SaveManager {
       oldData.workshop = defaultData.workshop;
     }
 
-    Object.keys(oldData.progress || {}).forEach(levelId => {
-      const progress = oldData.progress[levelId];
-      if (progress?.completed && !oldData.galleryUnlocked.includes(Number(levelId))) {
-        oldData.galleryUnlocked.push(Number(levelId));
-      }
-    });
+    if (oldData.workshop?.restoredSpecimens) {
+      oldData.workshop.restoredSpecimens.forEach((specimenId: number) => {
+        if (!oldData.galleryUnlocked.includes(specimenId)) {
+          oldData.galleryUnlocked.push(specimenId);
+        }
+      });
+    }
 
     return oldData as SaveData;
   }
@@ -181,10 +182,6 @@ export class SaveManager {
     }
     if (starsImproved) {
       progress.stars = stars;
-    }
-
-    if (isFirstCompletion && !this.data.galleryUnlocked.includes(levelId)) {
-      this.data.galleryUnlocked.push(levelId);
     }
 
     const nextLevelId = levelId + 1;

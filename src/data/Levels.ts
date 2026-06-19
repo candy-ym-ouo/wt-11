@@ -18,7 +18,7 @@ export const GalleryItems: GalleryItem[] = LevelRules.map(rule => {
   const chapter = getChapterByLevelId(rule.id);
   return {
     id: rule.id,
-    name: specimen.name,
+    name: specimen.name, 
     family: specimen.family,
     description: specimen.description,
     specimenId: specimen.id,

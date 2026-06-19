@@ -192,7 +192,7 @@ export class GalleryScene extends Phaser.Scene {
     item: GalleryItem
   ): void {
     const progress = SaveManager.getProgress(item.id);
-    const unlocked = progress?.completed ?? false;
+    const unlocked = SaveManager.isGalleryUnlocked(item.id);
     const chapter = getChapterById(item.chapterId);
 
     const card = this.add.graphics();
