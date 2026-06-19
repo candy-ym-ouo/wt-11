@@ -9,6 +9,7 @@ import { ExhibitionManager } from '../utils/ExhibitionManager';
 import { getAllExhibitionThemes } from '../data/ExhibitionConfig';
 import { ConservationManager } from '../utils/ConservationManager';
 import { getPlantSpecimen } from '../data/PlantSpecimens';
+import { PlantFamilies } from '../data/PlantFamilies';
 
 export class ChapterSelectScene extends Phaser.Scene {
   constructor() {
@@ -969,10 +970,10 @@ export class ChapterSelectScene extends Phaser.Scene {
 
   private addBottomButtons(): void {
     const btnY = 1230;
-    const btnW = 130;
+    const btnW = 110;
     const btnH = 60;
-    const spacing = 8;
-    const totalW = btnW * 5 + spacing * 4;
+    const spacing = 6;
+    const totalW = btnW * 6 + spacing * 5;
     const startX = 375 - totalW / 2 + btnW / 2;
 
     const labBtn = this.createBottomButton(
@@ -980,7 +981,7 @@ export class ChapterSelectScene extends Phaser.Scene {
       btnY,
       btnW,
       btnH,
-      '🔬 研究室',
+      '🔬 研究',
       0x9c27b0,
       () => this.scene.start('ResearchLabScene')
     );
@@ -1015,8 +1016,18 @@ export class ChapterSelectScene extends Phaser.Scene {
       () => this.scene.start('GalleryScene')
     );
 
-    const levelsBtn = this.createBottomButton(
+    const familyBtn = this.createBottomButton(
       startX + 4 * (btnW + spacing),
+      btnY,
+      btnW,
+      btnH,
+      '🌱 家族',
+      0xff5722,
+      () => this.scene.start('PlantFamilyScene')
+    );
+
+    const levelsBtn = this.createBottomButton(
+      startX + 5 * (btnW + spacing),
       btnY,
       btnW,
       btnH,
@@ -1024,6 +1035,23 @@ export class ChapterSelectScene extends Phaser.Scene {
       0x2196f3,
       () => this.scene.start('LevelSelectScene')
     );
+
+    const totalFamilies = SaveManager.getTotalFamiliesCompleted();
+    const familyProgress = SaveManager.getAllFamilyProgress();
+    const hasClaimableRewards = Object.values(familyProgress).some(fp => {
+      const family = PlantFamilies.find(f => f.id === fp.familyId);
+      return family?.rewards.some(r => SaveManager.canClaimFamilyReward(fp.familyId, r.id));
+    });
+
+    if (hasClaimableRewards) {
+      const badge = this.add.graphics();
+      badge.fillStyle(0xffeb3b, 1);
+      badge.fillCircle(startX + 4 * (btnW + spacing) + btnW / 2 - 15, btnY - btnH / 2 + 10, 12);
+      this.add.text(startX + 4 * (btnW + spacing) + btnW / 2 - 15, btnY - btnH / 2 + 10, '!', {
+        font: 'bold 12px Arial',
+        color: '#1a1a2e'
+      }).setOrigin(0.5);
+    }
   }
 
   private createBottomButton(

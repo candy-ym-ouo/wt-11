@@ -27,12 +27,58 @@ export interface PlantSpecimen {
   id: number;
   name: string;
   family: string;
+  genus: string;
   description: string;
   primaryColor: number;
   secondaryColor: number;
   leafColor: number;
   stemColor: number;
   shape: 'ginkgo' | 'rose' | 'sunflower' | 'lavender' | 'orchid' | 'succulent';
+}
+
+export interface FamilyReward {
+  type: 'score' | 'badge' | 'title' | 'research_point' | 'material';
+  id: number;
+  name: string;
+  description: string;
+  icon: string;
+  rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  requiredProgress: number;
+  value?: number;
+}
+
+export interface PlantFamily {
+  id: string;
+  familyName: string;
+  genusName: string;
+  description: string;
+  featureDescription: string;
+  primaryColor: number;
+  secondaryColor: number;
+  accentColor: number;
+  icon: string;
+  specimenIds: number[];
+  rewards: FamilyReward[];
+  illustrationKey: string;
+  illustrationTitle: string;
+  illustrationDescription: string;
+  isLimited?: boolean;
+}
+
+export interface FamilyProgress {
+  familyId: string;
+  unlockedSpecimens: number[];
+  rewardsClaimed: Record<number, boolean>;
+  illustrationUnlocked: boolean;
+  totalStars: number;
+  firstUnlockedAt?: number;
+  completedAt?: number;
+}
+
+export interface FamilyCollectionSaveData {
+  familyProgress: Record<string, FamilyProgress>;
+  totalFamiliesCompleted: number;
+  totalSpecimensByFamily: Record<string, number>;
 }
 
 export interface LevelData {
@@ -716,4 +762,5 @@ export interface SaveData {
   achievement: AchievementSaveData;
   tutorial: TutorialSaveData;
   conservation: ConservationSaveData;
+  familyCollection: FamilyCollectionSaveData;
 }

@@ -30,8 +30,9 @@ import {
   KnowledgeEntries,
   getSpecimenCategory
 } from '../data/ResearchLabConfig';
+import { PlantFamilies, getPlantFamilyBySpecimenId, isFamilyComplete, getFamilyRewardById } from '../data/PlantFamilies';
 import { TowerFloors, getTowerFloor } from '../data/TowerConfig';
-import { TowerSaveData, TowerFloorProgress, TowerReward, TowerResultData, ExhibitionSaveData, ExhibitionProgress, ExhibitionSpecimenSubmission, ExhibitionReward, AchievementSaveData, AchievementUnlockResult, ConservationSaveData, ConservationHealthLevel } from '../types/GameTypes';
+import { TowerSaveData, TowerFloorProgress, TowerReward, TowerResultData, ExhibitionSaveData, ExhibitionProgress, ExhibitionSpecimenSubmission, ExhibitionReward, AchievementSaveData, AchievementUnlockResult, ConservationSaveData, ConservationHealthLevel, FamilyCollectionSaveData, FamilyProgress, FamilyReward } from '../types/GameTypes';
 import { ExhibitionThemes, getExhibitionTheme, getBadgesByThemeId, getExhibitionBadge } from '../data/ExhibitionConfig';
 import { AchievementManager } from './AchievementManager';
 
@@ -56,6 +57,7 @@ export class SaveManager {
     this.recalculateTotalScore();
     this.updateChapterProgress();
     this.syncChapterUnlocks();
+    this.syncFamilyProgress();
     DailyQuestManager.init(this.data.dailyQuest);
     AchievementManager.init(this.data.achievement);
     TutorialManager.init(this.data.tutorial);
@@ -297,6 +299,20 @@ export class SaveManager {
       }
     }
 
+    if (!oldData.familyCollection) {
+      oldData.familyCollection = defaultData.familyCollection;
+    } else {
+      if (!oldData.familyCollection.familyProgress) {
+        oldData.familyCollection.familyProgress = defaultData.familyCollection.familyProgress;
+      }
+      if (oldData.familyCollection.totalFamiliesCompleted === undefined) {
+        oldData.familyCollection.totalFamiliesCompleted = 0;
+      }
+      if (!oldData.familyCollection.totalSpecimensByFamily) {
+        oldData.familyCollection.totalSpecimensByFamily = defaultData.familyCollection.totalSpecimensByFamily;
+      }
+    }
+
     return oldData as SaveData;
   }
 
@@ -338,6 +354,7 @@ export class SaveManager {
     const achievementData = AchievementManager.createDefaultAchievementSave();
     const tutorialData = TutorialManager.createDefaultTutorialSave();
     const conservationData = ConservationManager.createDefaultSave();
+    const familyCollectionData = this.createDefaultFamilyCollectionSave();
 
     return {
       progress,
@@ -359,7 +376,36 @@ export class SaveManager {
       exhibition: exhibitionSaveData,
       achievement: achievementData,
       tutorial: tutorialData,
-      conservation: conservationData
+      conservation: conservationData,
+      familyCollection: familyCollectionData
+    };
+  }
+
+  private static createDefaultFamilyCollectionSave(): FamilyCollectionSaveData {
+    const familyProgress: Record<string, FamilyProgress> = {};
+    const totalSpecimensByFamily: Record<string, number> = {};
+
+    PlantFamilies.forEach(family => {
+      const rewardsClaimed: Record<number, boolean> = {};
+      family.rewards.forEach(reward => {
+        rewardsClaimed[reward.id] = false;
+      });
+
+      familyProgress[family.id] = {
+        familyId: family.id,
+        unlockedSpecimens: [],
+        rewardsClaimed,
+        illustrationUnlocked: false,
+        totalStars: 0
+      };
+
+      totalSpecimensByFamily[family.id] = family.specimenIds.length;
+    });
+
+    return {
+      familyProgress,
+      totalFamiliesCompleted: 0,
+      totalSpecimensByFamily
     };
   }
 
@@ -574,9 +620,9 @@ export class SaveManager {
     return this.data.badges[badgeId] ?? false;
   }
 
-  static completeLevel(levelId: number, score: number, time: number, stars: number): { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[]; researchRewards: { pointsGained: number; expGained: number }; achievementResult: AchievementUnlockResult; conservationInfo: { specimenId: number | null; healthLevel: ConservationHealthLevel | null; scoreMultiplier: number; researchMultiplier: number; finalScore: number; finalPoints: number } } {
+  static completeLevel(levelId: number, score: number, time: number, stars: number): { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[]; researchRewards: { pointsGained: number; expGained: number }; achievementResult: AchievementUnlockResult; conservationInfo: { specimenId: number | null; healthLevel: ConservationHealthLevel | null; scoreMultiplier: number; researchMultiplier: number; finalScore: number; finalPoints: number }; familyProgressResult: { familyCompleted: boolean; familyId: string | null; newlyUnlockedRewardIds: number[]; illustrationUnlocked: boolean } } {
     const progress = this.data.progress[levelId];
-    if (!progress) return { chapterCompleted: false, completedChapterId: null, newlyUnlockedChapterId: null, updatedQuests: [], researchRewards: { pointsGained: 0, expGained: 0 }, achievementResult: { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 }, conservationInfo: { specimenId: null, healthLevel: null, scoreMultiplier: 1, researchMultiplier: 1, finalScore: 0, finalPoints: 0 } };
+    if (!progress) return { chapterCompleted: false, completedChapterId: null, newlyUnlockedChapterId: null, updatedQuests: [], researchRewards: { pointsGained: 0, expGained: 0 }, achievementResult: { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 }, conservationInfo: { specimenId: null, healthLevel: null, scoreMultiplier: 1, researchMultiplier: 1, finalScore: 0, finalPoints: 0 }, familyProgressResult: { familyCompleted: false, familyId: null, newlyUnlockedRewardIds: [], illustrationUnlocked: false } };
 
     const isFirstCompletion = !progress.completed;
     const starsImproved = stars > progress.stars;
@@ -730,6 +776,10 @@ export class SaveManager {
       this.data.totalScore += achievementResult.scoreGained;
     }
 
+    const familyProgressResult = specimenId 
+      ? this.updateFamilyProgress(specimenId, stars)
+      : { familyCompleted: false, familyId: null, newlyUnlockedRewardIds: [], illustrationUnlocked: false };
+
     this.save();
     return {
       chapterCompleted: completionResult.chapterCompleted,
@@ -745,7 +795,8 @@ export class SaveManager {
         researchMultiplier,
         finalScore,
         finalPoints: actualPoints
-      }
+      },
+      familyProgressResult
     };
   }
 
@@ -925,8 +976,8 @@ export class SaveManager {
     return true;
   }
 
-  static restoreSpecimen(specimenId: number): { success: boolean; updatedQuests: DailyQuest[]; achievementResult: AchievementUnlockResult } {
-    if (!this.canRestoreSpecimen(specimenId)) return { success: false, updatedQuests: [], achievementResult: { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 } };
+  static restoreSpecimen(specimenId: number): { success: boolean; updatedQuests: DailyQuest[]; achievementResult: AchievementUnlockResult; familyProgressResult: { familyCompleted: boolean; familyId: string | null; newlyUnlockedRewardIds: number[]; illustrationUnlocked: boolean } } {
+    if (!this.canRestoreSpecimen(specimenId)) return { success: false, updatedQuests: [], achievementResult: { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 }, familyProgressResult: { familyCompleted: false, familyId: null, newlyUnlockedRewardIds: [], illustrationUnlocked: false } };
 
     const recipe = getRecipeBySpecimenId(specimenId)!;
 
@@ -954,8 +1005,10 @@ export class SaveManager {
       this.data.totalScore += achievementResult.scoreGained;
     }
 
+    const familyProgressResult = this.updateFamilyProgress(specimenId, 0);
+
     this.save();
-    return { success: true, updatedQuests, achievementResult };
+    return { success: true, updatedQuests, achievementResult, familyProgressResult };
   }
 
   static addWorkshopDrops(drops: { fragments: { id: number; count: number }[]; materials: { id: number; count: number }[] }): void {
@@ -997,6 +1050,178 @@ export class SaveManager {
 
   static getUnlockedEventGalleryItems(): number[] {
     return [...this.data.event.eventGalleryUnlocked];
+  }
+
+  static getFamilyCollectionSaveData(): FamilyCollectionSaveData {
+    return {
+      ...this.data.familyCollection,
+      familyProgress: { ...this.data.familyCollection.familyProgress }
+    };
+  }
+
+  static getFamilyProgress(familyId: string): FamilyProgress | undefined {
+    return this.data.familyCollection.familyProgress[familyId];
+  }
+
+  static getAllFamilyProgress(): Record<string, FamilyProgress> {
+    return { ...this.data.familyCollection.familyProgress };
+  }
+
+  static getTotalFamiliesCompleted(): number {
+    return this.data.familyCollection.totalFamiliesCompleted;
+  }
+
+  static isFamilyRewardClaimed(familyId: string, rewardId: number): boolean {
+    return this.data.familyCollection.familyProgress[familyId]?.rewardsClaimed[rewardId] ?? false;
+  }
+
+  static isFamilyIllustrationUnlocked(familyId: string): boolean {
+    return this.data.familyCollection.familyProgress[familyId]?.illustrationUnlocked ?? false;
+  }
+
+  static getFamilyUnlockedSpecimens(familyId: string): number[] {
+    return this.data.familyCollection.familyProgress[familyId]?.unlockedSpecimens ?? [];
+  }
+
+  static getFamilyProgressPercent(familyId: string): number {
+    const family = PlantFamilies.find(f => f.id === familyId);
+    if (!family || family.specimenIds.length === 0) return 0;
+    
+    const unlockedSpecimens = this.getFamilyUnlockedSpecimens(familyId);
+    const unlockedCount = family.specimenIds.filter(id => unlockedSpecimens.includes(id)).length;
+    return Math.round((unlockedCount / family.specimenIds.length) * 100);
+  }
+
+  static canClaimFamilyReward(familyId: string, rewardId: number): boolean {
+    const family = PlantFamilies.find(f => f.id === familyId);
+    const reward = family?.rewards.find(r => r.id === rewardId);
+    if (!family || !reward) return false;
+    
+    const progress = this.getFamilyProgressPercent(familyId);
+    return progress >= reward.requiredProgress && !this.isFamilyRewardClaimed(familyId, rewardId);
+  }
+
+  static claimFamilyReward(familyId: string, rewardId: number): { success: boolean; reward: FamilyReward | null } {
+    if (!this.canClaimFamilyReward(familyId, rewardId)) {
+      return { success: false, reward: null };
+    }
+
+    const family = PlantFamilies.find(f => f.id === familyId)!;
+    const reward = family.rewards.find(r => r.id === rewardId)!;
+    const familyProgress = this.data.familyCollection.familyProgress[familyId];
+
+    familyProgress.rewardsClaimed[rewardId] = true;
+
+    switch (reward.type) {
+      case 'score':
+        if (reward.value) {
+          this.data.totalScore += reward.value;
+        }
+        break;
+      case 'badge':
+        this.data.badges[reward.id] = true;
+        break;
+      case 'research_point':
+        if (reward.value) {
+          this.grantResearchPoints(reward.value);
+        }
+        break;
+    }
+
+    this.save();
+    return { success: true, reward };
+  }
+
+  static updateFamilyProgress(specimenId: number, stars: number): { 
+    familyCompleted: boolean; 
+    familyId: string | null; 
+    newlyUnlockedRewardIds: number[];
+    illustrationUnlocked: boolean;
+  } {
+    const family = getPlantFamilyBySpecimenId(specimenId);
+    if (!family) {
+      return { familyCompleted: false, familyId: null, newlyUnlockedRewardIds: [], illustrationUnlocked: false };
+    }
+
+    const unlockedSpecimens = this.getUnlockedGalleryItems();
+    const familyProgress = this.data.familyCollection.familyProgress[family.id];
+    const newlyUnlockedRewardIds: number[] = [];
+    let illustrationUnlocked = false;
+
+    if (!familyProgress.unlockedSpecimens.includes(specimenId)) {
+      familyProgress.unlockedSpecimens.push(specimenId);
+      if (!familyProgress.firstUnlockedAt) {
+        familyProgress.firstUnlockedAt = Date.now();
+      }
+    }
+
+    familyProgress.totalStars = family.specimenIds.reduce((sum, id) => {
+      const levelProgress = this.data.progress[id] || this.data.event.eventProgress?.[Object.keys(this.data.event.eventProgress)[0]]?.levelProgress?.[id];
+      return sum + (levelProgress?.stars || 0);
+    }, 0);
+
+    const progressPercent = this.getFamilyProgressPercent(family.id);
+    const wasCompleted = familyProgress.completedAt !== undefined;
+    const isNowComplete = isFamilyComplete(family, unlockedSpecimens);
+
+    if (isNowComplete && !wasCompleted) {
+      familyProgress.completedAt = Date.now();
+      this.data.familyCollection.totalFamiliesCompleted += 1;
+    }
+
+    family.rewards.forEach(reward => {
+      if (progressPercent >= reward.requiredProgress && !familyProgress.rewardsClaimed[reward.id]) {
+        newlyUnlockedRewardIds.push(reward.id);
+      }
+    });
+
+    if (progressPercent >= 100 && !familyProgress.illustrationUnlocked) {
+      familyProgress.illustrationUnlocked = true;
+      illustrationUnlocked = true;
+    }
+
+    this.save();
+
+    return {
+      familyCompleted: isNowComplete && !wasCompleted,
+      familyId: family.id,
+      newlyUnlockedRewardIds,
+      illustrationUnlocked
+    };
+  }
+
+  private static syncFamilyProgress(): void {
+    const unlockedSpecimens = this.getUnlockedGalleryItems();
+
+    PlantFamilies.forEach(family => {
+      const familyProgress = this.data.familyCollection.familyProgress[family.id];
+      if (!familyProgress) return;
+
+      const familyUnlocked = family.specimenIds.filter(id => unlockedSpecimens.includes(id));
+      familyProgress.unlockedSpecimens = familyUnlocked;
+
+      if (familyUnlocked.length > 0 && !familyProgress.firstUnlockedAt) {
+        familyProgress.firstUnlockedAt = Date.now();
+      }
+
+      const progressPercent = family.specimenIds.length > 0 
+        ? Math.round((familyUnlocked.length / family.specimenIds.length) * 100) 
+        : 0;
+
+      if (progressPercent >= 100 && !familyProgress.illustrationUnlocked) {
+        familyProgress.illustrationUnlocked = true;
+      }
+
+      const isComplete = family.specimenIds.every(id => unlockedSpecimens.includes(id));
+      if (isComplete && !familyProgress.completedAt) {
+        familyProgress.completedAt = Date.now();
+      }
+    });
+
+    this.data.familyCollection.totalFamiliesCompleted = PlantFamilies.filter(family => {
+      const fp = this.data.familyCollection.familyProgress[family.id];
+      return fp && fp.completedAt !== undefined;
+    }).length;
   }
 
   static hasEventBadge(badgeId: number): boolean {
