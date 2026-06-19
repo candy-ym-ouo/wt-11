@@ -5,6 +5,8 @@ import { ChapterData } from '../types/GameTypes';
 import { EventManager } from '../utils/EventManager';
 import { getActiveEvent } from '../data/Events';
 import { getTotalTowerFloors, getTowerStarsRequired } from '../data/TowerConfig';
+import { ExhibitionManager } from '../utils/ExhibitionManager';
+import { getAllExhibitionThemes } from '../data/ExhibitionConfig';
 
 export class ChapterSelectScene extends Phaser.Scene {
   constructor() {
@@ -17,6 +19,7 @@ export class ChapterSelectScene extends Phaser.Scene {
     this.addStatsBar();
     this.addEventBanner();
     this.addTowerBanner();
+    this.addExhibitionBanner();
     this.addChapterCards();
     this.addBottomButtons();
   }
@@ -347,8 +350,119 @@ export class ChapterSelectScene extends Phaser.Scene {
     }
   }
 
+  private addExhibitionBanner(): void {
+    const bannerY = 445;
+    const bannerH = 80;
+    const totalStars = SaveManager.getTotalStars();
+    const allThemes = getAllExhibitionThemes();
+    const minRequiredStars = allThemes.length > 0 ? Math.min(...allThemes.map(t => t.requiredStars)) : 0;
+    const canEnter = totalStars >= minRequiredStars;
+    const exhibitionScore = SaveManager.getTotalExhibitionScore();
+    const totalBadges = ExhibitionManager.getTotalBadgesUnlocked();
+
+    let totalClaimable = 0;
+    for (const theme of allThemes) {
+      if (ExhibitionManager.canAccessTheme(theme.id).allowed) {
+        totalClaimable += SaveManager.getClaimableExhibitionRewards(theme.id).length;
+      }
+    }
+
+    const banner = this.add.graphics();
+
+    const gradientSteps = 15;
+    for (let i = 0; i < gradientSteps; i++) {
+      const t = i / gradientSteps;
+      const baseColor = canEnter ? 0xff9800 : 0x555555;
+      const baseColor2 = canEnter ? 0xffc107 : 0x333333;
+      const r = Math.floor(((baseColor >> 16) & 0xff) * (1 - t) + ((baseColor2 >> 16) & 0xff) * t);
+      const g = Math.floor(((baseColor >> 8) & 0xff) * (1 - t) + ((baseColor2 >> 8) & 0xff) * t);
+      const b = Math.floor((baseColor & 0xff) * (1 - t) + (baseColor2 & 0xff) * t);
+      const color = (r << 16) | (g << 8) | b;
+      banner.fillStyle(color, canEnter ? 0.95 : 0.6);
+      banner.fillRect(45 + (660 * i) / gradientSteps, bannerY - bannerH / 2, 660 / gradientSteps + 1, bannerH);
+    }
+    banner.fillRoundedRect(45, bannerY - bannerH / 2, 660, bannerH, 16);
+
+    const borderColor = canEnter ? 0xffeb3b : 0x666666;
+    banner.lineStyle(3, borderColor, 1);
+    banner.strokeRoundedRect(45, bannerY - bannerH / 2, 660, bannerH, 16);
+
+    this.add.text(80, bannerY, canEnter ? '🖼️' : '🔒', {
+      font: '38px Arial'
+    }).setOrigin(0, 0.5);
+
+    this.add.text(140, bannerY - 15, '专题展览 · 植物盛会', {
+      font: 'bold 20px Arial',
+      color: canEnter ? '#ffffff' : '#aaaaaa'
+    }).setOrigin(0, 0.5);
+
+    const statusText = canEnter
+      ? `积分 ${exhibitionScore.toLocaleString()} · 徽章 ${totalBadges}`
+      : `需要 ${minRequiredStars} 颗星星解锁 (当前: ${totalStars})`;
+    this.add.text(140, bannerY + 15, statusText, {
+      font: '14px Arial',
+      color: canEnter ? 'rgba(255,255,255,0.85)' : '#ffcc80'
+    }).setOrigin(0, 0.5);
+
+    const goBtn = this.add.graphics();
+    goBtn.fillStyle(0xffffff, canEnter ? 1 : 0.5);
+    goBtn.fillRoundedRect(610, bannerY - 22, 80, 44, 12);
+
+    this.add.text(650, bannerY, canEnter ? '进入 →' : '未解锁', {
+      font: 'bold 15px Arial',
+      color: canEnter ? '#ff9800' : '#555555'
+    }).setOrigin(0.5);
+
+    if (exhibitionScore > 0 && canEnter) {
+      const scoreBadge = this.add.graphics();
+      scoreBadge.fillStyle(0x000000, 0.4);
+      scoreBadge.fillRoundedRect(500, bannerY - 22, 100, 22, 6);
+      this.add.text(550, bannerY - 11, `🏆 ${exhibitionScore}`, {
+        font: 'bold 12px Arial',
+        color: '#ffd700'
+      }).setOrigin(0.5);
+    }
+
+    if (totalClaimable > 0 && canEnter) {
+      const badge = this.add.graphics();
+      badge.fillStyle(0xffeb3b, 1);
+      badge.fillCircle(690, bannerY - 28, 14);
+      this.add.text(690, bannerY - 28, totalClaimable.toString(), {
+        font: 'bold 12px Arial',
+        color: '#1a1a2e'
+      }).setOrigin(0.5);
+    }
+
+    if (canEnter) {
+      banner.setInteractive(
+        new Phaser.Geom.Rectangle(45, bannerY - bannerH / 2, 660, bannerH),
+        Phaser.Geom.Rectangle.Contains
+      );
+      goBtn.setInteractive(
+        new Phaser.Geom.Rectangle(610, bannerY - 22, 80, 44),
+        Phaser.Geom.Rectangle.Contains
+      );
+
+      const goToExhibition = () => {
+        if (canEnter) {
+          this.scene.start('ExhibitionScene');
+        }
+      };
+
+      banner.on('pointerup', goToExhibition);
+      goBtn.on('pointerup', goToExhibition);
+
+      banner.on('pointerover', () => {
+        banner.lineStyle(3, 0xffffff, 1);
+      });
+      banner.on('pointerout', () => {
+        banner.lineStyle(3, borderColor, 1);
+      });
+    }
+  }
+
   private addChapterCards(): void {
-    const startY = 450;
+    const startY = 555;
     const cardWidth = 660;
     const cardHeight = 280;
     const padding = 25;

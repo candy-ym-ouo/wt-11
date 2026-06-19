@@ -419,6 +419,89 @@ export interface TowerResultData {
   rewards: TowerReward[];
 }
 
+export type ExhibitionThemeType = 'color' | 'family' | 'shape' | 'season' | 'rarity';
+
+export interface ExhibitionTheme {
+  id: string;
+  name: string;
+  description: string;
+  type: ExhibitionThemeType;
+  icon: string;
+  primaryColor: number;
+  secondaryColor: number;
+  accentColor: number;
+  requiredSpecimenIds: number[];
+  requiredStars: number;
+  startTime?: number;
+  endTime?: number;
+  rewards: ExhibitionReward[];
+}
+
+export interface ExhibitionReward {
+  id: number;
+  type: 'score' | 'badge' | 'fragment' | 'material' | 'research_point';
+  name: string;
+  description: string;
+  icon: string;
+  rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  threshold: number;
+  value?: number;
+  specimenId?: number;
+  badgeId?: number;
+}
+
+export interface ExhibitionBadge {
+  id: number;
+  name: string;
+  description: string;
+  icon: string;
+  tier: 'bronze' | 'silver' | 'gold' | 'platinum';
+  requiredScore: number;
+  exhibitionThemeId: string;
+}
+
+export interface ExhibitionSpecimenSubmission {
+  specimenId: number;
+  submittedAt: number;
+  stars: number;
+  bestTime: number;
+  bestScore: number;
+}
+
+export interface ExhibitionProgress {
+  themeId: string;
+  participated: boolean;
+  joinedAt?: number;
+  submissions: Record<number, ExhibitionSpecimenSubmission>;
+  completionScore: number;
+  speedScore: number;
+  starScore: number;
+  totalScore: number;
+  rewardsClaimed: Record<number, boolean>;
+  badgesUnlocked: number[];
+  lastSubmittedAt?: number;
+}
+
+export interface ExhibitionSaveData {
+  totalExhibitionScore: number;
+  totalParticipations: number;
+  themeProgress: Record<string, ExhibitionProgress>;
+  badges: Record<number, boolean>;
+}
+
+export interface ExhibitionResultData {
+  themeId: string;
+  submittedSpecimens: number[];
+  completionScore: number;
+  speedScore: number;
+  starScore: number;
+  totalScore: number;
+  newlyUnlockedBadges: ExhibitionBadge[];
+  newRewards: ExhibitionReward[];
+  isFirstParticipation: boolean;
+  isNewHighScore: boolean;
+}
+
 export interface SaveData {
   progress: Record<number, LevelProgress>;
   chapterProgress: Record<number, ChapterProgress>;
@@ -432,4 +515,5 @@ export interface SaveData {
   dailyQuest: DailyQuestSaveData;
   researchLab: ResearchLabProgress;
   tower: TowerSaveData;
+  exhibition: ExhibitionSaveData;
 }

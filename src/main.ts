@@ -15,6 +15,7 @@ import { DailyQuestScene } from './scenes/DailyQuestScene';
 import { ResearchLabScene } from './scenes/ResearchLabScene';
 import { TowerSelectScene } from './scenes/TowerSelectScene';
 import { TowerResultScene } from './scenes/TowerResultScene';
+import { ExhibitionScene } from './scenes/ExhibitionScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -41,7 +42,8 @@ const config: Phaser.Types.Core.GameConfig = {
     DailyQuestScene,
     ResearchLabScene,
     TowerSelectScene,
-    TowerResultScene
+    TowerResultScene,
+    ExhibitionScene
   ],
   physics: {
     default: 'arcade',

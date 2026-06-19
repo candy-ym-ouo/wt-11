@@ -28,7 +28,8 @@ import {
   getSpecimenCategory
 } from '../data/ResearchLabConfig';
 import { TowerFloors, getTowerFloor } from '../data/TowerConfig';
-import { TowerSaveData, TowerFloorProgress, TowerReward, TowerResultData } from '../types/GameTypes';
+import { TowerSaveData, TowerFloorProgress, TowerReward, TowerResultData, ExhibitionSaveData, ExhibitionProgress, ExhibitionSpecimenSubmission, ExhibitionReward } from '../types/GameTypes';
+import { ExhibitionThemes, getExhibitionTheme, getBadgesByThemeId } from '../data/ExhibitionConfig';
 
 const STORAGE_KEY = 'plant_specimen_puzzle_save';
 
@@ -175,6 +176,23 @@ export class SaveManager {
       }
     }
 
+    if (!oldData.exhibition) {
+      oldData.exhibition = defaultData.exhibition;
+    } else {
+      if (!oldData.exhibition.themeProgress) {
+        oldData.exhibition.themeProgress = defaultData.exhibition.themeProgress;
+      }
+      if (!oldData.exhibition.badges) {
+        oldData.exhibition.badges = defaultData.exhibition.badges;
+      }
+      if (oldData.exhibition.totalExhibitionScore === undefined) {
+        oldData.exhibition.totalExhibitionScore = 0;
+      }
+      if (oldData.exhibition.totalParticipations === undefined) {
+        oldData.exhibition.totalParticipations = 0;
+      }
+    }
+
     return oldData as SaveData;
   }
 
@@ -211,6 +229,7 @@ export class SaveManager {
     const dailyQuestSaveData = DailyQuestManager.createDefaultDailyQuestSave();
     const researchLabData = this.createDefaultResearchLabSave();
     const towerSaveData = this.createDefaultTowerSave();
+    const exhibitionSaveData = this.createDefaultExhibitionSave();
 
     return {
       progress,
@@ -228,7 +247,8 @@ export class SaveManager {
       event: eventSaveData,
       dailyQuest: dailyQuestSaveData,
       researchLab: researchLabData,
-      tower: towerSaveData
+      tower: towerSaveData,
+      exhibition: exhibitionSaveData
     };
   }
 
@@ -331,6 +351,44 @@ export class SaveManager {
       eventBadges,
       eventGalleryUnlocked: [],
       rankingCache: {}
+    };
+  }
+
+  private static createDefaultExhibitionSave(): ExhibitionSaveData {
+    const themeProgress: Record<string, ExhibitionProgress> = {};
+
+    ExhibitionThemes.forEach(theme => {
+      const rewardsClaimed: Record<number, boolean> = {};
+      theme.rewards.forEach(reward => {
+        rewardsClaimed[reward.id] = false;
+      });
+
+      themeProgress[theme.id] = {
+        themeId: theme.id,
+        participated: false,
+        submissions: {},
+        completionScore: 0,
+        speedScore: 0,
+        starScore: 0,
+        totalScore: 0,
+        rewardsClaimed,
+        badgesUnlocked: []
+      };
+    });
+
+    const exhibitionBadges: Record<number, boolean> = {};
+    ExhibitionThemes.forEach(theme => {
+      const badges = getBadgesByThemeId(theme.id);
+      badges.forEach(badge => {
+        exhibitionBadges[badge.id] = false;
+      });
+    });
+
+    return {
+      totalExhibitionScore: 0,
+      totalParticipations: 0,
+      themeProgress,
+      badges: exhibitionBadges
     };
   }
 
@@ -1344,6 +1402,202 @@ export class SaveManager {
     this.save();
 
     return rewards;
+  }
+
+  static getExhibitionSaveData(): ExhibitionSaveData {
+    return {
+      ...this.data.exhibition,
+      themeProgress: { ...this.data.exhibition.themeProgress }
+    };
+  }
+
+  static getExhibitionThemeProgress(themeId: string): ExhibitionProgress | undefined {
+    return this.data.exhibition.themeProgress[themeId];
+  }
+
+  static getAllExhibitionThemeProgress(): Record<string, ExhibitionProgress> {
+    return { ...this.data.exhibition.themeProgress };
+  }
+
+  static getTotalExhibitionScore(): number {
+    return this.data.exhibition.totalExhibitionScore;
+  }
+
+  static getTotalExhibitionParticipations(): number {
+    return this.data.exhibition.totalParticipations;
+  }
+
+  static hasExhibitionBadge(badgeId: number): boolean {
+    return this.data.exhibition.badges[badgeId] ?? false;
+  }
+
+  static isSpecimenSubmitted(themeId: string, specimenId: number): boolean {
+    return !!this.data.exhibition.themeProgress[themeId]?.submissions[specimenId];
+  }
+
+  static getSubmittedSpecimens(themeId: string): number[] {
+    const progress = this.data.exhibition.themeProgress[themeId];
+    return progress ? Object.keys(progress.submissions).map(Number) : [];
+  }
+
+  static getExhibitionSpecimenSubmission(themeId: string, specimenId: number): ExhibitionSpecimenSubmission | undefined {
+    return this.data.exhibition.themeProgress[themeId]?.submissions[specimenId];
+  }
+
+  static canSubmitToExhibition(themeId: string, specimenId: number): boolean {
+    const theme = getExhibitionTheme(themeId);
+    if (!theme) return false;
+    if (!theme.requiredSpecimenIds.includes(specimenId)) return false;
+    if (!this.isSpecimenRestored(specimenId) && !this.isGalleryUnlocked(specimenId)) return false;
+    if (this.isSpecimenSubmitted(themeId, specimenId)) return false;
+    return true;
+  }
+
+  static submitSpecimenToExhibition(
+    themeId: string,
+    specimenId: number
+  ): { success: boolean; submission?: ExhibitionSpecimenSubmission } {
+    if (!this.canSubmitToExhibition(themeId, specimenId)) {
+      return { success: false };
+    }
+
+    const themeProgress = this.data.exhibition.themeProgress[themeId];
+    if (!themeProgress) return { success: false };
+
+    const allProgress = this.getAllProgress();
+    let specimenStars = 0;
+    let specimenBestTime = 0;
+    let specimenBestScore = 0;
+
+    for (const levelId of Object.keys(allProgress).map(Number)) {
+      const levelProgress = allProgress[levelId];
+      const level = Levels.find(l => l.id === levelId);
+      if (level && level.specimen.id === specimenId) {
+        if (levelProgress.stars > specimenStars) {
+          specimenStars = levelProgress.stars;
+        }
+        if (specimenBestTime === 0 || (levelProgress.bestTime > 0 && levelProgress.bestTime < specimenBestTime)) {
+          specimenBestTime = levelProgress.bestTime;
+        }
+        if (levelProgress.bestScore > specimenBestScore) {
+          specimenBestScore = levelProgress.bestScore;
+        }
+      }
+    }
+
+    const submission: ExhibitionSpecimenSubmission = {
+      specimenId,
+      submittedAt: Date.now(),
+      stars: specimenStars,
+      bestTime: specimenBestTime,
+      bestScore: specimenBestScore
+    };
+
+    themeProgress.submissions[specimenId] = submission;
+
+    if (!themeProgress.participated) {
+      themeProgress.participated = true;
+      themeProgress.joinedAt = Date.now();
+      this.data.exhibition.totalParticipations += 1;
+    }
+
+    themeProgress.lastSubmittedAt = Date.now();
+
+    this.save();
+    return { success: true, submission };
+  }
+
+  static canClaimExhibitionReward(themeId: string, rewardId: number): boolean {
+    const themeProgress = this.data.exhibition.themeProgress[themeId];
+    const theme = getExhibitionTheme(themeId);
+    if (!themeProgress || !theme) return false;
+
+    const reward = theme.rewards.find(r => r.id === rewardId);
+    if (!reward) return false;
+    if (themeProgress.rewardsClaimed[rewardId]) return false;
+
+    return themeProgress.totalScore >= reward.threshold;
+  }
+
+  static claimExhibitionReward(themeId: string, rewardId: number): ExhibitionReward | null {
+    if (!this.canClaimExhibitionReward(themeId, rewardId)) return null;
+
+    const themeProgress = this.data.exhibition.themeProgress[themeId];
+    const theme = getExhibitionTheme(themeId);
+    if (!themeProgress || !theme) return null;
+
+    const reward = theme.rewards.find(r => r.id === rewardId)!;
+    themeProgress.rewardsClaimed[rewardId] = true;
+
+    switch (reward.type) {
+      case 'score':
+        if (reward.value) {
+          this.data.totalScore += reward.value;
+        }
+        break;
+      case 'badge':
+        if (reward.badgeId) {
+          this.data.exhibition.badges[reward.badgeId] = true;
+          this.data.badges[reward.badgeId] = true;
+          if (!themeProgress.badgesUnlocked.includes(reward.badgeId)) {
+            themeProgress.badgesUnlocked.push(reward.badgeId);
+          }
+        }
+        break;
+      case 'fragment':
+        if (reward.specimenId && reward.value) {
+          this.addFragments(reward.specimenId, reward.value);
+        }
+        break;
+      case 'material':
+        if (reward.value) {
+          this.addMaterials(1, reward.value);
+        }
+        break;
+      case 'research_point':
+        if (reward.value) {
+          this.grantResearchPoints(reward.value);
+        }
+        break;
+    }
+
+    this.save();
+    return reward;
+  }
+
+  static getClaimableExhibitionRewards(themeId: string): ExhibitionReward[] {
+    const theme = getExhibitionTheme(themeId);
+    if (!theme) return [];
+    return theme.rewards.filter(r => this.canClaimExhibitionReward(themeId, r.id));
+  }
+
+  static updateExhibitionScores(
+    themeId: string,
+    scores: { completionScore: number; speedScore: number; starScore: number; totalScore: number }
+  ): { isNewHighScore: boolean; oldScore: number } {
+    const themeProgress = this.data.exhibition.themeProgress[themeId];
+    if (!themeProgress) return { isNewHighScore: false, oldScore: 0 };
+
+    const oldScore = themeProgress.totalScore;
+    const isNewHighScore = scores.totalScore > oldScore;
+
+    if (isNewHighScore) {
+      themeProgress.completionScore = scores.completionScore;
+      themeProgress.speedScore = scores.speedScore;
+      themeProgress.starScore = scores.starScore;
+      themeProgress.totalScore = scores.totalScore;
+
+      const scoreDiff = scores.totalScore - (this.data.exhibition.totalExhibitionScore - oldScore + scores.totalScore > 0 ? 0 : 0);
+      if (scoreDiff > 0) {
+        this.data.exhibition.totalExhibitionScore += scoreDiff;
+      } else {
+        this.data.exhibition.totalExhibitionScore = Object.values(this.data.exhibition.themeProgress)
+          .reduce((sum, p) => sum + p.totalScore, 0);
+      }
+    }
+
+    this.save();
+    return { isNewHighScore, oldScore };
   }
 
   static save(): void {
