@@ -4,8 +4,10 @@ import { getLevelRule } from '../data/LevelRules';
 import { getPlantSpecimen } from '../data/PlantSpecimens';
 import { SaveManager } from '../utils/SaveManager';
 import { calculateScore, formatTime, getDifficultyColor, getDifficultyText } from '../utils/GameUtils';
-import { LevelRule, PlantSpecimen, PuzzlePieceData } from '../types/GameTypes';
+import { LevelRule, PlantSpecimen, PuzzlePieceData, EventLevelRule } from '../types/GameTypes';
 import { getDropRule, getFragmentsBySpecimenId, Fragments, Materials } from '../data/WorkshopConfig';
+import { getEventLevelRule, isEventLevel } from '../data/EventLevelRules';
+import { getEventById } from '../data/Events';
 
 export class GameScene extends Phaser.Scene {
   private levelRule!: LevelRule;
@@ -23,6 +25,11 @@ export class GameScene extends Phaser.Scene {
   private showHint: boolean = false;
   private targetTextureKey!: string;
 
+  private isEventLevel: boolean = false;
+  private eventId: string | null = null;
+  private eventLevelRule: EventLevelRule | null = null;
+  private scoreMultiplier: number = 1;
+
   private static readonly TARGET_AREA_X = 375;
   private static readonly TARGET_AREA_Y = 420;
   private static readonly TARGET_AREA_W = 500;
@@ -33,17 +40,33 @@ export class GameScene extends Phaser.Scene {
     super('GameScene');
   }
 
-  init(data: { levelId: number }): void {
-    const rule = getLevelRule(data.levelId);
-    if (!rule) {
-      this.scene.start('LevelSelectScene');
-      return;
-    }
-    this.levelRule = rule;
+  init(data: { levelId: number; isEventLevel?: boolean; eventId?: string }): void {
+    this.isEventLevel = data.isEventLevel ?? false;
+    this.eventId = data.eventId ?? null;
 
-    const specimen = getPlantSpecimen(rule.specimenId);
+    if (this.isEventLevel || isEventLevel(data.levelId)) {
+      const eventRule = getEventLevelRule(data.levelId);
+      if (!eventRule) {
+        this.scene.start(this.eventId ? 'EventLevelSelectScene' : 'LevelSelectScene', this.eventId ? { eventId: this.eventId } : {});
+        return;
+      }
+      this.eventLevelRule = eventRule;
+      this.levelRule = eventRule as LevelRule;
+      this.scoreMultiplier = eventRule.scoreMultiplier;
+      if (!this.eventId) this.eventId = eventRule.eventId;
+    } else {
+      const rule = getLevelRule(data.levelId);
+      if (!rule) {
+        this.scene.start('LevelSelectScene');
+        return;
+      }
+      this.levelRule = rule;
+      this.scoreMultiplier = 1;
+    }
+
+    const specimen = getPlantSpecimen(this.levelRule.specimenId);
     if (!specimen) {
-      this.scene.start('LevelSelectScene');
+      this.scene.start(this.eventId ? 'EventLevelSelectScene' : 'LevelSelectScene', this.eventId ? { eventId: this.eventId } : {});
       return;
     }
     this.specimen = specimen;
@@ -71,7 +94,8 @@ export class GameScene extends Phaser.Scene {
 
   private addHeader(): void {
     const header = this.add.graphics();
-    header.fillStyle(0x0f3460, 1);
+    const headerColor = this.isEventLevel && this.eventId ? getEventById(this.eventId)?.primaryColor ?? 0x0f3460 : 0x0f3460;
+    header.fillStyle(headerColor, this.isEventLevel ? 0.9 : 1);
     header.fillRect(0, 0, 750, 120);
 
     this.add.text(60, 40, this.levelRule.name, {
@@ -83,6 +107,16 @@ export class GameScene extends Phaser.Scene {
       font: '18px Arial',
       color: '#' + getDifficultyColor(this.levelRule.difficulty).toString(16).padStart(6, '0')
     });
+
+    if (this.isEventLevel) {
+      const eventBadge = this.add.graphics();
+      eventBadge.fillStyle(0xffd700, 0.95);
+      eventBadge.fillRoundedRect(60, 102, 130, 22, 6);
+      this.add.text(125, 113, `🎯 活动关卡 x${this.scoreMultiplier}`, {
+        font: 'bold 13px Arial',
+        color: '#1a1a2e'
+      }).setOrigin(0.5);
+    }
 
     this.timeText = this.add.text(690, 45, formatTime(this.levelRule.timeLimit), {
       font: 'bold 32px Arial',
@@ -500,7 +534,8 @@ export class GameScene extends Phaser.Scene {
       this.pieces.length,
       this.snappedCount
     );
-    this.scoreText.setText(`得分: ${result.score}`);
+    const finalScore = Math.floor(result.score * this.scoreMultiplier);
+    this.scoreText.setText(`得分: ${finalScore}`);
   }
 
   private onLevelComplete(): void {
@@ -513,13 +548,27 @@ export class GameScene extends Phaser.Scene {
       this.pieces.length,
       this.snappedCount
     );
+    const finalScore = Math.floor(result.score * this.scoreMultiplier);
 
-    const chapterResult = SaveManager.completeLevel(
-      this.levelRule.id,
-      result.score,
-      this.elapsedTime,
-      result.stars
-    );
+    let chapterResult: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null } | undefined;
+    let eventResult: { newlyUnlockedLevelId: number | null; updatedTotalScore: number } | undefined;
+
+    if (this.isEventLevel && this.eventId) {
+      eventResult = SaveManager.completeEventLevel(
+        this.eventId,
+        this.levelRule.id,
+        finalScore,
+        this.elapsedTime,
+        result.stars
+      );
+    } else {
+      chapterResult = SaveManager.completeLevel(
+        this.levelRule.id,
+        result.score,
+        this.elapsedTime,
+        result.stars
+      );
+    }
 
     const drops = this.calculateDrops(result.stars);
     SaveManager.addWorkshopDrops(drops);
@@ -527,7 +576,7 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.zoomTo(1.05, 400, 'Cubic.easeInOut', true);
     this.time.delayedCall(450, () => {
       this.cameras.main.zoomTo(1.0, 400, 'Cubic.easeInOut', true);
-      this.showVictory(result.score, result.stars, this.elapsedTime, chapterResult, drops);
+      this.showVictory(finalScore, result.stars, this.elapsedTime, chapterResult, drops, eventResult);
     });
   }
 
@@ -627,7 +676,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private showVictory(score: number, stars: number, time: number, chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null }, drops?: { fragments: { id: number; count: number }[]; materials: { id: number; count: number }[] }): void {
+  private showVictory(score: number, stars: number, time: number, chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null }, drops?: { fragments: { id: number; count: number }[]; materials: { id: number; count: number }[] }, eventResult?: { newlyUnlockedLevelId: number | null; updatedTotalScore: number }): void {
     const { overlay } = this.createModal('🎉 修复完成！', '#4caf50', 0x4caf50);
 
     this.drawStars(375, 480, stars, 50);
@@ -690,7 +739,52 @@ export class GameScene extends Phaser.Scene {
     }
 
     let bannerY = dropBannerY;
-    if (chapterResult?.chapterCompleted && chapterResult.completedChapterId) {
+
+    if (this.isEventLevel && eventResult) {
+      if (this.eventId) {
+        const eventScoreBanner = this.add.graphics();
+        eventScoreBanner.fillStyle(0x9c27b0, 1);
+        eventScoreBanner.fillRoundedRect(140, bannerY, 470, 45, 12);
+        this.add.text(375, bannerY + 22, `🏆 活动总积分: ${eventResult.updatedTotalScore.toLocaleString()}`, {
+          font: 'bold 18px Arial',
+          color: '#ffffff'
+        }).setOrigin(0.5);
+        bannerY += 55;
+      }
+
+      if (eventResult.newlyUnlockedLevelId) {
+        const unlockBanner = this.add.graphics();
+        unlockBanner.fillStyle(0x4caf50, 1);
+        unlockBanner.fillRoundedRect(140, bannerY, 470, 45, 12);
+        this.add.text(375, bannerY + 22, '🔓 下一活动关卡已解锁！', {
+          font: 'bold 18px Arial',
+          color: '#ffffff'
+        }).setOrigin(0.5);
+        bannerY += 55;
+      }
+
+      const claimableRewards = SaveManager.getClaimableEventRewards(this.eventId!);
+      if (claimableRewards.length > 0) {
+        const rewardBanner = this.add.graphics();
+        rewardBanner.fillStyle(0xffd700, 1);
+        rewardBanner.fillRoundedRect(140, bannerY, 470, 45, 12);
+        rewardBanner.setInteractive(
+          new Phaser.Geom.Rectangle(140, bannerY, 470, 45),
+          Phaser.Geom.Rectangle.Contains
+        );
+        this.add.text(375, bannerY + 22, `🎁 有${claimableRewards.length}个活动奖励可领取！`, {
+          font: 'bold 18px Arial',
+          color: '#1a1a2e'
+        }).setOrigin(0.5);
+
+        rewardBanner.on('pointerup', () => {
+          this.scene.start('EventScene');
+        });
+        bannerY += 55;
+      }
+    }
+
+    if (!this.isEventLevel && chapterResult?.chapterCompleted && chapterResult.completedChapterId) {
       const chapterBadge = this.add.graphics();
       chapterBadge.fillStyle(0xff9800, 1);
       chapterBadge.fillRoundedRect(180, bannerY, 390, 45, 12);
@@ -712,7 +806,7 @@ export class GameScene extends Phaser.Scene {
       bannerY += 55;
     }
 
-    if (chapterResult?.newlyUnlockedChapterId) {
+    if (!this.isEventLevel && chapterResult?.newlyUnlockedChapterId) {
       const unlockBanner = this.add.graphics();
       unlockBanner.fillStyle(0x9c27b0, 1);
       unlockBanner.fillRoundedRect(140, bannerY, 470, 45, 12);
@@ -723,7 +817,7 @@ export class GameScene extends Phaser.Scene {
       }).setOrigin(0.5);
     }
 
-    this.createResultButtons(overlay, true, chapterResult);
+    this.createResultButtons(overlay, true, chapterResult, eventResult);
   }
 
   private showGameOver(score: number, snapped: number, total: number): void {
@@ -759,14 +853,20 @@ export class GameScene extends Phaser.Scene {
   private createResultButtons(
     overlay: Phaser.GameObjects.Graphics,
     isVictory: boolean,
-    chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null }
+    chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null },
+    eventResult?: { newlyUnlockedLevelId: number | null; updatedTotalScore: number }
   ): void {
     const btnW = 230;
     const btnH = 68;
-    const hasBanner = chapterResult?.chapterCompleted || chapterResult?.newlyUnlockedChapterId;
+    let hasBanner = false;
+    if (this.isEventLevel) {
+      hasBanner = !!eventResult;
+    } else {
+      hasBanner = !!(chapterResult?.chapterCompleted || chapterResult?.newlyUnlockedChapterId);
+    }
     const btnY = hasBanner ? 810 : 780;
 
-    if (chapterResult?.chapterCompleted && chapterResult.completedChapterId) {
+    if (!this.isEventLevel && chapterResult?.chapterCompleted && chapterResult.completedChapterId) {
       const chapterBtn = this.add.graphics();
       chapterBtn.fillStyle(0xff9800, 1);
       chapterBtn.fillRoundedRect(135, btnY - 70, 480, 58, 14);
@@ -801,7 +901,11 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     retryBtn.on('pointerup', () => {
-      this.scene.restart({ levelId: this.levelRule.id });
+      this.scene.restart({
+        levelId: this.levelRule.id,
+        isEventLevel: this.isEventLevel,
+        eventId: this.eventId
+      });
     });
 
     const backBtn = this.add.graphics();
@@ -812,13 +916,18 @@ export class GameScene extends Phaser.Scene {
       Phaser.Geom.Rectangle.Contains
     );
 
-    this.add.text(385 + btnW / 2, btnY + btnH / 2, '返回关卡', {
+    const backLabel = this.isEventLevel ? '返回活动' : '返回关卡';
+    this.add.text(385 + btnW / 2, btnY + btnH / 2, backLabel, {
       font: 'bold 22px Arial',
       color: '#ffffff'
     }).setOrigin(0.5);
 
     backBtn.on('pointerup', () => {
-      this.scene.start('LevelSelectScene');
+      if (this.isEventLevel && this.eventId) {
+        this.scene.start('EventLevelSelectScene', { eventId: this.eventId });
+      } else {
+        this.scene.start('LevelSelectScene');
+      }
     });
   }
 
@@ -915,11 +1024,19 @@ export class GameScene extends Phaser.Scene {
     });
 
     restartBtn.on('pointerup', () => {
-      this.scene.restart({ levelId: this.levelRule.id });
+      this.scene.restart({
+        levelId: this.levelRule.id,
+        isEventLevel: this.isEventLevel,
+        eventId: this.eventId
+      });
     });
 
     quitBtn.on('pointerup', () => {
-      this.scene.start('LevelSelectScene');
+      if (this.isEventLevel && this.eventId) {
+        this.scene.start('EventLevelSelectScene', { eventId: this.eventId });
+      } else {
+        this.scene.start('LevelSelectScene');
+      }
     });
   }
 }

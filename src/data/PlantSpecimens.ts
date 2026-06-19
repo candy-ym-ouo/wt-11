@@ -66,6 +66,61 @@ export const PlantSpecimens: Record<number, PlantSpecimen> = {
     leafColor: 0x81c784,
     stemColor: 0x795548,
     shape: 'succulent'
+  },
+  101: {
+    id: 101,
+    name: '樱花',
+    family: '蔷薇科',
+    description: '【活动限定】蔷薇科樱亚属植物，春日的象征。花瓣粉嫩柔美，花期虽短却绽放极致之美，是春天最浪漫的约定。',
+    primaryColor: 0xffb7c5,
+    secondaryColor: 0xf8bbd9,
+    leafColor: 0x81c784,
+    stemColor: 0x795548,
+    shape: 'rose'
+  },
+  102: {
+    id: 102,
+    name: '睡莲',
+    family: '睡莲科',
+    description: '【活动限定】睡莲科睡莲属多年生水生草本。花朵浮于水面，昼开夜合，被誉为"水中女神"，象征纯洁与优雅。',
+    primaryColor: 0xe1bee7,
+    secondaryColor: 0xce93d8,
+    leafColor: 0x4caf50,
+    stemColor: 0x558b2f,
+    shape: 'orchid'
+  },
+  103: {
+    id: 103,
+    name: '彼岸花',
+    family: '石蒜科',
+    description: '【活动限定】石蒜科石蒜属多年生草本。花如龙爪，红艳奇特，花开叶落永不相见，蕴含着神秘的传说与诗意。',
+    primaryColor: 0xff1744,
+    secondaryColor: 0xff5252,
+    leafColor: 0x2e7d32,
+    stemColor: 0x5d4037,
+    shape: 'sunflower'
+  },
+  104: {
+    id: 104,
+    name: '昙花',
+    family: '仙人掌科',
+    description: '【活动限定】仙人掌科昙花属附生肉质灌木。只在夜间绽放，花期极短，洁白如雪，被誉为"月下美人"，象征刹那间的永恒。',
+    primaryColor: 0xfafafa,
+    secondaryColor: 0xe0e0e0,
+    leafColor: 0x66bb6a,
+    stemColor: 0x8bc34a,
+    shape: 'ginkgo'
+  },
+  105: {
+    id: 105,
+    name: '雪莲',
+    family: '菊科',
+    description: '【活动限定】菊科风毛菊属多年生草本。生长于高山严寒之地，花朵似莲座洁白如玉，是珍稀的高山药用植物，象征坚韧与纯洁。',
+    primaryColor: 0xe3f2fd,
+    secondaryColor: 0xbbdefb,
+    leafColor: 0x607d8b,
+    stemColor: 0x78909c,
+    shape: 'succulent'
   }
 };
 

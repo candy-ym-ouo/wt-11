@@ -1,7 +1,21 @@
-import { SaveData, LevelProgress, ChapterProgress, Reward, WorkshopProgress } from '../types/GameTypes';
+import {
+  SaveData,
+  LevelProgress,
+  ChapterProgress,
+  Reward,
+  WorkshopProgress,
+  EventProgress,
+  EventLevelProgress,
+  EventSaveData,
+  EventRankingData,
+  RankingEntry,
+  EventReward
+} from '../types/GameTypes';
 import { Levels } from '../data/Levels';
 import { Chapters, getChapterById, getChapterByLevelId, getNextChapter, getRewardsByChapterId } from '../data/Chapters';
 import { WorkshopRecipes, getRecipeBySpecimenId } from '../data/WorkshopConfig';
+import { Events, getActiveEvent, getEventById } from '../data/Events';
+import { EventLevelRules, getEventLevelRulesByEventId } from '../data/EventLevelRules';
 
 const STORAGE_KEY = 'plant_specimen_puzzle_save';
 
@@ -45,6 +59,22 @@ export class SaveManager {
     if (!oldData.workshop) {
       oldData.workshop = defaultData.workshop;
     }
+    if (!oldData.event) {
+      oldData.event = defaultData.event;
+    } else {
+      if (!oldData.event.eventProgress) {
+        oldData.event.eventProgress = defaultData.event.eventProgress;
+      }
+      if (!oldData.event.eventBadges) {
+        oldData.event.eventBadges = defaultData.event.eventBadges;
+      }
+      if (!oldData.event.eventGalleryUnlocked) {
+        oldData.event.eventGalleryUnlocked = defaultData.event.eventGalleryUnlocked;
+      }
+      if (!oldData.event.rankingCache) {
+        oldData.event.rankingCache = defaultData.event.rankingCache;
+      }
+    }
 
     if (oldData.workshop?.restoredSpecimens) {
       oldData.workshop.restoredSpecimens.forEach((specimenId: number) => {
@@ -86,6 +116,8 @@ export class SaveManager {
       badges[id] = false;
     });
 
+    const eventSaveData = this.createDefaultEventSave();
+
     return {
       progress,
       chapterProgress,
@@ -98,7 +130,61 @@ export class SaveManager {
         fragments: {},
         materials: {},
         restoredSpecimens: []
-      }
+      },
+      event: eventSaveData
+    };
+  }
+
+  private static createDefaultEventSave(): EventSaveData {
+    const activeEvent = getActiveEvent();
+    const eventProgress: Record<string, EventProgress> = {};
+
+    Object.values(Events).forEach(event => {
+      const levelProgress: Record<number, EventLevelProgress> = {};
+      const eventLevels = getEventLevelRulesByEventId(event.id);
+      eventLevels.forEach((rule, index) => {
+        levelProgress[rule.id] = {
+          eventLevelId: rule.id,
+          unlocked: index === 0,
+          bestScore: 0,
+          bestTime: 0,
+          stars: 0,
+          completed: false,
+          attempts: 0
+        };
+      });
+
+      const rewardsClaimed: Record<number, boolean> = {};
+      event.rewards.forEach(reward => {
+        rewardsClaimed[reward.id] = false;
+      });
+
+      eventProgress[event.id] = {
+        eventId: event.id,
+        participated: false,
+        totalScore: 0,
+        currentRank: 0,
+        levelProgress,
+        rewardsClaimed,
+        unlockedEventGallery: []
+      };
+    });
+
+    const eventBadges: Record<number, boolean> = {};
+    Object.values(Events).forEach(event => {
+      event.rewards
+        .filter(r => r.type === 'badge')
+        .forEach(r => {
+          eventBadges[r.id] = false;
+        });
+    });
+
+    return {
+      activeEventId: activeEvent?.id || null,
+      eventProgress,
+      eventBadges,
+      eventGalleryUnlocked: [],
+      rankingCache: {}
     };
   }
 
@@ -407,6 +493,197 @@ export class SaveManager {
   static addWorkshopDrops(drops: { fragments: { id: number; count: number }[]; materials: { id: number; count: number }[] }): void {
     drops.fragments.forEach(f => this.addFragments(f.id, f.count));
     drops.materials.forEach(m => this.addMaterials(m.id, m.count));
+  }
+
+  static getActiveEventId(): string | null {
+    return this.data.event.activeEventId;
+  }
+
+  static getEventProgress(eventId: string): EventProgress | undefined {
+    return this.data.event.eventProgress[eventId];
+  }
+
+  static getAllEventProgress(): Record<string, EventProgress> {
+    return { ...this.data.event.eventProgress };
+  }
+
+  static getEventLevelProgress(eventId: string, levelId: number): EventLevelProgress | undefined {
+    return this.data.event.eventProgress[eventId]?.levelProgress[levelId];
+  }
+
+  static getEventTotalScore(eventId: string): number {
+    return this.data.event.eventProgress[eventId]?.totalScore ?? 0;
+  }
+
+  static isEventLevelUnlocked(eventId: string, levelId: number): boolean {
+    return this.data.event.eventProgress[eventId]?.levelProgress[levelId]?.unlocked ?? false;
+  }
+
+  static hasEventParticipated(eventId: string): boolean {
+    return this.data.event.eventProgress[eventId]?.participated ?? false;
+  }
+
+  static isEventGalleryUnlocked(specimenId: number): boolean {
+    return this.data.event.eventGalleryUnlocked.includes(specimenId);
+  }
+
+  static getUnlockedEventGalleryItems(): number[] {
+    return [...this.data.event.eventGalleryUnlocked];
+  }
+
+  static hasEventBadge(badgeId: number): boolean {
+    return this.data.event.eventBadges[badgeId] ?? false;
+  }
+
+  static completeEventLevel(
+    eventId: string,
+    levelId: number,
+    score: number,
+    time: number,
+    stars: number
+  ): { newlyUnlockedLevelId: number | null; updatedTotalScore: number } {
+    const eventProg = this.data.event.eventProgress[eventId];
+    if (!eventProg) return { newlyUnlockedLevelId: null, updatedTotalScore: 0 };
+
+    const levelProg = eventProg.levelProgress[levelId];
+    if (!levelProg) return { newlyUnlockedLevelId: null, updatedTotalScore: 0 };
+
+    const scoreImproved = score > levelProg.bestScore;
+    const starsImproved = stars > levelProg.stars;
+
+    if (scoreImproved) {
+      const diff = score - levelProg.bestScore;
+      eventProg.totalScore += diff;
+      levelProg.bestScore = score;
+    }
+
+    if (levelProg.bestTime === 0 || time < levelProg.bestTime) {
+      levelProg.bestTime = time;
+    }
+
+    if (starsImproved) {
+      levelProg.stars = stars;
+    }
+
+    levelProg.completed = true;
+    levelProg.attempts += 1;
+    levelProg.lastPlayedAt = Date.now();
+
+    if (!eventProg.participated) {
+      eventProg.participated = true;
+      eventProg.joinedAt = Date.now();
+    }
+    eventProg.lastActiveAt = Date.now();
+
+    let newlyUnlockedLevelId: number | null = null;
+    const eventLevels = getEventLevelRulesByEventId(eventId);
+    const currentIndex = eventLevels.findIndex(r => r.id === levelId);
+    if (currentIndex >= 0 && currentIndex < eventLevels.length - 1) {
+      const nextLevelId = eventLevels[currentIndex + 1].id;
+      const nextProg = eventProg.levelProgress[nextLevelId];
+      if (nextProg && !nextProg.unlocked) {
+        nextProg.unlocked = true;
+        newlyUnlockedLevelId = nextLevelId;
+      }
+    }
+
+    this.save();
+    return { newlyUnlockedLevelId, updatedTotalScore: eventProg.totalScore };
+  }
+
+  static canClaimEventReward(eventId: string, rewardId: number): boolean {
+    const eventProg = this.data.event.eventProgress[eventId];
+    const event = getEventById(eventId);
+    if (!eventProg || !event) return false;
+
+    const reward = event.rewards.find(r => r.id === rewardId);
+    if (!reward) return false;
+    if (eventProg.rewardsClaimed[rewardId]) return false;
+
+    return eventProg.totalScore >= reward.threshold;
+  }
+
+  static claimEventReward(eventId: string, rewardId: number): EventReward | null {
+    if (!this.canClaimEventReward(eventId, rewardId)) return null;
+
+    const eventProg = this.data.event.eventProgress[eventId];
+    const event = getEventById(eventId);
+    if (!eventProg || !event) return null;
+
+    const reward = event.rewards.find(r => r.id === rewardId)!;
+    eventProg.rewardsClaimed[rewardId] = true;
+
+    switch (reward.type) {
+      case 'score':
+        if (reward.value) {
+          this.data.totalScore += reward.value;
+        }
+        break;
+      case 'badge':
+        this.data.event.eventBadges[reward.id] = true;
+        this.data.badges[reward.id] = true;
+        break;
+      case 'specimen':
+        if (reward.specimenId) {
+          if (!this.data.event.eventGalleryUnlocked.includes(reward.specimenId)) {
+            this.data.event.eventGalleryUnlocked.push(reward.specimenId);
+          }
+          if (!this.data.galleryUnlocked.includes(reward.specimenId)) {
+            this.data.galleryUnlocked.push(reward.specimenId);
+          }
+        } else {
+          const eventLevels = getEventLevelRulesByEventId(eventId);
+          eventLevels.forEach(rule => {
+            if (!this.data.event.eventGalleryUnlocked.includes(rule.specimenId)) {
+              this.data.event.eventGalleryUnlocked.push(rule.specimenId);
+            }
+            if (!this.data.galleryUnlocked.includes(rule.specimenId)) {
+              this.data.galleryUnlocked.push(rule.specimenId);
+            }
+          });
+        }
+        break;
+      case 'fragment':
+        if (reward.specimenId && reward.value) {
+          this.addFragments(reward.specimenId, reward.value);
+        }
+        break;
+      case 'material':
+        if (reward.value) {
+          this.data.totalScore += reward.value;
+        }
+        break;
+    }
+
+    this.save();
+    return reward;
+  }
+
+  static getRankingCache(eventId: string): EventRankingData | undefined {
+    return this.data.event.rankingCache[eventId];
+  }
+
+  static setRankingCache(eventId: string, data: EventRankingData): void {
+    this.data.event.rankingCache[eventId] = data;
+    this.save();
+  }
+
+  static getClaimableEventRewards(eventId: string): EventReward[] {
+    const event = getEventById(eventId);
+    if (!event) return [];
+    return event.rewards.filter(r => this.canClaimEventReward(eventId, r.id));
+  }
+
+  static getCompletedEventLevelsCount(eventId: string): number {
+    const eventProg = this.data.event.eventProgress[eventId];
+    if (!eventProg) return 0;
+    return Object.values(eventProg.levelProgress).filter(p => p.completed).length;
+  }
+
+  static getEventTotalStars(eventId: string): number {
+    const eventProg = this.data.event.eventProgress[eventId];
+    if (!eventProg) return 0;
+    return Object.values(eventProg.levelProgress).reduce((sum, p) => sum + p.stars, 0);
   }
 
   private static save(): void {

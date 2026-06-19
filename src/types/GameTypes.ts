@@ -137,6 +137,88 @@ export interface WorkshopProgress {
   restoredSpecimens: number[];
 }
 
+export interface EventLevelRule extends LevelRule {
+  eventId: string;
+  scoreMultiplier: number;
+}
+
+export interface EventData {
+  id: string;
+  name: string;
+  description: string;
+  theme: string;
+  banner: string;
+  primaryColor: number;
+  secondaryColor: number;
+  accentColor: number;
+  startTime: number;
+  endTime: number;
+  levelIds: number[];
+  rewards: EventReward[];
+  requiredMainProgress: number;
+}
+
+export interface EventReward {
+  id: number;
+  type: 'score' | 'specimen' | 'badge' | 'material' | 'fragment';
+  name: string;
+  description: string;
+  icon: string;
+  rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  threshold: number;
+  value?: number;
+  specimenId?: number;
+}
+
+export interface EventLevelProgress {
+  eventLevelId: number;
+  unlocked: boolean;
+  bestScore: number;
+  bestTime: number;
+  stars: number;
+  completed: boolean;
+  attempts: number;
+  lastPlayedAt?: number;
+}
+
+export interface EventProgress {
+  eventId: string;
+  participated: boolean;
+  totalScore: number;
+  currentRank: number;
+  levelProgress: Record<number, EventLevelProgress>;
+  rewardsClaimed: Record<number, boolean>;
+  unlockedEventGallery: number[];
+  joinedAt?: number;
+  lastActiveAt?: number;
+}
+
+export interface RankingEntry {
+  rank: number;
+  playerId: string;
+  playerName: string;
+  avatar: string;
+  score: number;
+  stars: number;
+  levelsCompleted: number;
+  isCurrentPlayer?: boolean;
+}
+
+export interface EventRankingData {
+  eventId: string;
+  entries: RankingEntry[];
+  lastUpdated: number;
+  currentPlayerEntry?: RankingEntry;
+}
+
+export interface EventSaveData {
+  activeEventId: string | null;
+  eventProgress: Record<string, EventProgress>;
+  eventBadges: Record<number, boolean>;
+  eventGalleryUnlocked: number[];
+  rankingCache: Record<string, EventRankingData>;
+}
+
 export interface SaveData {
   progress: Record<number, LevelProgress>;
   chapterProgress: Record<number, ChapterProgress>;
@@ -146,4 +228,5 @@ export interface SaveData {
   unlockedChapters: number[];
   galleryUnlocked: number[];
   workshop: WorkshopProgress;
+  event: EventSaveData;
 }

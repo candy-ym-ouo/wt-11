@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { LevelRules } from '../data/LevelRules';
 import { PlantSpecimens } from '../data/PlantSpecimens';
 import { SpecimenTextureGenerator } from '../utils/SpecimenTextureGenerator';
+import { EventLevelRules } from '../data/EventLevelRules';
 
 export class PreloadScene extends Phaser.Scene {
   private progressBar!: Phaser.GameObjects.Graphics;
@@ -145,7 +146,14 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   private generateAllSpecimenTextures(): void {
-    LevelRules.forEach(rule => {
+    const allRules = [...LevelRules, ...EventLevelRules];
+    const processedSpecimens = new Set<string>();
+
+    allRules.forEach(rule => {
+      const key = `${rule.specimenId}-${rule.rows}-${rule.cols}`;
+      if (processedSpecimens.has(key)) return;
+      processedSpecimens.add(key);
+
       const specimen = PlantSpecimens[rule.specimenId];
       if (!specimen) return;
 
