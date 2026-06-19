@@ -878,15 +878,6 @@ export class SaveManager {
       : finalScore;
     SeasonPassManager.onScoreGain(scoreDiff, levelId, score);
 
-    const oldGalleryCount = this.getUnlockedGalleryItems().length;
-    if (specimenId && !this.isGalleryUnlocked(specimenId)) {
-      this.unlockGalleryItem(specimenId);
-      const newGalleryCount = this.getUnlockedGalleryItems().length;
-      if (newGalleryCount > oldGalleryCount) {
-        SeasonPassManager.onGalleryUnlock(specimenId);
-      }
-    }
-
     this.data.seasonPass = SeasonPassManager.getSaveData();
     this.save();
     return {
@@ -1124,6 +1115,12 @@ export class SaveManager {
   static addWorkshopDrops(drops: { fragments: { id: number; count: number }[]; materials: { id: number; count: number }[] }): void {
     drops.fragments.forEach(f => this.addFragments(f.id, f.count));
     drops.materials.forEach(m => this.addMaterials(m.id, m.count));
+  }
+
+  static setSeasonPassData(data: SeasonPassSaveData): void {
+    if (!this.data) return;
+    this.data.seasonPass = data;
+    this.save();
   }
 
   static getActiveEventId(): string | null {
@@ -2230,6 +2227,7 @@ export class SaveManager {
     if (!this.data.galleryUnlocked.includes(specimenId)) {
       this.data.galleryUnlocked.push(specimenId);
       this.syncFamilyProgress();
+      SeasonPassManager.onGalleryUnlock(specimenId);
       this.save();
     }
   }

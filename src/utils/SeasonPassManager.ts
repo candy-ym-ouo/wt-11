@@ -21,12 +21,15 @@ import {
   getTrackTier,
   getCurrentLevel
 } from '../data/SeasonPassConfig';
+import { SaveManager } from './SaveManager';
 
 export class SeasonPassManager {
   private static data: SeasonPassSaveData;
   private static listeners: Set<() => void> = new Set();
+  private static saveSyncEnabled: boolean = false;
 
   static init(saveData: SeasonPassSaveData | undefined): void {
+    this.saveSyncEnabled = false;
     if (saveData && saveData.seasonId === CURRENT_SEASON_ID) {
       this.data = saveData;
       this.checkAndRefreshQuests();
@@ -34,7 +37,9 @@ export class SeasonPassManager {
       this.data = this.createDefaultSave();
     }
     this.syncTrackProgress();
+    this.saveSyncEnabled = true;
     this.notifyListeners();
+    this.persistToSaveManager();
   }
 
   private static createDefaultSave(): SeasonPassSaveData {
@@ -94,7 +99,16 @@ export class SeasonPassManager {
     return this.getData();
   }
 
+  private static persistToSaveManager(): void {
+    if (!this.saveSyncEnabled) return;
+    try {
+      SaveManager.setSeasonPassData(this.data);
+    } catch {
+    }
+  }
+
   private static notifyListeners(): void {
+    this.persistToSaveManager();
     this.listeners.forEach(listener => listener());
   }
 
