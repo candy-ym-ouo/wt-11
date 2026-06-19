@@ -2,7 +2,14 @@
   "hash": "897148f4",
   "configHash": "3644c5a5",
   "lockfileHash": "38b44e67",
-  "browserHash": "c7fa4320",
-  "optimized": {},
+  "browserHash": "29b10962",
+  "optimized": {
+    "phaser": {
+      "src": "../../node_modules/phaser/dist/phaser.js",
+      "file": "phaser.js",
+      "fileHash": "2e15b5fb",
+      "needsInterop": true
+    }
+  },
   "chunks": {}
 }

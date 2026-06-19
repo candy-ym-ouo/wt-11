@@ -1,48 +1,49 @@
 import Phaser from 'phaser';
-import { PuzzlePiece } from '../types/GameTypes';
-import { SnapConfig } from '../config/GameConfig';
+import { PuzzlePieceData } from '../types/GameTypes';
 
 export class PuzzlePieceSprite extends Phaser.GameObjects.Container {
-  private pieceData: PuzzlePiece;
-  private pieceGraphics: Phaser.GameObjects.Graphics;
+  private pieceData: PuzzlePieceData;
+  private pieceImage: Phaser.GameObjects.Image;
   private isDragging: boolean = false;
   private isSnapped: boolean = false;
+  private isSelected: boolean = false;
   private targetX: number;
   private targetY: number;
-  private targetRotation: number;
+  private targetRotation: number = 0;
   private dragOffsetX: number = 0;
   private dragOffsetY: number = 0;
-  private originalX: number;
-  private originalY: number;
-  private highlight!: Phaser.GameObjects.Graphics;
-  private pieceColor: number;
+  private dragStartX: number = 0;
+  private dragStartY: number = 0;
+  private hasMoved: boolean = false;
+  private initialX: number;
+  private initialY: number;
+  private highlightBorder!: Phaser.GameObjects.Graphics;
+  private selectedGlow!: Phaser.GameObjects.Graphics;
+  private snapThreshold: { position: number; rotation: number };
+
+  private static selectedPiece: PuzzlePieceSprite | null = null;
 
   constructor(
     scene: Phaser.Scene,
-    pieceData: PuzzlePiece,
-    targetX: number,
-    targetY: number,
-    targetRotation: number
+    pieceData: PuzzlePieceData,
+    snapThreshold: { position: number; rotation: number }
   ) {
-    super(scene, pieceData.x, pieceData.y);
+    super(scene, pieceData.initialX, pieceData.initialY);
     this.pieceData = pieceData;
-    this.targetX = targetX;
-    this.targetY = targetY;
-    this.targetRotation = targetRotation;
-    this.originalX = pieceData.x;
-    this.originalY = pieceData.y;
+    this.targetX = pieceData.targetX;
+    this.targetY = pieceData.targetY;
+    this.initialX = pieceData.initialX;
+    this.initialY = pieceData.initialY;
+    this.snapThreshold = snapThreshold;
 
-    const colors = [0xffd700, 0xff9800, 0xe91e63, 0x9c27b0, 0x2196f3, 0x00bcd4, 0x4caf50, 0x8bc34a];
-    this.pieceColor = colors[pieceData.frameIndex % colors.length];
-
-    this.pieceGraphics = this.scene.add.graphics();
-    this.drawPiece();
-    this.add(this.pieceGraphics);
+    this.pieceImage = this.scene.add.image(0, 0, pieceData.textureKey);
+    this.pieceImage.setDisplaySize(pieceData.width + 8, pieceData.height + 8);
+    this.add(this.pieceImage);
 
     this.setSize(pieceData.width, pieceData.height);
-    this.setInteractive({ useHandCursor: true });
+    this.setInteractive({ useHandCursor: true, pixelPerfect: false });
 
-    this.createHighlight();
+    this.createEffects();
     this.setupInputHandlers();
 
     const randomRotation = Phaser.Math.Between(0, 3) * 90;
@@ -51,69 +52,64 @@ export class PuzzlePieceSprite extends Phaser.GameObjects.Container {
     scene.add.existing(this);
   }
 
-  private drawPiece(): void {
-    const w = this.pieceData.width;
-    const h = this.pieceData.height;
-
-    this.pieceGraphics.clear();
-
-    this.pieceGraphics.fillStyle(this.pieceColor, 0.9);
-    this.pieceGraphics.fillRoundedRect(-w / 2, -h / 2, w, h, 8);
-
-    this.pieceGraphics.lineStyle(3, 0x333333, 0.4);
-    this.pieceGraphics.strokeRoundedRect(-w / 2, -h / 2, w, h, 8);
-
-    this.pieceGraphics.fillStyle(this.lightenColor(this.pieceColor, 30), 0.7);
-    const patternSize = Math.min(w, h) * 0.35;
-    const variant = this.pieceData.frameIndex % 4;
-
-    switch (variant) {
-      case 0:
-        this.pieceGraphics.beginPath();
-        this.pieceGraphics.arc(0, 0, patternSize / 2, 0, Math.PI * 2);
-        this.pieceGraphics.fillPath();
-        break;
-      case 1:
-        this.pieceGraphics.fillRoundedRect(-patternSize / 2, -patternSize / 2, patternSize, patternSize, 4);
-        break;
-      case 2:
-        this.pieceGraphics.beginPath();
-        this.pieceGraphics.moveTo(0, -patternSize / 2);
-        this.pieceGraphics.lineTo(patternSize / 2, patternSize / 2);
-        this.pieceGraphics.lineTo(-patternSize / 2, patternSize / 2);
-        this.pieceGraphics.closePath();
-        this.pieceGraphics.fillPath();
-        break;
-      case 3:
-        this.pieceGraphics.beginPath();
-        this.pieceGraphics.moveTo(0, -patternSize / 2);
-        this.pieceGraphics.lineTo(patternSize / 2, 0);
-        this.pieceGraphics.lineTo(0, patternSize / 2);
-        this.pieceGraphics.lineTo(-patternSize / 2, 0);
-        this.pieceGraphics.closePath();
-        this.pieceGraphics.fillPath();
-        break;
-    }
-  }
-
-  private lightenColor(color: number, amount: number): number {
-    const r = Math.min(255, ((color >> 16) & 0xff) + amount);
-    const g = Math.min(255, ((color >> 8) & 0xff) + amount);
-    const b = Math.min(255, (color & 0xff) + amount);
-    return (r << 16) | (g << 8) | b;
-  }
-
-  private createHighlight(): void {
-    this.highlight = this.scene.add.graphics();
-    this.highlight.lineStyle(3, 0x4caf50, 0);
-    this.highlight.strokeRoundedRect(
-      -this.pieceData.width / 2,
-      -this.pieceData.height / 2,
-      this.pieceData.width,
-      this.pieceData.height,
+  private createEffects(): void {
+    this.highlightBorder = this.scene.add.graphics();
+    this.highlightBorder.lineStyle(3, 0x4caf50, 0);
+    this.drawRoundedRect(
+      this.highlightBorder,
+      -this.pieceData.width / 2 - 2,
+      -this.pieceData.height / 2 - 2,
+      this.pieceData.width + 4,
+      this.pieceData.height + 4,
       8
     );
-    this.add(this.highlight);
+    this.highlightBorder.strokePath();
+    this.add(this.highlightBorder);
+
+    this.selectedGlow = this.scene.add.graphics();
+    this.selectedGlow.lineStyle(4, 0x2196f3, 0);
+    this.drawRoundedRect(
+      this.selectedGlow,
+      -this.pieceData.width / 2 - 6,
+      -this.pieceData.height / 2 - 6,
+      this.pieceData.width + 12,
+      this.pieceData.height + 12,
+      12
+    );
+    this.selectedGlow.strokePath();
+
+    this.selectedGlow.fillStyle(0x2196f3, 0.12);
+    this.drawRoundedRect(
+      this.selectedGlow,
+      -this.pieceData.width / 2 - 6,
+      -this.pieceData.height / 2 - 6,
+      this.pieceData.width + 12,
+      this.pieceData.height + 12,
+      12
+    );
+    this.selectedGlow.fillPath();
+    this.add(this.selectedGlow);
+  }
+
+  private drawRoundedRect(
+    g: Phaser.GameObjects.Graphics,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    r: number
+  ): void {
+    g.beginPath();
+    g.moveTo(x + r, y);
+    g.lineTo(x + w - r, y);
+    g.arc(x + w - r, y + r, r, -Math.PI / 2, 0);
+    g.lineTo(x + w, y + h - r);
+    g.arc(x + w - r, y + h - r, r, 0, Math.PI / 2);
+    g.lineTo(x + r, y + h);
+    g.arc(x + r, y + h - r, r, Math.PI / 2, Math.PI);
+    g.lineTo(x, y + r);
+    g.arc(x + r, y + r, r, Math.PI, Math.PI * 1.5);
+    g.closePath();
   }
 
   private setupInputHandlers(): void {
@@ -128,38 +124,53 @@ export class PuzzlePieceSprite extends Phaser.GameObjects.Container {
       }
     });
 
-    this.on('pointerup', () => {
+    this.on('pointerup', (pointer: Phaser.Input.Pointer) => {
       if (this.isDragging) {
-        this.endDrag();
+        this.endDrag(pointer);
       }
     });
 
-    this.on('pointerupoutside', () => {
+    this.on('pointerupoutside', (pointer: Phaser.Input.Pointer) => {
       if (this.isDragging) {
-        this.endDrag();
+        this.endDrag(pointer);
       }
     });
   }
 
   private startDrag(pointer: Phaser.Input.Pointer): void {
     this.isDragging = true;
+    this.hasMoved = false;
+    this.dragStartX = pointer.x;
+    this.dragStartY = pointer.y;
+
+    this.setSelected(true);
     this.scene.children.bringToTop(this);
 
     const localPoint = this.getLocalPoint(pointer.x, pointer.y);
     this.dragOffsetX = localPoint.x;
     this.dragOffsetY = localPoint.y;
 
-    this.setAlpha(0.85);
-    this.setScale(1.05);
+    this.setAlpha(0.92);
+    this.setScale(1.03);
   }
 
   private onDrag(pointer: Phaser.Input.Pointer): void {
+    const moveDist = Phaser.Math.Distance.Between(
+      pointer.x,
+      pointer.y,
+      this.dragStartX,
+      this.dragStartY
+    );
+    if (moveDist > 5) {
+      this.hasMoved = true;
+    }
+
     this.x = pointer.x - this.dragOffsetX * this.scaleX;
     this.y = pointer.y - this.dragOffsetY * this.scaleY;
     this.checkSnapProximity();
   }
 
-  private endDrag(): void {
+  private endDrag(_pointer: Phaser.Input.Pointer): void {
     this.isDragging = false;
     this.setAlpha(1);
     this.setScale(1);
@@ -173,11 +184,20 @@ export class PuzzlePieceSprite extends Phaser.GameObjects.Container {
     const dist = Phaser.Math.Distance.Between(this.x, this.y, this.targetX, this.targetY);
     const angleDiff = this.getAngleDifference();
 
-    if (dist < SnapConfig.positionThreshold * 2 && angleDiff < SnapConfig.rotationThreshold * 2) {
-      this.highlight.lineStyle(3, 0x4caf50, 0.6);
+    if (dist < this.snapThreshold.position * 1.8 && angleDiff < this.snapThreshold.rotation * 1.8) {
+      this.highlightBorder.lineStyle(3, 0x4caf50, 0.7);
     } else {
-      this.highlight.lineStyle(3, 0x4caf50, 0);
+      this.highlightBorder.lineStyle(3, 0x4caf50, 0);
     }
+    this.drawRoundedRect(
+      this.highlightBorder,
+      -this.pieceData.width / 2 - 2,
+      -this.pieceData.height / 2 - 2,
+      this.pieceData.width + 4,
+      this.pieceData.height + 4,
+      8
+    );
+    this.highlightBorder.strokePath();
   }
 
   private getAngleDifference(): number {
@@ -190,12 +210,13 @@ export class PuzzlePieceSprite extends Phaser.GameObjects.Container {
     const dist = Phaser.Math.Distance.Between(this.x, this.y, this.targetX, this.targetY);
     const angleDiff = this.getAngleDifference();
 
-    return dist < SnapConfig.positionThreshold && angleDiff < SnapConfig.rotationThreshold;
+    return dist < this.snapThreshold.position && angleDiff < this.snapThreshold.rotation;
   }
 
   private snap(): void {
     this.isSnapped = true;
     this.disableInteractive();
+    this.setSelected(false);
 
     this.scene.tweens.add({
       targets: this,
@@ -204,13 +225,61 @@ export class PuzzlePieceSprite extends Phaser.GameObjects.Container {
       rotation: Phaser.Math.DegToRad(this.targetRotation),
       scale: 1,
       alpha: 1,
-      duration: SnapConfig.snapAnimationDuration,
+      duration: 220,
       ease: 'Back.easeOut',
       onComplete: () => {
-        this.highlight.lineStyle(3, 0x4caf50, 0);
+        this.highlightBorder.lineStyle(3, 0x4caf50, 0);
+        this.drawRoundedRect(
+          this.highlightBorder,
+          -this.pieceData.width / 2 - 2,
+          -this.pieceData.height / 2 - 2,
+          this.pieceData.width + 4,
+          this.pieceData.height + 4,
+          8
+        );
+        this.highlightBorder.strokePath();
         this.scene.events.emit('piece-snapped', this.pieceData.id);
       }
     });
+  }
+
+  setSelected(selected: boolean): void {
+    if (this.isSnapped) return;
+
+    if (selected && PuzzlePieceSprite.selectedPiece && PuzzlePieceSprite.selectedPiece !== this) {
+      PuzzlePieceSprite.selectedPiece.setSelected(false);
+    }
+
+    this.isSelected = selected;
+    PuzzlePieceSprite.selectedPiece = selected ? this : (PuzzlePieceSprite.selectedPiece === this ? null : PuzzlePieceSprite.selectedPiece);
+
+    this.selectedGlow.lineStyle(4, 0x2196f3, selected ? 1 : 0);
+    this.selectedGlow.fillStyle(0x2196f3, selected ? 0.12 : 0);
+    this.drawRoundedRect(
+      this.selectedGlow,
+      -this.pieceData.width / 2 - 6,
+      -this.pieceData.height / 2 - 6,
+      this.pieceData.width + 12,
+      this.pieceData.height + 12,
+      12
+    );
+    this.selectedGlow.strokePath();
+    this.selectedGlow.fillPath();
+
+    if (selected) {
+      this.scene.children.bringToTop(this);
+    }
+  }
+
+  static getSelectedPiece(): PuzzlePieceSprite | null {
+    return PuzzlePieceSprite.selectedPiece;
+  }
+
+  static clearSelection(): void {
+    if (PuzzlePieceSprite.selectedPiece) {
+      PuzzlePieceSprite.selectedPiece.setSelected(false);
+      PuzzlePieceSprite.selectedPiece = null;
+    }
   }
 
   rotatePiece(): void {
@@ -218,7 +287,7 @@ export class PuzzlePieceSprite extends Phaser.GameObjects.Container {
     this.scene.tweens.add({
       targets: this,
       rotation: this.rotation + Phaser.Math.DegToRad(90),
-      duration: 150,
+      duration: 160,
       ease: 'Cubic.easeOut'
     });
   }
@@ -233,13 +302,22 @@ export class PuzzlePieceSprite extends Phaser.GameObjects.Container {
 
   reset(): void {
     this.isSnapped = false;
+    this.isSelected = false;
     this.setInteractive();
-    this.x = this.originalX;
-    this.y = this.originalY;
+    this.x = this.initialX;
+    this.y = this.initialY;
     const randomRotation = Phaser.Math.Between(0, 3) * 90;
     this.rotation = Phaser.Math.DegToRad(randomRotation);
-    this.highlight.lineStyle(3, 0x4caf50, 0);
+    this.highlightBorder.lineStyle(3, 0x4caf50, 0);
+    this.selectedGlow.lineStyle(4, 0x2196f3, 0);
+    this.selectedGlow.fillStyle(0x2196f3, 0);
     this.setAlpha(1);
     this.setScale(1);
+    PuzzlePieceSprite.selectedPiece = null;
+  }
+
+  updateInitialPosition(x: number, y: number): void {
+    this.initialX = x;
+    this.initialY = y;
   }
 }

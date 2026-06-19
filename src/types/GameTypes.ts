@@ -1,27 +1,45 @@
-export interface PuzzlePiece {
+export interface PuzzlePieceData {
   id: number;
-  x: number;
-  y: number;
-  rotation: number;
+  initialX: number;
+  initialY: number;
+  targetX: number;
+  targetY: number;
   width: number;
   height: number;
   textureKey: string;
-  frameIndex: number;
+  sourceX: number;
+  sourceY: number;
+}
+
+export interface LevelRule {
+  id: number;
+  name: string;
+  specimenId: number;
+  difficulty: 'easy' | 'medium' | 'hard';
+  rows: number;
+  cols: number;
+  timeLimit: number;
+  snapPositionThreshold: number;
+  snapRotationThreshold: number;
+}
+
+export interface PlantSpecimen {
+  id: number;
+  name: string;
+  family: string;
+  description: string;
+  primaryColor: number;
+  secondaryColor: number;
+  leafColor: number;
+  stemColor: number;
+  shape: 'ginkgo' | 'rose' | 'sunflower' | 'lavender' | 'orchid' | 'succulent';
 }
 
 export interface LevelData {
   id: number;
   name: string;
-  description: string;
-  plantName: string;
-  plantFamily: string;
-  difficulty: 'easy' | 'medium' | 'hard';
-  pieces: PuzzlePiece[];
-  targetImage: string;
-  previewImage: string;
-  timeLimit: number;
-  rows: number;
-  cols: number;
+  rule: LevelRule;
+  specimen: PlantSpecimen;
 }
 
 export interface GameState {
@@ -55,6 +73,6 @@ export interface GalleryItem {
   name: string;
   family: string;
   description: string;
-  image: string;
+  specimenId: number;
   unlocked: boolean;
 }

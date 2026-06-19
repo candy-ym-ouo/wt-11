@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { GalleryItems } from '../data/Levels';
 import { SaveManager } from '../utils/SaveManager';
+import { GalleryItem } from '../types/GameTypes';
 
 export class GalleryScene extends Phaser.Scene {
   constructor() {
@@ -37,7 +38,7 @@ export class GalleryScene extends Phaser.Scene {
   private addGalleryItems(): void {
     const startY = 180;
     const itemWidth = 320;
-    const itemHeight = 280;
+    const itemHeight = 300;
     const padding = 20;
     const cols = 2;
 
@@ -56,7 +57,7 @@ export class GalleryScene extends Phaser.Scene {
     y: number,
     width: number,
     height: number,
-    item: typeof GalleryItems[0]
+    item: GalleryItem
   ): void {
     const progress = SaveManager.getProgress(item.id);
     const unlocked = progress?.completed ?? false;
@@ -67,12 +68,15 @@ export class GalleryScene extends Phaser.Scene {
     card.strokeRoundedRect(x - width / 2, y - height / 2, width, height, 12);
     card.fillRoundedRect(x - width / 2, y - height / 2, width, height, 12);
 
-    const imageY = y - 70;
+    const previewKey = `specimen-${item.specimenId}-preview`;
+    const targetKey = `specimen-${item.specimenId}-target`;
+    const imageY = y - 75;
+
     if (unlocked) {
-      const img = this.add.image(x, imageY, item.image);
-      img.setDisplaySize(120, 120);
+      const img = this.add.image(x, imageY, previewKey);
+      img.setDisplaySize(140, 140);
     } else {
-      this.add.image(x, imageY, 'lock').setScale(1.2);
+      this.add.image(x, imageY, 'lock').setScale(1.3);
     }
 
     this.add.text(x, y + 20, unlocked ? item.name : '???', {
@@ -88,7 +92,7 @@ export class GalleryScene extends Phaser.Scene {
     if (unlocked && progress) {
       this.drawStars(x, y + 85, progress.stars);
 
-      this.add.text(x, y + 115, `最高分: ${progress.bestScore}`, {
+      this.add.text(x, y + 118, `最高分: ${progress.bestScore}`, {
         font: '14px Arial',
         color: '#ffd700'
       }).setOrigin(0.5);
@@ -101,7 +105,7 @@ export class GalleryScene extends Phaser.Scene {
       );
 
       card.on('pointerup', () => {
-        this.showDetail(item);
+        this.showDetail(item, targetKey);
       });
     }
   }
@@ -118,58 +122,63 @@ export class GalleryScene extends Phaser.Scene {
     }
   }
 
-  private showDetail(item: typeof GalleryItems[0]): void {
+  private showDetail(item: GalleryItem, targetKey: string): void {
+    const container = this.add.container(0, 0);
+
     const overlay = this.add.graphics();
     overlay.fillStyle(0x000000, 0.7);
     overlay.fillRect(0, 0, 750, 1334);
     overlay.setInteractive();
+    container.add(overlay);
 
     const modal = this.add.graphics();
     modal.fillStyle(0x16213e, 1);
-    modal.fillRoundedRect(75, 300, 600, 600, 20);
+    modal.fillRoundedRect(75, 280, 600, 680, 20);
     modal.lineStyle(3, 0xe94560, 1);
-    modal.strokeRoundedRect(75, 300, 600, 600, 20);
+    modal.strokeRoundedRect(75, 280, 600, 680, 20);
+    container.add(modal);
 
-    this.add.image(375, 420, item.image).setDisplaySize(180, 180);
+    const img = this.add.image(375, 420, targetKey);
+    img.setDisplaySize(360, 288);
+    container.add(img);
 
-    this.add.text(375, 560, item.name, {
+    const nameText = this.add.text(375, 585, item.name, {
       font: 'bold 32px Arial',
       color: '#ffffff'
     }).setOrigin(0.5);
+    container.add(nameText);
 
-    this.add.text(375, 600, item.family, {
+    const familyText = this.add.text(375, 625, item.family, {
       font: '20px Arial',
       color: '#aaaaaa'
     }).setOrigin(0.5);
+    container.add(familyText);
 
-    this.add.text(375, 680, item.description, {
-      font: '18px Arial',
+    const descText = this.add.text(375, 710, item.description, {
+      font: '17px Arial',
       color: '#eaeaea',
+      align: 'center',
       wordWrap: { width: 500 }
     }).setOrigin(0.5);
+    container.add(descText);
 
     const closeBtn = this.add.graphics();
     closeBtn.fillStyle(0xe94560, 1);
-    closeBtn.fillRoundedRect(275, 820, 200, 60, 15);
+    closeBtn.fillRoundedRect(275, 880, 200, 60, 15);
     closeBtn.setInteractive(
-      new Phaser.Geom.Rectangle(275, 820, 200, 60),
+      new Phaser.Geom.Rectangle(275, 880, 200, 60),
       Phaser.Geom.Rectangle.Contains
     );
+    container.add(closeBtn);
 
-    this.add.text(375, 850, '关闭', {
+    const closeBtnText = this.add.text(375, 910, '关闭', {
       font: 'bold 22px Arial',
       color: '#ffffff'
     }).setOrigin(0.5);
+    container.add(closeBtnText);
 
     const close = () => {
-      overlay.destroy();
-      modal.destroy();
-      closeBtn.destroy();
-      this.children.each(child => {
-        if ((child as any).y > 800 && (child as any).type === 'Text') {
-          // do nothing
-        }
-      });
+      container.destroy();
     };
 
     closeBtn.on('pointerup', close);

@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { Levels } from '../data/Levels';
 import { SaveManager } from '../utils/SaveManager';
 import { getDifficultyColor, getDifficultyText } from '../utils/GameUtils';
+import { LevelData } from '../types/GameTypes';
 
 export class LevelSelectScene extends Phaser.Scene {
   constructor() {
@@ -38,7 +39,7 @@ export class LevelSelectScene extends Phaser.Scene {
   private addLevelGrid(): void {
     const startY = 200;
     const cardWidth = 320;
-    const cardHeight = 200;
+    const cardHeight = 240;
     const padding = 30;
     const cols = 2;
 
@@ -57,7 +58,7 @@ export class LevelSelectScene extends Phaser.Scene {
     y: number,
     width: number,
     height: number,
-    level: typeof Levels[0]
+    level: LevelData
   ): void {
     const progress = SaveManager.getProgress(level.id);
     const unlocked = progress?.unlocked ?? false;
@@ -68,26 +69,32 @@ export class LevelSelectScene extends Phaser.Scene {
     card.strokeRoundedRect(x - width / 2, y - height / 2, width, height, 15);
     card.fillRoundedRect(x - width / 2, y - height / 2, width, height, 15);
 
-    this.add.text(x, y - 60, level.name, {
-      font: 'bold 24px Arial',
+    const previewKey = `specimen-${level.specimen.id}-preview`;
+    if (unlocked) {
+      const previewImg = this.add.image(x, y - 65, previewKey);
+      previewImg.setDisplaySize(120, 120);
+    } else {
+      this.add.image(x, y - 65, 'lock').setScale(1.0);
+    }
+
+    this.add.text(x, y + 10, level.name, {
+      font: 'bold 22px Arial',
       color: unlocked ? '#ffffff' : '#888888'
     }).setOrigin(0.5);
 
-    this.add.text(x, y - 25, level.plantName, {
-      font: '20px Arial',
+    this.add.text(x, y + 40, level.specimen.name, {
+      font: '18px Arial',
       color: unlocked ? '#eaeaea' : '#777777'
     }).setOrigin(0.5);
 
-    const diffColor = getDifficultyColor(level.difficulty);
-    this.add.text(x, y + 10, getDifficultyText(level.difficulty), {
-      font: '16px Arial',
+    const diffColor = getDifficultyColor(level.rule.difficulty);
+    this.add.text(x, y + 68, getDifficultyText(level.rule.difficulty), {
+      font: '15px Arial',
       color: '#' + diffColor.toString(16).padStart(6, '0')
     }).setOrigin(0.5);
 
     if (unlocked && progress) {
-      this.drawStars(x, y + 45, progress.stars);
-    } else if (!unlocked) {
-      this.add.image(x, y + 45, 'lock').setScale(0.8);
+      this.drawStars(x, y + 98, progress.stars);
     }
 
     if (unlocked) {
@@ -111,8 +118,8 @@ export class LevelSelectScene extends Phaser.Scene {
   }
 
   private drawStars(x: number, y: number, stars: number): void {
-    const starSize = 24;
-    const spacing = 8;
+    const starSize = 22;
+    const spacing = 6;
     const startX = x - starSize - spacing;
 
     for (let i = 0; i < 3; i++) {
