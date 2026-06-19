@@ -56,24 +56,53 @@ export class ChapterSelectScene extends Phaser.Scene {
     const totalStars = SaveManager.getTotalStars();
     const totalLevels = 6;
     const completedLevels = Object.values(SaveManager.getAllProgress()).filter(p => p.completed).length;
+    const researcherLevel = SaveManager.getResearcherLevel();
+    const researchPoints = SaveManager.getResearchPoints();
 
-    const starIcon = this.add.text(85, 160, '⭐', { font: '28px Arial' }).setOrigin(0, 0.5);
-    this.add.text(125, 160, `${totalStars} / ${totalLevels * 3}`, {
-      font: 'bold 22px Arial',
+    const starIcon = this.add.text(70, 145, '⭐', { font: '24px Arial' }).setOrigin(0, 0.5);
+    this.add.text(100, 145, `${totalStars} / ${totalLevels * 3}`, {
+      font: 'bold 18px Arial',
       color: '#ffd700'
     }).setOrigin(0, 0.5);
 
-    const trophyIcon = this.add.text(265, 160, '🏆', { font: '28px Arial' }).setOrigin(0, 0.5);
-    this.add.text(305, 160, `${SaveManager.getTotalScore().toLocaleString()}`, {
-      font: 'bold 22px Arial',
+    const trophyIcon = this.add.text(70, 175, '🏆', { font: '24px Arial' }).setOrigin(0, 0.5);
+    this.add.text(100, 175, `${SaveManager.getTotalScore().toLocaleString()}`, {
+      font: 'bold 18px Arial',
       color: '#ff9800'
     }).setOrigin(0, 0.5);
 
-    const plantIcon = this.add.text(465, 160, '🌿', { font: '28px Arial' }).setOrigin(0, 0.5);
-    this.add.text(505, 160, `${completedLevels} / ${totalLevels}`, {
-      font: 'bold 22px Arial',
+    const plantIcon = this.add.text(260, 145, '🌿', { font: '24px Arial' }).setOrigin(0, 0.5);
+    this.add.text(290, 145, `${completedLevels} / ${totalLevels}`, {
+      font: 'bold 18px Arial',
       color: '#4caf50'
     }).setOrigin(0, 0.5);
+
+    const researcherIcon = this.add.text(260, 175, '🎓', { font: '24px Arial' }).setOrigin(0, 0.5);
+    this.add.text(290, 175, `Lv.${researcherLevel} 研究员`, {
+      font: 'bold 17px Arial',
+      color: '#00e5ff'
+    }).setOrigin(0, 0.5);
+
+    const labIcon = this.add.text(490, 145, '🔬', { font: '24px Arial' }).setOrigin(0, 0.5);
+    this.add.text(520, 145, `研究点`, {
+      font: 'bold 16px Arial',
+      color: '#aaaaaa'
+    }).setOrigin(0, 0.5);
+    this.add.text(590, 145, `${researchPoints}`, {
+      font: 'bold 20px Arial',
+      color: '#ffd700'
+    }).setOrigin(1, 0.5);
+
+    const bookIcon = this.add.text(490, 175, '📖', { font: '24px Arial' }).setOrigin(0, 0.5);
+    const unlockedK = SaveManager.getTotalKnowledgeUnlocked();
+    this.add.text(520, 175, `知识`, {
+      font: 'bold 16px Arial',
+      color: '#aaaaaa'
+    }).setOrigin(0, 0.5);
+    this.add.text(590, 175, `${unlockedK}`, {
+      font: 'bold 20px Arial',
+      color: unlockedK > 0 ? '#81c784' : '#666666'
+    }).setOrigin(1, 0.5);
   }
 
   private addEventBanner(): void {
@@ -474,12 +503,24 @@ export class ChapterSelectScene extends Phaser.Scene {
 
   private addBottomButtons(): void {
     const btnY = 1230;
-    const btnW = 200;
+    const btnW = 150;
     const btnH = 60;
-    const spacing = 20;
+    const spacing = 12;
+    const totalW = btnW * 4 + spacing * 3;
+    const startX = 375 - totalW / 2 + btnW / 2;
+
+    const labBtn = this.createBottomButton(
+      startX,
+      btnY,
+      btnW,
+      btnH,
+      '🔬 研究室',
+      0x9c27b0,
+      () => this.scene.start('ResearchLabScene')
+    );
 
     const workshopBtn = this.createBottomButton(
-      375 - btnW - spacing,
+      startX + btnW + spacing,
       btnY,
       btnW,
       btnH,
@@ -489,7 +530,7 @@ export class ChapterSelectScene extends Phaser.Scene {
     );
 
     const galleryBtn = this.createBottomButton(
-      375,
+      startX + 2 * (btnW + spacing),
       btnY,
       btnW,
       btnH,
@@ -499,7 +540,7 @@ export class ChapterSelectScene extends Phaser.Scene {
     );
 
     const levelsBtn = this.createBottomButton(
-      375 + btnW + spacing,
+      startX + 3 * (btnW + spacing),
       btnY,
       btnW,
       btnH,

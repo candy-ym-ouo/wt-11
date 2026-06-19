@@ -12,6 +12,7 @@ import { EventScene } from './scenes/EventScene';
 import { EventLevelSelectScene } from './scenes/EventLevelSelectScene';
 import { EventRankingScene } from './scenes/EventRankingScene';
 import { DailyQuestScene } from './scenes/DailyQuestScene';
+import { ResearchLabScene } from './scenes/ResearchLabScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -35,7 +36,8 @@ const config: Phaser.Types.Core.GameConfig = {
     EventScene,
     EventLevelSelectScene,
     EventRankingScene,
-    DailyQuestScene
+    DailyQuestScene,
+    ResearchLabScene
   ],
   physics: {
     default: 'arcade',

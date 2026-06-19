@@ -275,6 +275,50 @@ export interface DailyQuestSaveData {
   claimedQuestIds: string[];
 }
 
+export type PlantCategory = 'gymnosperm' | 'angiosperm_dicot' | 'angiosperm_monocot' | 'succulent' | 'aquatic' | 'alpine';
+
+export interface PlantCategoryInfo {
+  id: PlantCategory;
+  name: string;
+  description: string;
+  icon: string;
+  color: number;
+}
+
+export interface KnowledgeEntry {
+  id: string;
+  specimenId: number;
+  title: string;
+  content: string;
+  requiredLevel: number;
+  category: 'biology' | 'ecology' | 'culture' | 'usage';
+}
+
+export interface SpecimenResearch {
+  specimenId: number;
+  researchLevel: number;
+  expPoints: number;
+  unlockedKnowledge: string[];
+  firstStudiedAt?: number;
+  lastStudiedAt?: number;
+}
+
+export interface ResearchLabProgress {
+  totalExp: number;
+  researcherLevel: number;
+  specimens: Record<number, SpecimenResearch>;
+  researchPoints: number;
+  totalStudies: number;
+}
+
+export interface ResearchLevelConfig {
+  level: number;
+  expRequired: number;
+  title: string;
+  researchPointBonus: number;
+  unlockMessage?: string;
+}
+
 export interface SaveData {
   progress: Record<number, LevelProgress>;
   chapterProgress: Record<number, ChapterProgress>;
@@ -286,4 +330,5 @@ export interface SaveData {
   workshop: WorkshopProgress;
   event: EventSaveData;
   dailyQuest: DailyQuestSaveData;
+  researchLab: ResearchLabProgress;
 }

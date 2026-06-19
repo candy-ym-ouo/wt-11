@@ -10,7 +10,9 @@ import {
   EventRankingData,
   RankingEntry,
   EventReward,
-  DailyQuest
+  DailyQuest,
+  SpecimenResearch,
+  ResearchLabProgress
 } from '../types/GameTypes';
 import { Levels } from '../data/Levels';
 import { Chapters, getChapterById, getChapterByLevelId, getNextChapter, getRewardsByChapterId } from '../data/Chapters';
@@ -18,6 +20,13 @@ import { WorkshopRecipes, getRecipeBySpecimenId } from '../data/WorkshopConfig';
 import { Events, getActiveEvent, getEventById } from '../data/Events';
 import { EventLevelRules, getEventLevelRulesByEventId } from '../data/EventLevelRules';
 import { DailyQuestManager } from './DailyQuestManager';
+import {
+  getResearchLevel,
+  getNextResearchLevel,
+  getKnowledgeBySpecimen,
+  KnowledgeEntries,
+  getSpecimenCategory
+} from '../data/ResearchLabConfig';
 
 const STORAGE_KEY = 'plant_specimen_puzzle_save';
 
@@ -112,6 +121,26 @@ export class SaveManager {
       });
     }
 
+    if (!oldData.researchLab) {
+      oldData.researchLab = defaultData.researchLab;
+    } else {
+      if (!oldData.researchLab.specimens) {
+        oldData.researchLab.specimens = defaultData.researchLab.specimens;
+      }
+      if (oldData.researchLab.totalExp === undefined) {
+        oldData.researchLab.totalExp = 0;
+      }
+      if (oldData.researchLab.researcherLevel === undefined) {
+        oldData.researchLab.researcherLevel = 1;
+      }
+      if (oldData.researchLab.researchPoints === undefined) {
+        oldData.researchLab.researchPoints = 0;
+      }
+      if (oldData.researchLab.totalStudies === undefined) {
+        oldData.researchLab.totalStudies = 0;
+      }
+    }
+
     return oldData as SaveData;
   }
 
@@ -146,6 +175,7 @@ export class SaveManager {
 
     const eventSaveData = this.createDefaultEventSave();
     const dailyQuestSaveData = DailyQuestManager.createDefaultDailyQuestSave();
+    const researchLabData = this.createDefaultResearchLabSave();
 
     return {
       progress,
@@ -161,7 +191,18 @@ export class SaveManager {
         restoredSpecimens: []
       },
       event: eventSaveData,
-      dailyQuest: dailyQuestSaveData
+      dailyQuest: dailyQuestSaveData,
+      researchLab: researchLabData
+    };
+  }
+
+  private static createDefaultResearchLabSave(): ResearchLabProgress {
+    return {
+      totalExp: 0,
+      researcherLevel: 1,
+      specimens: {},
+      researchPoints: 0,
+      totalStudies: 0
     };
   }
 
@@ -289,9 +330,9 @@ export class SaveManager {
     return this.data.badges[badgeId] ?? false;
   }
 
-  static completeLevel(levelId: number, score: number, time: number, stars: number): { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[] } {
+  static completeLevel(levelId: number, score: number, time: number, stars: number): { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[]; researchRewards: { pointsGained: number; expGained: number } } {
     const progress = this.data.progress[levelId];
-    if (!progress) return { chapterCompleted: false, completedChapterId: null, newlyUnlockedChapterId: null, updatedQuests: [] };
+    if (!progress) return { chapterCompleted: false, completedChapterId: null, newlyUnlockedChapterId: null, updatedQuests: [], researchRewards: { pointsGained: 0, expGained: 0 } };
 
     const isFirstCompletion = !progress.completed;
     const starsImproved = stars > progress.stars;
@@ -323,12 +364,92 @@ export class SaveManager {
 
     const updatedQuests = DailyQuestManager.onLevelComplete(levelId, score, time, stars);
 
+    const level = Levels.find(l => l.id === levelId);
+    const specimenId = level?.specimen.id;
+
+    let basePoints = 10 + stars * 15;
+    let baseExp = 5 + stars * 10;
+
+    const difficultyMultiplier: Record<string, number> = {
+      easy: 1,
+      medium: 1.5,
+      hard: 2.2
+    };
+    const diff = level?.rule.difficulty ?? 'easy';
+    basePoints = Math.floor(basePoints * difficultyMultiplier[diff]);
+    baseExp = Math.floor(baseExp * difficultyMultiplier[diff]);
+
+    if (isFirstCompletion) {
+      basePoints += 30;
+      baseExp += 20;
+    }
+
+    if (stars === 3) {
+      basePoints += 20;
+      baseExp += 15;
+    }
+
+    if (specimenId && this.isGalleryUnlocked(specimenId)) {
+      const specimenResearch = this.getOrCreateSpecimenResearch(specimenId);
+      specimenResearch.expPoints += Math.floor(baseExp * 0.6);
+      if (!specimenResearch.firstStudiedAt) {
+        specimenResearch.firstStudiedAt = Date.now();
+      }
+      specimenResearch.lastStudiedAt = Date.now();
+
+      const specimenLevelThresholds = [0, 50, 150, 350];
+      let newSpecimenLevel = 0;
+      for (let i = specimenLevelThresholds.length - 1; i >= 0; i--) {
+        if (specimenResearch.expPoints >= specimenLevelThresholds[i]) {
+          newSpecimenLevel = i;
+          break;
+        }
+      }
+      specimenResearch.researchLevel = newSpecimenLevel;
+
+      const allKnowledge = getKnowledgeBySpecimen(specimenId);
+      for (const knowledge of allKnowledge) {
+        const alreadyUnlocked = specimenResearch.unlockedKnowledge.includes(knowledge.id);
+        const meetsResearcherLevel = this.data.researchLab.researcherLevel >= knowledge.requiredLevel;
+        const meetsSpecimenLevel = specimenResearch.researchLevel >= (knowledge.requiredLevel - 1);
+        if (!alreadyUnlocked && meetsResearcherLevel && meetsSpecimenLevel) {
+          specimenResearch.unlockedKnowledge.push(knowledge.id);
+        }
+      }
+    }
+
+    const currentLevelConfig = getResearchLevel(this.data.researchLab.totalExp);
+    const bonus = currentLevelConfig.researchPointBonus;
+    const actualPoints = Math.floor(basePoints * bonus);
+    this.data.researchLab.researchPoints += actualPoints;
+
+    const oldResearcherLevel = this.data.researchLab.researcherLevel;
+    this.data.researchLab.totalExp += baseExp;
+    const newLevelConfig = getResearchLevel(this.data.researchLab.totalExp);
+    this.data.researchLab.researcherLevel = newLevelConfig.level;
+
+    if (this.data.researchLab.researcherLevel > oldResearcherLevel && specimenId) {
+      const specimenResearch = this.getOrCreateSpecimenResearch(specimenId);
+      const allKnowledge = getKnowledgeBySpecimen(specimenId);
+      for (const knowledge of allKnowledge) {
+        const alreadyUnlocked = specimenResearch.unlockedKnowledge.includes(knowledge.id);
+        const meetsResearcherLevel = this.data.researchLab.researcherLevel >= knowledge.requiredLevel;
+        const meetsSpecimenLevel = specimenResearch.researchLevel >= (knowledge.requiredLevel - 1);
+        if (!alreadyUnlocked && meetsResearcherLevel && meetsSpecimenLevel) {
+          specimenResearch.unlockedKnowledge.push(knowledge.id);
+        }
+      }
+    }
+
+    const researchRewards = { pointsGained: actualPoints, expGained: baseExp };
+
     this.save();
     return {
       chapterCompleted: completionResult.chapterCompleted,
       completedChapterId: completionResult.completedChapterId,
       newlyUnlockedChapterId: unlockResult,
-      updatedQuests
+      updatedQuests,
+      researchRewards
     };
   }
 
@@ -726,6 +847,236 @@ export class SaveManager {
     const eventProg = this.data.event.eventProgress[eventId];
     if (!eventProg) return 0;
     return Object.values(eventProg.levelProgress).reduce((sum, p) => sum + p.stars, 0);
+  }
+
+  static getResearchLabProgress(): ResearchLabProgress {
+    return { ...this.data.researchLab, specimens: { ...this.data.researchLab.specimens } };
+  }
+
+  static getResearcherLevel(): number {
+    return this.data.researchLab.researcherLevel;
+  }
+
+  static getTotalResearchExp(): number {
+    return this.data.researchLab.totalExp;
+  }
+
+  static getResearchPoints(): number {
+    return this.data.researchLab.researchPoints;
+  }
+
+  static getTotalStudies(): number {
+    return this.data.researchLab.totalStudies;
+  }
+
+  static getSpecimenResearch(specimenId: number): SpecimenResearch | undefined {
+    return this.data.researchLab.specimens[specimenId];
+  }
+
+  static getOrCreateSpecimenResearch(specimenId: number): SpecimenResearch {
+    if (!this.data.researchLab.specimens[specimenId]) {
+      this.data.researchLab.specimens[specimenId] = {
+        specimenId,
+        researchLevel: 0,
+        expPoints: 0,
+        unlockedKnowledge: []
+      };
+    }
+    return this.data.researchLab.specimens[specimenId];
+  }
+
+  static getSpecimenResearchLevel(specimenId: number): number {
+    return this.data.researchLab.specimens[specimenId]?.researchLevel ?? 0;
+  }
+
+  static getUnlockedKnowledge(specimenId: number): string[] {
+    return this.data.researchLab.specimens[specimenId]?.unlockedKnowledge ?? [];
+  }
+
+  static isKnowledgeUnlocked(specimenId: number, knowledgeId: string): boolean {
+    return this.data.researchLab.specimens[specimenId]?.unlockedKnowledge.includes(knowledgeId) ?? false;
+  }
+
+  static canStudySpecimen(specimenId: number): boolean {
+    if (!this.isGalleryUnlocked(specimenId)) return false;
+    const studyCost = 50;
+    return this.data.researchLab.researchPoints >= studyCost;
+  }
+
+  static studySpecimen(specimenId: number): {
+    success: boolean;
+    gainedExp: number;
+    newlyUnlockedKnowledge: string[];
+    leveledUp: boolean;
+    newResearcherLevel: number;
+    newSpecimenLevel: number;
+    unlockMessage?: string;
+  } {
+    if (!this.canStudySpecimen(specimenId)) {
+      return {
+        success: false,
+        gainedExp: 0,
+        newlyUnlockedKnowledge: [],
+        leveledUp: false,
+        newResearcherLevel: this.data.researchLab.researcherLevel,
+        newSpecimenLevel: this.getSpecimenResearchLevel(specimenId)
+      };
+    }
+
+    const studyCost = 50;
+    this.data.researchLab.researchPoints -= studyCost;
+    this.data.researchLab.totalStudies += 1;
+
+    const currentLevel = getResearchLevel(this.data.researchLab.totalExp);
+    const bonus = currentLevel.researchPointBonus;
+    const baseExp = 25;
+    const gainedExp = Math.floor(baseExp * bonus);
+
+    this.data.researchLab.totalExp += gainedExp;
+
+    const specimenResearch = this.getOrCreateSpecimenResearch(specimenId);
+    if (!specimenResearch.firstStudiedAt) {
+      specimenResearch.firstStudiedAt = Date.now();
+    }
+    specimenResearch.lastStudiedAt = Date.now();
+    specimenResearch.expPoints += gainedExp;
+
+    const oldResearcherLevel = this.data.researchLab.researcherLevel;
+    const newResearcherLevelConfig = getResearchLevel(this.data.researchLab.totalExp);
+    this.data.researchLab.researcherLevel = newResearcherLevelConfig.level;
+    const researcherLeveledUp = this.data.researchLab.researcherLevel > oldResearcherLevel;
+
+    const oldSpecimenLevel = specimenResearch.researchLevel;
+    const specimenLevelThresholds = [0, 50, 150, 350];
+    let newSpecimenLevel = 0;
+    for (let i = specimenLevelThresholds.length - 1; i >= 0; i--) {
+      if (specimenResearch.expPoints >= specimenLevelThresholds[i]) {
+        newSpecimenLevel = i;
+        break;
+      }
+    }
+    specimenResearch.researchLevel = newSpecimenLevel;
+
+    const allKnowledge = getKnowledgeBySpecimen(specimenId);
+    const newlyUnlockedKnowledge: string[] = [];
+
+    for (const knowledge of allKnowledge) {
+      const alreadyUnlocked = specimenResearch.unlockedKnowledge.includes(knowledge.id);
+      const meetsResearcherLevel = this.data.researchLab.researcherLevel >= knowledge.requiredLevel;
+      const meetsSpecimenLevel = specimenResearch.researchLevel >= (knowledge.requiredLevel - 1);
+
+      if (!alreadyUnlocked && meetsResearcherLevel && meetsSpecimenLevel) {
+        specimenResearch.unlockedKnowledge.push(knowledge.id);
+        newlyUnlockedKnowledge.push(knowledge.id);
+      }
+    }
+
+    let unlockMessage: string | undefined;
+    if (researcherLeveledUp && newResearcherLevelConfig.unlockMessage) {
+      unlockMessage = newResearcherLevelConfig.unlockMessage;
+    }
+
+    this.save();
+    return {
+      success: true,
+      gainedExp,
+      newlyUnlockedKnowledge,
+      leveledUp: researcherLeveledUp || newSpecimenLevel > oldSpecimenLevel,
+      newResearcherLevel: this.data.researchLab.researcherLevel,
+      newSpecimenLevel: specimenResearch.researchLevel,
+      unlockMessage
+    };
+  }
+
+  static grantResearchPoints(amount: number): number {
+    const currentLevel = getResearchLevel(this.data.researchLab.totalExp);
+    const bonus = currentLevel.researchPointBonus;
+    const finalAmount = Math.floor(amount * bonus);
+    this.data.researchLab.researchPoints += finalAmount;
+    this.save();
+    return finalAmount;
+  }
+
+  static grantResearchExp(amount: number): { totalAdded: number; leveledUp: boolean; newLevel: number; unlockMessage?: string } {
+    const oldLevel = this.data.researchLab.researcherLevel;
+    this.data.researchLab.totalExp += amount;
+    const newLevelConfig = getResearchLevel(this.data.researchLab.totalExp);
+    this.data.researchLab.researcherLevel = newLevelConfig.level;
+    const leveledUp = this.data.researchLab.researcherLevel > oldLevel;
+
+    this.save();
+    return {
+      totalAdded: amount,
+      leveledUp,
+      newLevel: this.data.researchLab.researcherLevel,
+      unlockMessage: leveledUp ? newLevelConfig.unlockMessage : undefined
+    };
+  }
+
+  static onLevelCompleteGrantResearch(levelId: number, stars: number, score: number): {
+    pointsGained: number;
+    expGained: number;
+  } {
+    const levelProgress = this.getProgress(levelId);
+    if (!levelProgress) return { pointsGained: 0, expGained: 0 };
+
+    const level = Levels.find(l => l.id === levelId);
+    const specimenId = level?.specimen.id;
+
+    let basePoints = 10 + stars * 15;
+    let baseExp = 5 + stars * 10;
+
+    const difficultyMultiplier: Record<string, number> = {
+      easy: 1,
+      medium: 1.5,
+      hard: 2.2
+    };
+    const diff = level?.rule.difficulty ?? 'easy';
+    basePoints = Math.floor(basePoints * difficultyMultiplier[diff]);
+    baseExp = Math.floor(baseExp * difficultyMultiplier[diff]);
+
+    if (!levelProgress.completed) {
+      basePoints += 30;
+      baseExp += 20;
+    }
+
+    if (stars === 3) {
+      basePoints += 20;
+      baseExp += 15;
+    }
+
+    if (specimenId && this.isGalleryUnlocked(specimenId)) {
+      const specimenResearch = this.getOrCreateSpecimenResearch(specimenId);
+      specimenResearch.expPoints += Math.floor(baseExp * 0.6);
+      if (!specimenResearch.firstStudiedAt) {
+        specimenResearch.firstStudiedAt = Date.now();
+      }
+      specimenResearch.lastStudiedAt = Date.now();
+    }
+
+    const actualPoints = this.grantResearchPoints(basePoints);
+    const expResult = this.grantResearchExp(baseExp);
+
+    this.save();
+    return {
+      pointsGained: actualPoints,
+      expGained: expResult.totalAdded
+    };
+  }
+
+  static getStudiedSpecimensCount(): number {
+    return Object.values(this.data.researchLab.specimens).filter(s => s.expPoints > 0).length;
+  }
+
+  static getTotalKnowledgeUnlocked(): number {
+    return Object.values(this.data.researchLab.specimens)
+      .reduce((sum, s) => sum + s.unlockedKnowledge.length, 0);
+  }
+
+  static getResearchProgressPercent(): number {
+    const totalPossible = KnowledgeEntries.length;
+    const current = this.getTotalKnowledgeUnlocked();
+    return totalPossible > 0 ? (current / totalPossible) * 100 : 0;
   }
 
   static save(): void {
