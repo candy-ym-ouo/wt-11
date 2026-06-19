@@ -20,6 +20,7 @@ export class ChapterSelectScene extends Phaser.Scene {
     this.addEventBanner();
     this.addTowerBanner();
     this.addExhibitionBanner();
+    this.addAchievementBanner();
     this.addChapterCards();
     this.addBottomButtons();
   }
@@ -461,8 +462,94 @@ export class ChapterSelectScene extends Phaser.Scene {
     }
   }
 
+  private addAchievementBanner(): void {
+    const bannerY = 550;
+    const bannerH = 80;
+    const achievementCount = SaveManager.getUnlockedAchievementsCount();
+    const titleCount = SaveManager.getUnlockedTitlesCount();
+    const totalScore = SaveManager.getTotalAchievementScore();
+
+    const banner = this.add.graphics();
+
+    const gradientSteps = 15;
+    for (let i = 0; i < gradientSteps; i++) {
+      const t = i / gradientSteps;
+      const baseColor = 0xffd700;
+      const baseColor2 = 0xff9800;
+      const r = Math.floor(((baseColor >> 16) & 0xff) * (1 - t) + ((baseColor2 >> 16) & 0xff) * t);
+      const g = Math.floor(((baseColor >> 8) & 0xff) * (1 - t) + ((baseColor2 >> 8) & 0xff) * t);
+      const b = Math.floor((baseColor & 0xff) * (1 - t) + (baseColor2 & 0xff) * t);
+      const color = (r << 16) | (g << 8) | b;
+      banner.fillStyle(color, 0.95);
+      banner.fillRect(45 + (660 * i) / gradientSteps, bannerY - bannerH / 2, 660 / gradientSteps + 1, bannerH);
+    }
+    banner.fillRoundedRect(45, bannerY - bannerH / 2, 660, bannerH, 16);
+
+    const borderColor = 0xffffff;
+    banner.lineStyle(3, borderColor, 0.6);
+    banner.strokeRoundedRect(45, bannerY - bannerH / 2, 660, bannerH, 16);
+
+    this.add.text(80, bannerY, '🏆', {
+      font: '38px Arial'
+    }).setOrigin(0, 0.5);
+
+    this.add.text(140, bannerY - 15, '成就与称号', {
+      font: 'bold 20px Arial',
+      color: '#1a1a2e'
+    }).setOrigin(0, 0.5);
+
+    const statusText = `成就 ${achievementCount} · 称号 ${titleCount} · 积分 ${totalScore.toLocaleString()}`;
+    this.add.text(140, bannerY + 15, statusText, {
+      font: '14px Arial',
+      color: 'rgba(26,26,46,0.85)'
+    }).setOrigin(0, 0.5);
+
+    const goBtn = this.add.graphics();
+    goBtn.fillStyle(0x1a1a2e, 1);
+    goBtn.fillRoundedRect(610, bannerY - 22, 80, 44, 12);
+
+    this.add.text(650, bannerY, '查看 →', {
+      font: 'bold 15px Arial',
+      color: '#ffd700'
+    }).setOrigin(0.5);
+
+    const newAchievements = achievementCount > 0;
+    if (newAchievements) {
+      const badge = this.add.graphics();
+      badge.fillStyle(0xe94560, 1);
+      badge.fillCircle(695, bannerY - 28, 14);
+      this.add.text(695, bannerY - 28, achievementCount.toString(), {
+        font: 'bold 11px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+    }
+
+    banner.setInteractive(
+      new Phaser.Geom.Rectangle(45, bannerY - bannerH / 2, 660, bannerH),
+      Phaser.Geom.Rectangle.Contains
+    );
+    goBtn.setInteractive(
+      new Phaser.Geom.Rectangle(610, bannerY - 22, 80, 44),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    const goToAchievements = () => {
+      this.scene.start('AchievementScene');
+    };
+
+    banner.on('pointerup', goToAchievements);
+    goBtn.on('pointerup', goToAchievements);
+
+    banner.on('pointerover', () => {
+      banner.lineStyle(3, 0xffffff, 1);
+    });
+    banner.on('pointerout', () => {
+      banner.lineStyle(3, borderColor, 0.6);
+    });
+  }
+
   private addChapterCards(): void {
-    const startY = 555;
+    const startY = 660;
     const cardWidth = 660;
     const cardHeight = 280;
     const padding = 25;

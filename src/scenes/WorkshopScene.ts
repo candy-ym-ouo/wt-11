@@ -399,7 +399,7 @@ export class WorkshopScene extends Phaser.Scene {
   private performRestore(specimenId: number): void {
     const result = SaveManager.restoreSpecimen(specimenId);
     if (!result.success) return;
-    const { updatedQuests } = result;
+    const { updatedQuests, achievementResult } = result;
 
     const specimen = getPlantSpecimen(specimenId);
     if (!specimen) return;
@@ -416,8 +416,18 @@ export class WorkshopScene extends Phaser.Scene {
 
     const hasQuestUpdates = updatedQuests.length > 0;
     const completedQuestCount = updatedQuests.filter(q => q.status === 'completed').length;
-    const modalHeight = hasQuestUpdates ? 760 : 700;
-    const modalY = hasQuestUpdates ? 270 : 300;
+    const hasAchievementUnlock = achievementResult.newlyUnlocked.length > 0 || achievementResult.newlyUnlockedTitles.length > 0;
+    
+    let extraHeight = 0;
+    if (hasQuestUpdates) extraHeight += 60;
+    if (hasAchievementUnlock) {
+      extraHeight += 55;
+      if (achievementResult.scoreGained > 0) extraHeight += 45;
+      if (achievementResult.newlyUnlockedTitles.length > 0) extraHeight += 55;
+    }
+    
+    const modalHeight = 700 + extraHeight;
+    const modalY = 300 - extraHeight / 2;
 
     const modal = this.add.graphics();
     modal.fillStyle(0x16213e, 1);
@@ -494,6 +504,60 @@ export class WorkshopScene extends Phaser.Scene {
             color: '#ffffff'
           }).setOrigin(0.5);
         }
+      currentY += 55;
+    }
+
+    if (achievementResult.newlyUnlocked.length > 0) {
+      const achievementBadge = this.add.graphics();
+      achievementBadge.fillStyle(0xffd700, 1);
+      achievementBadge.fillRoundedRect(150, currentY, 450, 45, 10);
+      achievementBadge.setInteractive(
+        new Phaser.Geom.Rectangle(150, currentY, 450, 45),
+        Phaser.Geom.Rectangle.Contains
+      );
+      container.add(achievementBadge);
+      this.add.text(375, currentY + 22, `🏆 解锁${achievementResult.newlyUnlocked.length}个新成就！`, {
+        font: 'bold 18px Arial',
+        color: '#1a1a2e'
+      }).setOrigin(0.5);
+
+      achievementBadge.on('pointerup', () => {
+        container.destroy();
+        this.scene.start('AchievementScene');
+      });
+      currentY += 55;
+
+      if (achievementResult.scoreGained > 0) {
+        const scoreBadge = this.add.graphics();
+        scoreBadge.fillStyle(0xff9800, 0.9);
+        scoreBadge.fillRoundedRect(180, currentY, 390, 35, 10);
+        container.add(scoreBadge);
+        this.add.text(375, currentY + 17, `💰 成就积分 +${achievementResult.scoreGained.toLocaleString()}`, {
+          font: 'bold 15px Arial',
+          color: '#ffffff'
+        }).setOrigin(0.5);
+        currentY += 45;
+      }
+    }
+
+    if (achievementResult.newlyUnlockedTitles.length > 0) {
+      const titleBadge = this.add.graphics();
+      titleBadge.fillStyle(0x9c27b0, 1);
+      titleBadge.fillRoundedRect(150, currentY, 450, 45, 10);
+      titleBadge.setInteractive(
+        new Phaser.Geom.Rectangle(150, currentY, 450, 45),
+        Phaser.Geom.Rectangle.Contains
+      );
+      container.add(titleBadge);
+      this.add.text(375, currentY + 22, `👑 获得新称号：${achievementResult.newlyUnlockedTitles[0].name}`, {
+        font: 'bold 18px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+
+      titleBadge.on('pointerup', () => {
+        container.destroy();
+        this.scene.start('AchievementScene');
+      });
       currentY += 55;
     }
 

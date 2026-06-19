@@ -4,7 +4,7 @@ import { getLevelRule } from '../data/LevelRules';
 import { getPlantSpecimen } from '../data/PlantSpecimens';
 import { SaveManager } from '../utils/SaveManager';
 import { calculateScore, formatTime, getDifficultyColor, getDifficultyText } from '../utils/GameUtils';
-import { LevelRule, PlantSpecimen, PuzzlePieceData, EventLevelRule, DailyQuest, TowerFloorData, TowerResultData, TowerScoringCondition, TowerRuleModifier } from '../types/GameTypes';
+import { LevelRule, PlantSpecimen, PuzzlePieceData, EventLevelRule, DailyQuest, TowerFloorData, TowerResultData, TowerScoringCondition, TowerRuleModifier, AchievementUnlockResult } from '../types/GameTypes';
 import { getDropRule, getFragmentsBySpecimenId, Fragments, Materials } from '../data/WorkshopConfig';
 import { getEventLevelRule, isEventLevel } from '../data/EventLevelRules';
 import { getEventById } from '../data/Events';
@@ -1059,9 +1059,10 @@ export class GameScene extends Phaser.Scene {
     );
     const finalScore = Math.floor(result.score * this.scoreMultiplier);
 
-    let chapterResult: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[] } | undefined;
+    let chapterResult: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[]; achievementResult: AchievementUnlockResult } | undefined;
     let eventResult: { newlyUnlockedLevelId: number | null; updatedTotalScore: number } | undefined;
     let updatedQuests: DailyQuest[] = [];
+    let achievementResult: AchievementUnlockResult = { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 };
 
     if (this.isEventLevel && this.eventId) {
       eventResult = SaveManager.completeEventLevel(
@@ -1079,6 +1080,7 @@ export class GameScene extends Phaser.Scene {
         result.stars
       );
       updatedQuests = chapterResult.updatedQuests || [];
+      achievementResult = chapterResult.achievementResult;
     }
 
     const drops = this.calculateDrops(result.stars);
@@ -1087,7 +1089,7 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.zoomTo(1.05, 400, 'Cubic.easeInOut', true);
     this.time.delayedCall(450, () => {
       this.cameras.main.zoomTo(1.0, 400, 'Cubic.easeInOut', true);
-      this.showVictory(finalScore, result.stars, this.elapsedTime, chapterResult, drops, eventResult, updatedQuests);
+      this.showVictory(finalScore, result.stars, this.elapsedTime, chapterResult, drops, eventResult, updatedQuests, achievementResult);
     });
   }
 
@@ -1317,7 +1319,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private showVictory(score: number, stars: number, time: number, chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[] }, drops?: { fragments: { id: number; count: number }[]; materials: { id: number; count: number }[] }, eventResult?: { newlyUnlockedLevelId: number | null; updatedTotalScore: number }, updatedQuests: DailyQuest[] = []): void {
+  private showVictory(score: number, stars: number, time: number, chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[]; achievementResult: AchievementUnlockResult }, drops?: { fragments: { id: number; count: number }[]; materials: { id: number; count: number }[] }, eventResult?: { newlyUnlockedLevelId: number | null; updatedTotalScore: number }, updatedQuests: DailyQuest[] = [], achievementResult: AchievementUnlockResult = { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 }): void {
     const { overlay } = this.createModal('🎉 修复完成！', '#4caf50', 0x4caf50);
 
     this.drawStars(375, 480, stars, 50);
@@ -1487,6 +1489,53 @@ export class GameScene extends Phaser.Scene {
         }).setOrigin(0.5);
         bannerY += 55;
       }
+    }
+
+    if (!this.isEventLevel && achievementResult.newlyUnlocked.length > 0) {
+      const achievementBanner = this.add.graphics();
+      achievementBanner.fillStyle(0xffd700, 1);
+      achievementBanner.fillRoundedRect(140, bannerY, 470, 45, 12);
+      achievementBanner.setInteractive(
+        new Phaser.Geom.Rectangle(140, bannerY, 470, 45),
+        Phaser.Geom.Rectangle.Contains
+      );
+      this.add.text(375, bannerY + 22, `🏆 解锁${achievementResult.newlyUnlocked.length}个新成就！`, {
+        font: 'bold 18px Arial',
+        color: '#1a1a2e'
+      }).setOrigin(0.5);
+      achievementBanner.on('pointerup', () => {
+        this.scene.start('AchievementScene');
+      });
+      bannerY += 55;
+
+      if (achievementResult.scoreGained > 0) {
+        const scoreBanner = this.add.graphics();
+        scoreBanner.fillStyle(0xff9800, 0.9);
+        scoreBanner.fillRoundedRect(180, bannerY, 390, 35, 10);
+        this.add.text(375, bannerY + 17, `💰 成就积分 +${achievementResult.scoreGained.toLocaleString()}`, {
+          font: 'bold 15px Arial',
+          color: '#ffffff'
+        }).setOrigin(0.5);
+        bannerY += 45;
+      }
+    }
+
+    if (!this.isEventLevel && achievementResult.newlyUnlockedTitles.length > 0) {
+      const titleBanner = this.add.graphics();
+      titleBanner.fillStyle(0x9c27b0, 1);
+      titleBanner.fillRoundedRect(140, bannerY, 470, 45, 12);
+      titleBanner.setInteractive(
+        new Phaser.Geom.Rectangle(140, bannerY, 470, 45),
+        Phaser.Geom.Rectangle.Contains
+      );
+      this.add.text(375, bannerY + 22, `👑 获得新称号：${achievementResult.newlyUnlockedTitles[0].name}`, {
+        font: 'bold 18px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+      titleBanner.on('pointerup', () => {
+        this.scene.start('AchievementScene');
+      });
+      bannerY += 55;
     }
 
     this.createResultButtons(overlay, true, chapterResult, eventResult, updatedQuests);

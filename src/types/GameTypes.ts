@@ -502,6 +502,65 @@ export interface ExhibitionResultData {
   isNewHighScore: boolean;
 }
 
+export type AchievementCategory = 'level' | 'gallery' | 'speed' | 'login' | 'collection' | 'special';
+export type AchievementRarity = 'common' | 'rare' | 'epic' | 'legendary';
+export type TitleRarity = 'bronze' | 'silver' | 'gold' | 'platinum';
+
+export interface AchievementCondition {
+  type: string;
+  target: number;
+  levelId?: number;
+  chapterId?: number;
+  difficulty?: string;
+  specimenId?: number;
+  days?: number;
+}
+
+export interface Achievement {
+  id: number;
+  name: string;
+  description: string;
+  icon: string;
+  category: AchievementCategory;
+  rarity: AchievementRarity;
+  condition: AchievementCondition;
+  rewardScore?: number;
+  unlocked: boolean;
+  unlockedAt?: number;
+  progress?: number;
+  totalProgress?: number;
+}
+
+export interface Title {
+  id: number;
+  name: string;
+  description: string;
+  icon: string;
+  rarity: TitleRarity;
+  requiredAchievementIds: number[];
+  unlocked: boolean;
+  unlockedAt?: number;
+}
+
+export interface AchievementSaveData {
+  unlockedAchievements: Record<number, boolean>;
+  unlockedTitles: Record<number, boolean>;
+  currentTitleId: number | null;
+  achievementProgress: Record<number, number>;
+  loginStreak: number;
+  lastLoginDate: string;
+  totalLogins: number;
+  fastestCompletion: Record<number, number>;
+  perfectLevels: number[];
+  totalAchievementScore: number;
+}
+
+export interface AchievementUnlockResult {
+  newlyUnlocked: Achievement[];
+  newlyUnlockedTitles: Title[];
+  scoreGained: number;
+}
+
 export interface SaveData {
   progress: Record<number, LevelProgress>;
   chapterProgress: Record<number, ChapterProgress>;
@@ -516,4 +575,5 @@ export interface SaveData {
   researchLab: ResearchLabProgress;
   tower: TowerSaveData;
   exhibition: ExhibitionSaveData;
+  achievement: AchievementSaveData;
 }

@@ -28,8 +28,9 @@ import {
   getSpecimenCategory
 } from '../data/ResearchLabConfig';
 import { TowerFloors, getTowerFloor } from '../data/TowerConfig';
-import { TowerSaveData, TowerFloorProgress, TowerReward, TowerResultData, ExhibitionSaveData, ExhibitionProgress, ExhibitionSpecimenSubmission, ExhibitionReward } from '../types/GameTypes';
+import { TowerSaveData, TowerFloorProgress, TowerReward, TowerResultData, ExhibitionSaveData, ExhibitionProgress, ExhibitionSpecimenSubmission, ExhibitionReward, AchievementSaveData, AchievementUnlockResult } from '../types/GameTypes';
 import { ExhibitionThemes, getExhibitionTheme, getBadgesByThemeId, getExhibitionBadge } from '../data/ExhibitionConfig';
+import { AchievementManager } from './AchievementManager';
 
 const STORAGE_KEY = 'plant_specimen_puzzle_save';
 
@@ -53,6 +54,7 @@ export class SaveManager {
     this.updateChapterProgress();
     this.syncChapterUnlocks();
     DailyQuestManager.init(this.data.dailyQuest);
+    AchievementManager.init(this.data.achievement);
     this.save();
   }
 
@@ -193,6 +195,41 @@ export class SaveManager {
       }
     }
 
+    if (!oldData.achievement) {
+      oldData.achievement = defaultData.achievement;
+    } else {
+      if (!oldData.achievement.unlockedAchievements) {
+        oldData.achievement.unlockedAchievements = defaultData.achievement.unlockedAchievements;
+      }
+      if (!oldData.achievement.unlockedTitles) {
+        oldData.achievement.unlockedTitles = defaultData.achievement.unlockedTitles;
+      }
+      if (oldData.achievement.currentTitleId === undefined) {
+        oldData.achievement.currentTitleId = null;
+      }
+      if (!oldData.achievement.achievementProgress) {
+        oldData.achievement.achievementProgress = defaultData.achievement.achievementProgress;
+      }
+      if (oldData.achievement.loginStreak === undefined) {
+        oldData.achievement.loginStreak = 0;
+      }
+      if (oldData.achievement.lastLoginDate === undefined) {
+        oldData.achievement.lastLoginDate = '';
+      }
+      if (oldData.achievement.totalLogins === undefined) {
+        oldData.achievement.totalLogins = 0;
+      }
+      if (!oldData.achievement.fastestCompletion) {
+        oldData.achievement.fastestCompletion = defaultData.achievement.fastestCompletion;
+      }
+      if (!oldData.achievement.perfectLevels) {
+        oldData.achievement.perfectLevels = [];
+      }
+      if (oldData.achievement.totalAchievementScore === undefined) {
+        oldData.achievement.totalAchievementScore = 0;
+      }
+    }
+
     return oldData as SaveData;
   }
 
@@ -231,6 +268,8 @@ export class SaveManager {
     const towerSaveData = this.createDefaultTowerSave();
     const exhibitionSaveData = this.createDefaultExhibitionSave();
 
+    const achievementData = AchievementManager.createDefaultAchievementSave();
+
     return {
       progress,
       chapterProgress,
@@ -248,7 +287,8 @@ export class SaveManager {
       dailyQuest: dailyQuestSaveData,
       researchLab: researchLabData,
       tower: towerSaveData,
-      exhibition: exhibitionSaveData
+      exhibition: exhibitionSaveData,
+      achievement: achievementData
     };
   }
 
@@ -463,9 +503,9 @@ export class SaveManager {
     return this.data.badges[badgeId] ?? false;
   }
 
-  static completeLevel(levelId: number, score: number, time: number, stars: number): { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[]; researchRewards: { pointsGained: number; expGained: number } } {
+  static completeLevel(levelId: number, score: number, time: number, stars: number): { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[]; researchRewards: { pointsGained: number; expGained: number }; achievementResult: AchievementUnlockResult } {
     const progress = this.data.progress[levelId];
-    if (!progress) return { chapterCompleted: false, completedChapterId: null, newlyUnlockedChapterId: null, updatedQuests: [], researchRewards: { pointsGained: 0, expGained: 0 } };
+    if (!progress) return { chapterCompleted: false, completedChapterId: null, newlyUnlockedChapterId: null, updatedQuests: [], researchRewards: { pointsGained: 0, expGained: 0 }, achievementResult: { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 } };
 
     const isFirstCompletion = !progress.completed;
     const starsImproved = stars > progress.stars;
@@ -576,13 +616,34 @@ export class SaveManager {
 
     const researchRewards = { pointsGained: actualPoints, expGained: baseExp };
 
+    const completedLevelsCount = Object.values(this.data.progress).filter(p => p.completed).length;
+    const totalStars = this.getTotalStars();
+    const unlockedSpecimens = this.getUnlockedGalleryItems();
+    const allProgress = { ...this.data.progress };
+
+    const achievementResult = AchievementManager.onLevelComplete(
+      levelId,
+      score,
+      time,
+      stars,
+      completedLevelsCount,
+      totalStars,
+      unlockedSpecimens,
+      allProgress
+    );
+
+    if (achievementResult.scoreGained > 0) {
+      this.data.totalScore += achievementResult.scoreGained;
+    }
+
     this.save();
     return {
       chapterCompleted: completionResult.chapterCompleted,
       completedChapterId: completionResult.completedChapterId,
       newlyUnlockedChapterId: unlockResult,
       updatedQuests,
-      researchRewards
+      researchRewards,
+      achievementResult
     };
   }
 
@@ -762,8 +823,8 @@ export class SaveManager {
     return true;
   }
 
-  static restoreSpecimen(specimenId: number): { success: boolean; updatedQuests: DailyQuest[] } {
-    if (!this.canRestoreSpecimen(specimenId)) return { success: false, updatedQuests: [] };
+  static restoreSpecimen(specimenId: number): { success: boolean; updatedQuests: DailyQuest[]; achievementResult: AchievementUnlockResult } {
+    if (!this.canRestoreSpecimen(specimenId)) return { success: false, updatedQuests: [], achievementResult: { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 } };
 
     const recipe = getRecipeBySpecimenId(specimenId)!;
 
@@ -782,8 +843,15 @@ export class SaveManager {
 
     const updatedQuests = DailyQuestManager.onSpecimenRestored(specimenId);
 
+    const restoredCount = this.data.workshop.restoredSpecimens.length;
+    const achievementResult = AchievementManager.onSpecimenRestored(restoredCount);
+
+    if (achievementResult.scoreGained > 0) {
+      this.data.totalScore += achievementResult.scoreGained;
+    }
+
     this.save();
-    return { success: true, updatedQuests };
+    return { success: true, updatedQuests, achievementResult };
   }
 
   static addWorkshopDrops(drops: { fragments: { id: number; count: number }[]; materials: { id: number; count: number }[] }): void {
@@ -1609,6 +1677,50 @@ export class SaveManager {
 
     this.save();
     return true;
+  }
+
+  static getAchievementSaveData(): AchievementSaveData {
+    return { ...this.data.achievement, unlockedAchievements: { ...this.data.achievement.unlockedAchievements } };
+  }
+
+  static isAchievementUnlocked(achievementId: number): boolean {
+    return this.data.achievement.unlockedAchievements[achievementId] ?? false;
+  }
+
+  static isTitleUnlocked(titleId: number): boolean {
+    return this.data.achievement.unlockedTitles[titleId] ?? false;
+  }
+
+  static getCurrentTitleId(): number | null {
+    return this.data.achievement.currentTitleId;
+  }
+
+  static setCurrentTitle(titleId: number | null): boolean {
+    const result = AchievementManager.setCurrentTitle(titleId);
+    if (result) {
+      this.save();
+    }
+    return result;
+  }
+
+  static getTotalAchievementScore(): number {
+    return this.data.achievement.totalAchievementScore;
+  }
+
+  static getLoginStreak(): number {
+    return this.data.achievement.loginStreak;
+  }
+
+  static getTotalLogins(): number {
+    return this.data.achievement.totalLogins;
+  }
+
+  static getUnlockedAchievementsCount(): number {
+    return Object.values(this.data.achievement.unlockedAchievements).filter(Boolean).length;
+  }
+
+  static getUnlockedTitlesCount(): number {
+    return Object.values(this.data.achievement.unlockedTitles).filter(Boolean).length;
   }
 
   static save(): void {
