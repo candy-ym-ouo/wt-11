@@ -18,6 +18,25 @@ export const ScoreConfig = {
   starThresholds: [1000, 2000, 3000]
 };
 
+export const ComboRewardConfig = {
+  comboBonusPerPiece: 30,
+  comboMultiplierStep: 0.15,
+  comboMultiplierCap: 0.9,
+  lowRotationBonus: 120,
+  lowRotationThreshold: 3,
+  noRotationBonus: 200,
+  noHintBonus: 250,
+  lowHintBonus: 100,
+  lowHintThreshold: 2,
+  starThresholdBonus: {
+    combo3: -80,
+    combo5: -150,
+    combo8: -250,
+    noHint: -100,
+    noRotation: -120
+  }
+};
+
 export const HintConfig = {
   maxFullPreviewCount: 3,
   outlineFlashDuration: 2500,

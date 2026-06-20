@@ -4,7 +4,7 @@ import { getLevelRule } from '../data/LevelRules';
 import { getPlantSpecimen } from '../data/PlantSpecimens';
 import { SaveManager } from '../utils/SaveManager';
 import { calculateScore, formatTime, getDifficultyColor, getDifficultyText } from '../utils/GameUtils';
-import { LevelRule, PlantSpecimen, PuzzlePieceData, EventLevelRule, DailyQuest, TowerFloorData, TowerResultData, TowerScoringCondition, TowerRuleModifier, AchievementUnlockResult, TutorialStep, ConservationHealthLevel, PuzzleSaveData, PuzzlePieceSaveData, HintUsageStats, SnapRecord, MistakeRecord, SpeedSample, ReplayData } from '../types/GameTypes';
+import { LevelRule, PlantSpecimen, PuzzlePieceData, EventLevelRule, DailyQuest, TowerFloorData, TowerResultData, TowerScoringCondition, TowerRuleModifier, AchievementUnlockResult, TutorialStep, ConservationHealthLevel, PuzzleSaveData, PuzzlePieceSaveData, HintUsageStats, ComboRewardStats, SnapRecord, MistakeRecord, SpeedSample, ReplayData } from '../types/GameTypes';
 import { getDropRule, getFragmentsBySpecimenId, Fragments, Materials } from '../data/WorkshopConfig';
 import { getEventLevelRule, isEventLevel } from '../data/EventLevelRules';
 import { getEventById } from '../data/Events';
@@ -295,7 +295,8 @@ export class GameScene extends Phaser.Scene {
       this.levelRule.timeLimit,
       this.pieces.length,
       this.snappedCount,
-      this.getHintUsageStats()
+      this.getHintUsageStats(),
+      this.getComboRewardStats()
     );
 
     SaveManager.savePuzzleProgress({
@@ -1235,6 +1236,17 @@ export class GameScene extends Phaser.Scene {
       this.snapCount++;
       this.snapTimestamps.push(this.elapsedTime);
 
+      this.comboCount++;
+      if (this.comboCount > this.maxCombo) {
+        this.maxCombo = this.comboCount;
+      }
+
+      this.totalSnapDistance += data.distance || 0;
+
+      if (data.isPerfect) {
+        this.perfectSnaps++;
+      }
+
       const piece = data.piece;
       const targetX = piece.getData('liveTargetX') ?? piece.getTargetX();
       const targetY = piece.getData('liveTargetY') ?? piece.getTargetY();
@@ -1251,17 +1263,6 @@ export class GameScene extends Phaser.Scene {
       });
 
       if (this.isTowerFloor) {
-        this.comboCount++;
-        if (this.comboCount > this.maxCombo) {
-          this.maxCombo = this.comboCount;
-        }
-
-        this.totalSnapDistance += data.distance || 0;
-
-        if (data.isPerfect) {
-          this.perfectSnaps++;
-        }
-
         if (this.hasTowerRule('combo_bonus')) {
           const comboMultiplier = this.getTowerRule('combo_bonus')?.value || 1.5;
           this.comboBonusMultiplier = 1 + (this.comboCount - 1) * (comboMultiplier - 1) * 0.1;
@@ -1292,10 +1293,11 @@ export class GameScene extends Phaser.Scene {
         y: data.piece.y
       });
 
+      this.comboCount = 0;
+      this.comboBonusMultiplier = 1;
+
       if (this.isTowerFloor) {
-        this.comboCount = 0;
         this.mistakeCount++;
-        this.comboBonusMultiplier = 1;
 
         if (this.hasTowerRule('time_penalty')) {
           const penalty = this.getTowerRule('time_penalty')?.value || 5;
@@ -1733,13 +1735,22 @@ export class GameScene extends Phaser.Scene {
     };
   }
 
+  private getComboRewardStats(): ComboRewardStats {
+    return {
+      maxCombo: this.maxCombo,
+      rotationAdjustCount: this.rotationAdjustCount,
+      totalHintsUsed: this.hintsUsed
+    };
+  }
+
   private updateUI(): void {
     const result = calculateScore(
       this.elapsedTime,
       this.levelRule.timeLimit,
       this.pieces.length,
       this.snappedCount,
-      this.getHintUsageStats()
+      this.getHintUsageStats(),
+      this.getComboRewardStats()
     );
     let finalMultiplier = this.scoreMultiplier;
     
@@ -1853,7 +1864,8 @@ export class GameScene extends Phaser.Scene {
       this.levelRule.timeLimit,
       this.pieces.length,
       this.snappedCount,
-      this.getHintUsageStats()
+      this.getHintUsageStats(),
+      this.getComboRewardStats()
     );
     let finalScore = Math.floor(result.score * this.scoreMultiplier);
     
@@ -2203,7 +2215,8 @@ export class GameScene extends Phaser.Scene {
       this.levelRule.timeLimit,
       this.snappedCount,
       this.snappedCount,
-      this.getHintUsageStats()
+      this.getHintUsageStats(),
+      this.getComboRewardStats()
     );
 
     this.showGameOver(result.score, this.snappedCount, this.pieces.length);
@@ -2584,6 +2597,75 @@ export class GameScene extends Phaser.Scene {
       }).setOrigin(0.5);
 
       infoY += 32;
+    }
+
+    if (stats && stats.maxCombo > 0) {
+      const comboRewardResult = calculateScore(
+        this.elapsedTime,
+        this.levelRule.timeLimit,
+        this.pieces.length,
+        this.snappedCount,
+        this.getHintUsageStats(),
+        this.getComboRewardStats()
+      );
+
+      this.add.text(375, infoY, '🔥 连贯操作奖励', {
+        font: 'bold 16px Arial',
+        color: '#ff9800'
+      }).setOrigin(0.5);
+      infoY += 22;
+
+      const comboBg = this.add.graphics();
+      comboBg.fillStyle(0x2a1a0a, 0.9);
+      comboBg.fillRoundedRect(130, infoY, 490, 85, 12);
+      comboBg.lineStyle(1, 0xff9800, 0.3);
+      comboBg.strokeRoundedRect(130, infoY, 490, 85, 12);
+
+      const comboRewardDetail = comboRewardResult.scoringBreakdown.find(b => b.name === '连击奖励');
+      const rotationRewardDetail = comboRewardResult.scoringBreakdown.find(b => b.name === '少旋转奖励');
+      const hintRewardDetail = comboRewardResult.scoringBreakdown.find(b => b.name === '少提示奖励');
+
+      const comboItems = [
+        { label: '最高连击', value: `${stats.maxCombo}连`, reward: comboRewardDetail?.score ?? 0, color: '#ff9800' },
+        { label: '旋转调整', value: `${stats.rotationAdjustCount}次`, reward: rotationRewardDetail?.score ?? 0, color: '#ffc107' },
+        { label: '提示使用', value: `${stats.hintsUsed}次`, reward: hintRewardDetail?.score ?? 0, color: '#2196f3' }
+      ];
+
+      comboItems.forEach((item, idx) => {
+        const bx = 155 + idx * 160;
+        this.add.text(bx, infoY + 22, item.label, {
+          font: '11px Arial',
+          color: '#888888'
+        }).setOrigin(0.5);
+        this.add.text(bx, infoY + 42, item.value, {
+          font: 'bold 15px Arial',
+          color: item.color
+        }).setOrigin(0.5);
+        if (item.reward > 0) {
+          this.add.text(bx, infoY + 62, `+${item.reward}`, {
+            font: 'bold 13px Arial',
+            color: '#4caf50'
+          }).setOrigin(0.5);
+        } else if (item.reward === 0 && (item.label === '旋转调整' || item.label === '提示使用')) {
+          this.add.text(bx, infoY + 62, '-', {
+            font: '13px Arial',
+            color: '#666666'
+          }).setOrigin(0.5);
+        }
+      });
+
+      infoY += 100;
+
+      if (comboRewardResult.starThresholdAdjustment < 0) {
+        const threshBg = this.add.graphics();
+        threshBg.fillStyle(0x1a2a4a, 0.8);
+        threshBg.fillRoundedRect(150, infoY, 450, 24, 6);
+        this.add.text(375, infoY + 12, `⚡ 连贯操作降低星级门槛 ${comboRewardResult.starThresholdAdjustment} 分`, {
+          font: 'bold 12px Arial',
+          color: '#ffd700'
+        }).setOrigin(0.5);
+        infoY += 32;
+      }
     }
 
     if (progress && (progress.previousBestTime > 0 || progress.previousBestScore > 0)) {

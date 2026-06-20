@@ -1379,6 +1379,12 @@ export interface HintUsageStats {
   totalHintsUsed: number;
 }
 
+export interface ComboRewardStats {
+  maxCombo: number;
+  rotationAdjustCount: number;
+  totalHintsUsed: number;
+}
+
 export interface HintPenaltyConfig {
   outlineFlashPenalty: number;
   pieceHighlightPenalty: number;
