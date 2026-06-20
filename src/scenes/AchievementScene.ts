@@ -23,9 +23,14 @@ type TabMode = 'achievements' | 'titles';
 export class AchievementScene extends Phaser.Scene {
   private tabMode: TabMode = 'achievements';
   private selectedCategory: AchievementCategory | 'all' = 'all';
+  private fromScene: string = 'ChapterSelectScene';
 
   constructor() {
     super('AchievementScene');
+  }
+
+  init(data: { from?: string }): void {
+    this.fromScene = data.from || 'ChapterSelectScene';
   }
 
   create(): void {
@@ -614,7 +619,7 @@ export class AchievementScene extends Phaser.Scene {
     });
 
     btn.on('pointerup', () => {
-      this.scene.start('ChapterSelectScene');
+      this.scene.start(this.fromScene);
     });
   }
 

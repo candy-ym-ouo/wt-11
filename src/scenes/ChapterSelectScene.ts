@@ -218,6 +218,47 @@ export class ChapterSelectScene extends Phaser.Scene {
       font: '24px Arial',
       color: '#eaeaea'
     }).setOrigin(0.5);
+
+    const profileBtn = this.add.graphics();
+    profileBtn.fillStyle(0xe94560, 0.9);
+    profileBtn.fillCircle(700, 50, 28);
+    profileBtn.lineStyle(2, 0xffd700, 0.8);
+    profileBtn.strokeCircle(700, 50, 28);
+    profileBtn.setInteractive(
+      new Phaser.Geom.Circle(700, 50, 28),
+      Phaser.Geom.Circle.Contains
+    );
+
+    this.add.text(700, 50, '👤', {
+      font: '26px Arial'
+    }).setOrigin(0.5);
+
+    const profileHint = this.add.text(700, 88, '成长', {
+      font: '12px Arial',
+      color: '#aaaaaa'
+    }).setOrigin(0.5);
+
+    profileBtn.on('pointerup', () => {
+      this.scene.start('ProfileScene');
+    });
+
+    profileBtn.on('pointerover', () => {
+      profileBtn.clear();
+      profileBtn.fillStyle(0xff6b81, 1);
+      profileBtn.fillCircle(700, 50, 28);
+      profileBtn.lineStyle(2, 0xffd700, 1);
+      profileBtn.strokeCircle(700, 50, 28);
+      profileHint.setColor('#ffd700');
+    });
+
+    profileBtn.on('pointerout', () => {
+      profileBtn.clear();
+      profileBtn.fillStyle(0xe94560, 0.9);
+      profileBtn.fillCircle(700, 50, 28);
+      profileBtn.lineStyle(2, 0xffd700, 0.8);
+      profileBtn.strokeCircle(700, 50, 28);
+      profileHint.setColor('#aaaaaa');
+    });
   }
 
   private addStatsBar(): void {
@@ -700,7 +741,7 @@ export class ChapterSelectScene extends Phaser.Scene {
     );
 
     const goToAchievements = () => {
-      this.scene.start('AchievementScene');
+      this.scene.start('AchievementScene', { from: 'ChapterSelectScene' });
     };
 
     banner.on('pointerup', goToAchievements);
@@ -1290,14 +1331,24 @@ export class ChapterSelectScene extends Phaser.Scene {
 
   private addBottomButtons(): void {
     const btnY = 1230;
-    const btnW = 74;
+    const btnW = 68;
     const btnH = 60;
-    const spacing = 4;
-    const totalW = btnW * 9 + spacing * 8;
+    const spacing = 3;
+    const totalW = btnW * 10 + spacing * 9;
     const startX = 375 - totalW / 2 + btnW / 2;
 
-    const labBtn = this.createBottomButton(
+    const profileBtn = this.createBottomButton(
       startX,
+      btnY,
+      btnW,
+      btnH,
+      '👤 成长',
+      0xe94560,
+      () => this.scene.start('ProfileScene')
+    );
+
+    const labBtn = this.createBottomButton(
+      startX + btnW + spacing,
       btnY,
       btnW,
       btnH,
@@ -1307,7 +1358,7 @@ export class ChapterSelectScene extends Phaser.Scene {
     );
 
     const workshopBtn = this.createBottomButton(
-      startX + btnW + spacing,
+      startX + 2 * (btnW + spacing),
       btnY,
       btnW,
       btnH,
@@ -1317,7 +1368,7 @@ export class ChapterSelectScene extends Phaser.Scene {
     );
 
     const conservationBtn = this.createBottomButton(
-      startX + 2 * (btnW + spacing),
+      startX + 3 * (btnW + spacing),
       btnY,
       btnW,
       btnH,
@@ -1327,7 +1378,7 @@ export class ChapterSelectScene extends Phaser.Scene {
     );
 
     const galleryBtn = this.createBottomButton(
-      startX + 3 * (btnW + spacing),
+      startX + 4 * (btnW + spacing),
       btnY,
       btnW,
       btnH,
@@ -1337,7 +1388,7 @@ export class ChapterSelectScene extends Phaser.Scene {
     );
 
     const donationBtn = this.createBottomButton(
-      startX + 4 * (btnW + spacing),
+      startX + 5 * (btnW + spacing),
       btnY,
       btnW,
       btnH,
@@ -1347,7 +1398,7 @@ export class ChapterSelectScene extends Phaser.Scene {
     );
 
     const seasonBtn = this.createBottomButton(
-      startX + 5 * (btnW + spacing),
+      startX + 6 * (btnW + spacing),
       btnY,
       btnW,
       btnH,
@@ -1357,7 +1408,7 @@ export class ChapterSelectScene extends Phaser.Scene {
     );
 
     const familyBtn = this.createBottomButton(
-      startX + 6 * (btnW + spacing),
+      startX + 7 * (btnW + spacing),
       btnY,
       btnW,
       btnH,
@@ -1367,7 +1418,7 @@ export class ChapterSelectScene extends Phaser.Scene {
     );
 
     const levelsBtn = this.createBottomButton(
-      startX + 7 * (btnW + spacing),
+      startX + 8 * (btnW + spacing),
       btnY,
       btnW,
       btnH,
@@ -1377,7 +1428,7 @@ export class ChapterSelectScene extends Phaser.Scene {
     );
 
     const logBtn = this.createBottomButton(
-      startX + 8 * (btnW + spacing),
+      startX + 9 * (btnW + spacing),
       btnY,
       btnW,
       btnH,
@@ -1396,8 +1447,8 @@ export class ChapterSelectScene extends Phaser.Scene {
     if (hasClaimableRewards) {
       const badge = this.add.graphics();
       badge.fillStyle(0xffeb3b, 1);
-      badge.fillCircle(startX + 6 * (btnW + spacing) + btnW / 2 - 15, btnY - btnH / 2 + 10, 12);
-      this.add.text(startX + 6 * (btnW + spacing) + btnW / 2 - 15, btnY - btnH / 2 + 10, '!', {
+      badge.fillCircle(startX + 7 * (btnW + spacing) + btnW / 2 - 15, btnY - btnH / 2 + 10, 12);
+      this.add.text(startX + 7 * (btnW + spacing) + btnW / 2 - 15, btnY - btnH / 2 + 10, '!', {
         font: 'bold 12px Arial',
         color: '#1a1a2e'
       }).setOrigin(0.5);
@@ -1406,8 +1457,8 @@ export class ChapterSelectScene extends Phaser.Scene {
     if (SeasonPassManager.hasClaimableRewards()) {
       const badge = this.add.graphics();
       badge.fillStyle(0xff1744, 1);
-      badge.fillCircle(startX + 5 * (btnW + spacing) + btnW / 2 - 10, btnY - btnH / 2 + 10, 12);
-      this.add.text(startX + 5 * (btnW + spacing) + btnW / 2 - 10, btnY - btnH / 2 + 10, '!', {
+      badge.fillCircle(startX + 6 * (btnW + spacing) + btnW / 2 - 10, btnY - btnH / 2 + 10, 12);
+      this.add.text(startX + 6 * (btnW + spacing) + btnW / 2 - 10, btnY - btnH / 2 + 10, '!', {
         font: 'bold 12px Arial',
         color: '#ffffff'
       }).setOrigin(0.5);
@@ -1424,8 +1475,8 @@ export class ChapterSelectScene extends Phaser.Scene {
     if (hasDonatable || hasDonationRewards) {
       const badge = this.add.graphics();
       badge.fillStyle(hasDonationRewards ? 0xff9800 : 0x4caf50, 1);
-      badge.fillCircle(startX + 4 * (btnW + spacing) + btnW / 2 - 10, btnY - btnH / 2 + 10, 12);
-      this.add.text(startX + 4 * (btnW + spacing) + btnW / 2 - 10, btnY - btnH / 2 + 10, '!', {
+      badge.fillCircle(startX + 5 * (btnW + spacing) + btnW / 2 - 10, btnY - btnH / 2 + 10, 12);
+      this.add.text(startX + 5 * (btnW + spacing) + btnW / 2 - 10, btnY - btnH / 2 + 10, '!', {
         font: 'bold 12px Arial',
         color: '#ffffff'
       }).setOrigin(0.5);

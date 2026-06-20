@@ -27,15 +27,21 @@ export class ProfileScene extends Phaser.Scene {
   private dragStartY = 0;
   private contentStartY = 0;
   private contentContainer: Phaser.GameObjects.Container | null = null;
+  private fromScene: string = 'ChapterSelectScene';
 
   constructor() {
     super('ProfileScene');
+  }
+
+  init(data: { from?: string }): void {
+    this.fromScene = data.from || 'ChapterSelectScene';
   }
 
   create(): void {
     this.addBackground();
     this.addTitle();
     this.addBackButton();
+    this.addHomeButton();
     this.createContent();
     this.setupScrolling();
   }
@@ -52,21 +58,69 @@ export class ProfileScene extends Phaser.Scene {
   }
 
   private addBackButton(): void {
-    const btn = this.add.text(50, 55, '← 返回', {
-      font: 'bold 20px Arial',
+    const btnBg = this.add.graphics();
+    btnBg.fillStyle(0x0f3460, 0.8);
+    btnBg.fillRoundedRect(15, 35, 110, 40, 12);
+    btnBg.lineStyle(1, 0x4a90d9, 0.5);
+    btnBg.strokeRoundedRect(15, 35, 110, 40, 12);
+
+    const backLabel = this.fromScene === 'ChapterSelectScene' ? '← 日志' : '← 返回';
+    const btn = this.add.text(70, 55, backLabel, {
+      font: 'bold 18px Arial',
       color: '#ffffff'
     }).setOrigin(0.5).setInteractive();
 
     btn.on('pointerdown', () => {
-      this.scene.start('ChapterSelectScene');
+      this.scene.start(this.fromScene);
     });
 
     btn.on('pointerover', () => {
       btn.setColor('#ffd700');
+      btnBg.clear();
+      btnBg.fillStyle(0x0f3460, 1);
+      btnBg.fillRoundedRect(15, 35, 110, 40, 12);
+      btnBg.lineStyle(1, 0xffd700, 0.8);
+      btnBg.strokeRoundedRect(15, 35, 110, 40, 12);
     });
 
     btn.on('pointerout', () => {
       btn.setColor('#ffffff');
+      btnBg.clear();
+      btnBg.fillStyle(0x0f3460, 0.8);
+      btnBg.fillRoundedRect(15, 35, 110, 40, 12);
+      btnBg.lineStyle(1, 0x4a90d9, 0.5);
+      btnBg.strokeRoundedRect(15, 35, 110, 40, 12);
+    });
+  }
+
+  private addHomeButton(): void {
+    const homeBg = this.add.graphics();
+    homeBg.fillStyle(0xe94560, 0.9);
+    homeBg.fillRoundedRect(630, 35, 100, 40, 12);
+    homeBg.setInteractive(
+      new Phaser.Geom.Rectangle(630, 35, 100, 40),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    this.add.text(680, 55, '🏠 主页', {
+      font: 'bold 16px Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+
+    homeBg.on('pointerup', () => {
+      this.scene.start('ChapterSelectScene');
+    });
+
+    homeBg.on('pointerover', () => {
+      homeBg.clear();
+      homeBg.fillStyle(0xff6b81, 1);
+      homeBg.fillRoundedRect(630, 35, 100, 40, 12);
+    });
+
+    homeBg.on('pointerout', () => {
+      homeBg.clear();
+      homeBg.fillStyle(0xe94560, 0.9);
+      homeBg.fillRoundedRect(630, 35, 100, 40, 12);
     });
   }
 
@@ -517,7 +571,7 @@ export class ProfileScene extends Phaser.Scene {
         font: '13px Arial',
         color: '#90caf9'
       }).setOrigin(0.5).setInteractive().on('pointerdown', () => {
-        this.scene.start('AchievementScene');
+        this.scene.start('AchievementScene', { from: 'ProfileScene' });
       });
     }
 
