@@ -106,6 +106,14 @@ export interface LevelProgress {
   bestTime: number;
   stars: number;
   completed: boolean;
+  attempts: number;
+  bestAccuracy: number;
+  bestCombo: number;
+  bestPerfectSnaps: number;
+  leastRotations: number;
+  leastHintTime: number;
+  playCount: number;
+  lastPlayedAt?: number;
 }
 
 export interface GalleryItem {
@@ -536,6 +544,16 @@ export interface TowerResultData {
   isNewBestTime: boolean;
   unlockedNextFloor: boolean;
   rewards: TowerReward[];
+  snapTimestamps: number[];
+  totalSnapDistance: number;
+  snapCount: number;
+  realPiecesCount: number;
+  rotationAdjustCount: number;
+  hintViewTime: number;
+  previousStars: number;
+  previousBestScore: number;
+  previousBestTime: number;
+  starsImproved: boolean;
 }
 
 export type ExhibitionThemeType = 'color' | 'family' | 'shape' | 'season' | 'rarity';

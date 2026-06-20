@@ -60,6 +60,10 @@ export class GameScene extends Phaser.Scene {
   private isLoadingSave: boolean = false;
   private loadedSaveData: PuzzleSaveData | null = null;
   private autoSaveTimer: Phaser.Time.TimerEvent | null = null;
+  private snapTimestamps: number[] = [];
+  private rotationAdjustCount: number = 0;
+  private hintViewTime: number = 0;
+  private hintLastEnabledAt: number | null = null;
 
   private tutorialContainer!: Phaser.GameObjects.Container;
   private tutorialOverlay!: Phaser.GameObjects.Graphics;
@@ -113,6 +117,10 @@ export class GameScene extends Phaser.Scene {
     this.targetOffsetY = 0;
     this.isLoadingSave = data.loadSave ?? false;
     this.loadedSaveData = null;
+    this.snapTimestamps = [];
+    this.rotationAdjustCount = 0;
+    this.hintViewTime = 0;
+    this.hintLastEnabledAt = null;
 
     if (this.isTowerFloor && this.towerFloorId) {
       const towerFloor = getTowerFloor(this.towerFloorId);
@@ -911,12 +919,14 @@ export class GameScene extends Phaser.Scene {
     const selected = PuzzlePieceSprite.getSelectedPiece();
     if (selected && !selected.isPieceSnapped()) {
       selected.rotatePiece();
+      this.rotationAdjustCount++;
       this.cameras.main.shake(40, 0.002, false);
     } else {
       const pieceToRotate = this.pieces.find(p => !p.isPieceSnapped());
       if (pieceToRotate) {
         pieceToRotate.setSelected(true);
         pieceToRotate.rotatePiece();
+        this.rotationAdjustCount++;
       }
     }
   }
@@ -933,6 +943,14 @@ export class GameScene extends Phaser.Scene {
     if (this.showHint && this.isTowerFloor) {
       this.hintsUsed++;
     }
+
+    if (this.showHint) {
+      this.hintLastEnabledAt = this.elapsedTime;
+    } else if (this.hintLastEnabledAt !== null) {
+      this.hintViewTime += this.elapsedTime - this.hintLastEnabledAt;
+      this.hintLastEnabledAt = null;
+    }
+
     this.tweens.add({
       targets: this.hintImage,
       alpha: this.showHint ? 0.28 : 0,
@@ -955,6 +973,10 @@ export class GameScene extends Phaser.Scene {
     this.snapCount = 0;
     this.snapCountForShuffle = 0;
     this.comboBonusMultiplier = 1;
+    this.snapTimestamps = [];
+    this.rotationAdjustCount = 0;
+    this.hintViewTime = 0;
+    this.hintLastEnabledAt = null;
 
     PuzzlePieceSprite.clearSelection();
 
@@ -990,6 +1012,7 @@ export class GameScene extends Phaser.Scene {
 
       this.snappedCount++;
       this.snapCount++;
+      this.snapTimestamps.push(this.elapsedTime);
 
       if (this.isTowerFloor) {
         this.comboCount++;
@@ -1436,6 +1459,11 @@ export class GameScene extends Phaser.Scene {
     this.isCompleted = true;
     if (this.timerEvent) this.timerEvent.paused = true;
 
+    if (this.hintLastEnabledAt !== null) {
+      this.hintViewTime += this.elapsedTime - this.hintLastEnabledAt;
+      this.hintLastEnabledAt = null;
+    }
+
     if (this.targetTween) {
       this.targetTween.stop();
     }
@@ -1509,11 +1537,16 @@ export class GameScene extends Phaser.Scene {
       SaveManager.save();
     }
 
-    let chapterResult: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[]; researchRewards: { pointsGained: number; expGained: number }; achievementResult: AchievementUnlockResult; conservationInfo: { specimenId: number | null; healthLevel: ConservationHealthLevel | null; scoreMultiplier: number; researchMultiplier: number; finalScore: number; finalPoints: number } } | undefined;
+    let chapterResult: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[]; researchRewards: { pointsGained: number; expGained: number }; achievementResult: AchievementUnlockResult; conservationInfo: { specimenId: number | null; healthLevel: ConservationHealthLevel | null; scoreMultiplier: number; researchMultiplier: number; finalScore: number; finalPoints: number }; levelProgress: { previousStars: number; previousBestScore: number; previousBestTime: number; isNewRecord: boolean; isNewBestTime: boolean; starsImproved: boolean } } | undefined;
     let eventResult: { newlyUnlockedLevelId: number | null; updatedTotalScore: number; achievementResult: AchievementUnlockResult } | undefined;
     let updatedQuests: DailyQuest[] = [];
     let achievementResult: AchievementUnlockResult = { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 };
     let conservationMultiplier: { scoreMultiplier: number; fragmentMultiplier: number; researchMultiplier: number } | null = null;
+    let levelProgressResult: { previousStars: number; previousBestScore: number; previousBestTime: number; isNewRecord: boolean; isNewBestTime: boolean; starsImproved: boolean } | null = null;
+
+    const accuracy = this.snapCount > 0
+      ? Math.round(Math.max(0, Math.min(100, (1 - this.totalSnapDistance / (this.snapCount * this.levelRule.snapPositionThreshold)) * 100)))
+      : 0;
 
     const previousProgress = SaveManager.getProgress(this.levelRule.id);
     const previousStars = previousProgress?.stars ?? 0;
@@ -1529,15 +1562,31 @@ export class GameScene extends Phaser.Scene {
         result.stars
       );
       achievementResult = eventResult.achievementResult;
+      levelProgressResult = {
+        previousStars,
+        previousBestScore,
+        previousBestTime,
+        isNewRecord: finalScore > previousBestScore,
+        isNewBestTime: previousBestTime === 0 || this.elapsedTime < previousBestTime,
+        starsImproved: result.stars > previousStars
+      };
     } else {
       chapterResult = SaveManager.completeLevel(
         this.levelRule.id,
         result.score,
         this.elapsedTime,
-        result.stars
+        result.stars,
+        {
+          accuracy,
+          combo: this.maxCombo,
+          perfectSnaps: this.perfectSnaps,
+          rotations: this.rotationAdjustCount,
+          hintTime: this.hintViewTime
+        }
       );
       updatedQuests = chapterResult.updatedQuests || [];
       achievementResult = chapterResult.achievementResult;
+      levelProgressResult = chapterResult.levelProgress;
 
       if (chapterResult.conservationInfo.specimenId !== null) {
         finalScore = chapterResult.conservationInfo.finalScore;
@@ -1597,7 +1646,32 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.zoomTo(1.05, 400, 'Cubic.easeInOut', true);
     this.time.delayedCall(450, () => {
       this.cameras.main.zoomTo(1.0, 400, 'Cubic.easeInOut', true);
-      this.showVictory(finalScore, result.stars, this.elapsedTime, chapterResult, drops, eventResult, updatedQuests, achievementResult, conservationMultiplier, randomEventStats);
+      this.showVictory(
+        finalScore,
+        result.stars,
+        this.elapsedTime,
+        chapterResult,
+        drops,
+        eventResult,
+        updatedQuests,
+        achievementResult,
+        conservationMultiplier,
+        randomEventStats,
+        {
+          accuracy,
+          perfectSnaps: this.perfectSnaps,
+          totalSnapDistance: this.totalSnapDistance,
+          snapCount: this.snapCount,
+          snapTimestamps: [...this.snapTimestamps],
+          realPiecesCount: this.realPiecesCount,
+          rotationAdjustCount: this.rotationAdjustCount,
+          hintViewTime: this.hintViewTime,
+          hintsUsed: this.hintsUsed,
+          maxCombo: this.maxCombo,
+          mistakeCount: this.mistakeCount
+        },
+        levelProgressResult
+      );
     });
   }
 
@@ -1617,7 +1691,17 @@ export class GameScene extends Phaser.Scene {
         isNewRecord: false,
         isNewBestTime: false,
         unlockedNextFloor: false,
-        rewards: []
+        rewards: [],
+        snapTimestamps: [...this.snapTimestamps],
+        totalSnapDistance: this.totalSnapDistance,
+        snapCount: this.snapCount,
+        realPiecesCount: this.realPiecesCount,
+        rotationAdjustCount: this.rotationAdjustCount,
+        hintViewTime: this.hintViewTime,
+        previousStars: 0,
+        previousBestScore: 0,
+        previousBestTime: 0,
+        starsImproved: false
       };
     }
 
@@ -1696,8 +1780,12 @@ export class GameScene extends Phaser.Scene {
       : 0;
 
     const progress = SaveManager.getTowerFloorProgress(floor.id);
+    const prevStars = progress?.stars ?? 0;
+    const prevScore = progress?.bestScore ?? 0;
+    const prevTime = progress?.bestTime ?? 0;
     const isNewRecord = !progress || totalScore > progress.bestScore;
     const isNewBestTime = !progress || progress.bestTime === 0 || this.elapsedTime < progress.bestTime;
+    const starsImproved = stars > prevStars;
 
     return {
       floorId: floor.id,
@@ -1713,7 +1801,17 @@ export class GameScene extends Phaser.Scene {
       isNewRecord,
       isNewBestTime,
       unlockedNextFloor: false,
-      rewards: floor.rewards
+      rewards: floor.rewards,
+      snapTimestamps: [...this.snapTimestamps],
+      totalSnapDistance: this.totalSnapDistance,
+      snapCount: this.snapCount,
+      realPiecesCount: this.realPiecesCount,
+      rotationAdjustCount: this.rotationAdjustCount,
+      hintViewTime: this.hintViewTime,
+      previousStars: prevStars,
+      previousBestScore: prevScore,
+      previousBestTime: prevTime,
+      starsImproved
     };
   }
 
@@ -1840,31 +1938,360 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private showVictory(score: number, stars: number, time: number, chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[]; achievementResult: AchievementUnlockResult; conservationInfo?: { specimenId: number | null; healthLevel: ConservationHealthLevel | null; scoreMultiplier: number; researchMultiplier: number; finalScore: number; finalPoints: number } }, drops?: { fragments: { id: number; count: number }[]; materials: { id: number; count: number }[] }, eventResult?: { newlyUnlockedLevelId: number | null; updatedTotalScore: number }, updatedQuests: DailyQuest[] = [], achievementResult: AchievementUnlockResult = { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 }, conservationMultiplier?: { scoreMultiplier: number; fragmentMultiplier: number; researchMultiplier: number } | null, randomEventStats?: RandomEventSessionStats | null): void {
+  private calculateTimeBreakdown(
+    snapTimestamps: number[],
+    totalTime: number,
+    totalPieces: number
+  ): { firstPiece: number; firstHalf: number; secondHalf: number; avgPerPiece: number } {
+    const firstPiece = snapTimestamps.length > 0 ? snapTimestamps[0] : totalTime;
+
+    const sorted = [...snapTimestamps].sort((a, b) => a - b);
+    const halfCount = Math.ceil(totalPieces / 2);
+
+    let firstHalfTime = totalTime;
+    let secondHalfTime = 0;
+
+    if (sorted.length >= halfCount) {
+      const firstHalfEnd = sorted[halfCount - 1];
+      firstHalfTime = firstHalfEnd;
+      secondHalfTime = Math.max(0, totalTime - firstHalfEnd);
+    } else if (sorted.length > 0) {
+      firstHalfTime = sorted[sorted.length - 1];
+      secondHalfTime = Math.max(0, totalTime - sorted[sorted.length - 1]);
+    }
+
+    const avgPerPiece = sorted.length > 0 ? totalTime / sorted.length : totalTime;
+
+    return {
+      firstPiece,
+      firstHalf: firstHalfTime,
+      secondHalf: secondHalfTime,
+      avgPerPiece
+    };
+  }
+
+  private showVictory(
+    score: number,
+    stars: number,
+    time: number,
+    chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[]; achievementResult: AchievementUnlockResult; conservationInfo?: { specimenId: number | null; healthLevel: ConservationHealthLevel | null; scoreMultiplier: number; researchMultiplier: number; finalScore: number; finalPoints: number }; levelProgress?: { previousStars: number; previousBestScore: number; previousBestTime: number; isNewRecord: boolean; isNewBestTime: boolean; starsImproved: boolean } },
+    drops?: { fragments: { id: number; count: number }[]; materials: { id: number; count: number }[] },
+    eventResult?: { newlyUnlockedLevelId: number | null; updatedTotalScore: number },
+    updatedQuests: DailyQuest[] = [],
+    achievementResult: AchievementUnlockResult = { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 },
+    conservationMultiplier?: { scoreMultiplier: number; fragmentMultiplier: number; researchMultiplier: number } | null,
+    randomEventStats?: RandomEventSessionStats | null,
+    stats?: {
+      accuracy: number;
+      perfectSnaps: number;
+      totalSnapDistance: number;
+      snapCount: number;
+      snapTimestamps: number[];
+      realPiecesCount: number;
+      rotationAdjustCount: number;
+      hintViewTime: number;
+      hintsUsed: number;
+      maxCombo: number;
+      mistakeCount: number;
+    },
+    progress?: { previousStars: number; previousBestScore: number; previousBestTime: number; isNewRecord: boolean; isNewBestTime: boolean; starsImproved: boolean } | null
+  ): void {
     const { overlay } = this.createModal('🎉 修复完成！', '#4caf50', 0x4caf50);
 
-    this.drawStars(375, 480, stars, 50);
+    let newRecordBadgeY = 458;
+    const hasNewRecord = progress?.isNewRecord || progress?.isNewBestTime || progress?.starsImproved;
+    if (hasNewRecord) {
+      const recordBg = this.add.graphics();
+      recordBg.fillStyle(0xff9800, 1);
+      recordBg.fillRoundedRect(240, newRecordBadgeY - 18, 270, 34, 10);
+
+      const badgeTexts: string[] = [];
+      if (progress?.starsImproved) badgeTexts.push('⭐ 星级提升！');
+      if (progress?.isNewRecord) badgeTexts.push('🏆 新纪录！');
+      if (progress?.isNewBestTime && !progress?.isNewRecord) badgeTexts.push('⏱️ 最快速度！');
+
+      this.add.text(375, newRecordBadgeY, badgeTexts.join('  '), {
+        font: 'bold 16px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+
+      this.tweens.add({
+        targets: recordBg,
+        scaleX: { from: 0, to: 1 },
+        scaleY: { from: 0, to: 1 },
+        duration: 400,
+        ease: 'Back.easeOut'
+      });
+    }
+
+    const previousStarsForDraw = progress?.previousStars ?? 0;
+    const starsContainer = this.add.container(375, hasNewRecord ? 515 : 485);
+    const starSize = 50;
+    const starSpacing = 15;
+    const starStartX = -starSize - starSpacing;
+
+    for (let i = 0; i < 3; i++) {
+      const starX = starStartX + i * (starSize + starSpacing);
+      const isFilled = i < stars;
+      const wasFilled = i < previousStarsForDraw;
+
+      const tex = isFilled ? 'star-filled' : 'star-empty';
+      const starImg = this.add.image(starX, 0, tex).setDisplaySize(starSize, starSize);
+      starImg.setScale(0);
+      starsContainer.add(starImg);
+
+      const isNewlyUpgraded = progress?.starsImproved && !wasFilled && isFilled;
+      if (isNewlyUpgraded) {
+        const glow = this.add.graphics();
+        glow.fillStyle(0xffd700, 0);
+        glow.fillCircle(starX, 0, starSize * 0.8);
+        starsContainer.add(glow);
+
+        this.tweens.add({
+          targets: starImg,
+          scale: { from: 0, to: 1.3 },
+          delay: 600 + i * 200,
+          duration: 350,
+          ease: 'Back.easeOut',
+          yoyo: true,
+          onYoyo: () => {
+            this.tweens.add({
+              targets: starImg,
+              scale: 1,
+              duration: 200,
+              ease: 'Cubic.easeOut'
+            });
+          }
+        });
+
+        this.tweens.add({
+          targets: glow,
+          alpha: { from: 0, to: 0.8 },
+          scale: { from: 0.3, to: 1.5 },
+          delay: 600 + i * 200,
+          duration: 500,
+          ease: 'Cubic.easeOut',
+          yoyo: true,
+          onYoyo: () => glow.destroy()
+        });
+      } else {
+        this.tweens.add({
+          targets: starImg,
+          scale: 1,
+          delay: i * 150,
+          duration: 300,
+          ease: 'Back.easeOut'
+        });
+      }
+    }
+
+    let contentStartY = hasNewRecord ? 595 : 565;
 
     const scoreBg = this.add.graphics();
     scoreBg.fillStyle(0x0f3460, 0.6);
-    scoreBg.fillRoundedRect(130, 560, 490, 100, 16);
+    scoreBg.fillRoundedRect(130, contentStartY, 490, 120, 16);
 
-    this.add.text(375, 590, `最终得分`, {
-      font: '20px Arial',
+    this.add.text(375, contentStartY + 28, `最终得分`, {
+      font: '18px Arial',
       color: '#aaaaaa'
     }).setOrigin(0.5);
 
-    this.add.text(375, 630, score.toLocaleString(), {
-      font: 'bold 40px Arial',
+    const scoreText = this.add.text(375, contentStartY + 72, score.toLocaleString(), {
+      font: 'bold 38px Arial',
       color: '#ffd700'
     }).setOrigin(0.5);
 
-    this.add.text(375, 665, `用时 ${formatTime(time)}  ·  修复 ${this.pieces.length}/${this.pieces.length} 片`, {
-      font: '16px Arial',
-      color: '#eaeaea'
-    }).setOrigin(0.5);
+    if (progress?.isNewRecord && progress.previousBestScore > 0) {
+      const diff = score - progress.previousBestScore;
+      if (diff > 0) {
+        this.add.text(375, contentStartY + 102,
+          `↑ 超越历史最佳 +${diff.toLocaleString()} 分`,
+          {
+            font: 'bold 13px Arial',
+            color: '#4caf50'
+          }
+        ).setOrigin(0.5);
+      }
+    } else if (progress && progress.previousBestScore > 0 && !progress.isNewRecord) {
+      const diff = progress.previousBestScore - score;
+      this.add.text(375, contentStartY + 102,
+        `距离最高分还差 ${diff.toLocaleString()} 分`,
+        {
+          font: '12px Arial',
+          color: '#ff9800'
+        }
+      ).setOrigin(0.5);
+    }
 
-    let dropBannerY = 690;
+    let infoY = contentStartY + 140;
+
+    const timeParts = this.calculateTimeBreakdown(stats?.snapTimestamps || [], time, stats?.realPiecesCount || this.pieces.length);
+
+    this.add.text(375, infoY, '⏱️ 用时分解', {
+      font: 'bold 16px Arial',
+      color: '#2196f3'
+    }).setOrigin(0.5);
+    infoY += 22;
+
+    const breakdownBg = this.add.graphics();
+    breakdownBg.fillStyle(0x1a2a4a, 0.9);
+    breakdownBg.fillRoundedRect(130, infoY, 490, 80, 12);
+    breakdownBg.lineStyle(1, 0x2196f3, 0.3);
+    breakdownBg.strokeRoundedRect(130, infoY, 490, 80, 12);
+
+    const breakdownItems = [
+      { label: '首片吸附', value: formatTime(timeParts.firstPiece), icon: '🌱' },
+      { label: '前半段', value: formatTime(timeParts.firstHalf), icon: '📖' },
+      { label: '后半段', value: formatTime(timeParts.secondHalf), icon: '💪' },
+      { label: '总用时', value: formatTime(time), icon: '🏁', highlight: true }
+    ];
+
+    breakdownItems.forEach((item, idx) => {
+      const bx = 155 + idx * 120;
+      this.add.text(bx, infoY + 22, item.icon, {
+        font: '20px Arial'
+      }).setOrigin(0.5);
+      this.add.text(bx, infoY + 45, item.label, {
+        font: '11px Arial',
+        color: '#888888'
+      }).setOrigin(0.5);
+      this.add.text(bx, infoY + 64, item.value, {
+        font: item.highlight ? 'bold 14px Arial' : '13px Arial',
+        color: item.highlight ? '#ffd700' : '#eaeaea'
+      }).setOrigin(0.5);
+    });
+
+    infoY += 95;
+
+    if (stats) {
+      const accuracyPercent = Math.max(0, Math.min(100, stats.accuracy));
+      const perfectRate = stats.snapCount > 0 ? Math.round((stats.perfectSnaps / stats.snapCount) * 100) : 0;
+      const avgDist = stats.snapCount > 0 ? (stats.totalSnapDistance / stats.snapCount).toFixed(1) : '0';
+
+      this.add.text(375, infoY, '🎯 精准吸附统计', {
+        font: 'bold 16px Arial',
+        color: '#4caf50'
+      }).setOrigin(0.5);
+      infoY += 22;
+
+      const snapBg = this.add.graphics();
+      snapBg.fillStyle(0x1a2a1a, 0.9);
+      snapBg.fillRoundedRect(130, infoY, 490, 85, 12);
+      snapBg.lineStyle(1, 0x4caf50, 0.3);
+      snapBg.strokeRoundedRect(130, infoY, 490, 85, 12);
+
+      const snapItems = [
+        { label: '精准度', value: `${accuracyPercent}%`, color: accuracyPercent >= 80 ? '#4caf50' : accuracyPercent >= 50 ? '#ff9800' : '#f44336' },
+        { label: '完美吸附', value: `${stats.perfectSnaps}/${stats.snapCount}`, subValue: `${perfectRate}%`, color: '#9c27b0' },
+        { label: '平均偏差', value: `${avgDist}px`, color: '#2196f3' },
+        { label: '旋转次数', value: `${stats.rotationAdjustCount}`, color: '#ffc107' }
+      ];
+
+      snapItems.forEach((item, idx) => {
+        const bx = 155 + idx * 120;
+        this.add.text(bx, infoY + 25, item.label, {
+          font: '11px Arial',
+          color: '#888888'
+        }).setOrigin(0.5);
+        this.add.text(bx, infoY + 46, item.value, {
+          font: 'bold 16px Arial',
+          color: item.color
+        }).setOrigin(0.5);
+        if (item.subValue) {
+          this.add.text(bx, infoY + 66, item.subValue, {
+            font: '11px Arial',
+            color: '#aaaaaa'
+          }).setOrigin(0.5);
+        }
+      });
+
+      infoY += 100;
+
+      const barBg = this.add.graphics();
+      barBg.fillStyle(0x0a1a2a, 1);
+      barBg.fillRoundedRect(150, infoY, 450, 20, 6);
+      const barRatio = accuracyPercent / 100;
+      const barColor = accuracyPercent >= 80 ? 0x4caf50 : accuracyPercent >= 50 ? 0xff9800 : 0xf44336;
+      const barFill = this.add.graphics();
+      barFill.fillStyle(barColor, 1);
+      barFill.fillRoundedRect(150, infoY, 450 * barRatio, 20, 6);
+
+      const accuracyLabels: { threshold: number; label: string }[] = [
+        { threshold: 95, label: '神乎其技！' },
+        { threshold: 80, label: '技艺精湛！' },
+        { threshold: 60, label: '手法熟练' },
+        { threshold: 40, label: '初窥门径' },
+        { threshold: 0, label: '继续努力' }
+      ];
+      const skillLabel = accuracyLabels.find(l => accuracyPercent >= l.threshold)?.label || '';
+      this.add.text(375, infoY + 10, `吸附精准度  ${skillLabel}`, {
+        font: 'bold 11px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+
+      infoY += 32;
+    }
+
+    if (progress && (progress.previousBestTime > 0 || progress.previousBestScore > 0)) {
+      this.add.text(375, infoY, '📊 历史最佳对比', {
+        font: 'bold 16px Arial',
+        color: '#ce93d8'
+      }).setOrigin(0.5);
+      infoY += 22;
+
+      const histBg = this.add.graphics();
+      histBg.fillStyle(0x2a1a4a, 0.9);
+      histBg.fillRoundedRect(130, infoY, 490, 60, 12);
+      histBg.lineStyle(1, 0x9c27b0, 0.3);
+      histBg.strokeRoundedRect(130, infoY, 490, 60, 12);
+
+      const histItems = [
+        {
+          label: '分数',
+          current: score.toLocaleString(),
+          best: progress.previousBestScore > 0 ? progress.previousBestScore.toLocaleString() : '首通',
+          currentColor: '#ffd700',
+          isBetter: progress.isNewRecord
+        },
+        {
+          label: '用时',
+          current: formatTime(time),
+          best: progress.previousBestTime > 0 ? formatTime(progress.previousBestTime) : '首通',
+          currentColor: '#2196f3',
+          isBetter: progress.isNewBestTime
+        },
+        {
+          label: '星级',
+          current: '★'.repeat(stars) + '☆'.repeat(3 - stars),
+          best: '★'.repeat(previousStarsForDraw) + '☆'.repeat(3 - previousStarsForDraw),
+          currentColor: '#ff9800',
+          isBetter: progress.starsImproved
+        }
+      ];
+
+      histItems.forEach((item, idx) => {
+        const hx = 150 + idx * 165;
+        this.add.text(hx + 40, infoY + 16, item.label, {
+          font: '11px Arial',
+          color: '#888888'
+        }).setOrigin(0.5);
+
+        this.add.text(hx + 40, infoY + 36, `本次: ${item.current}`, {
+          font: item.isBetter ? 'bold 12px Arial' : '12px Arial',
+          color: item.isBetter ? '#4caf50' : item.currentColor
+        }).setOrigin(0.5);
+
+        const arrow = item.isBetter ? ' ↓' : '';
+        this.add.text(hx + 40, infoY + 52, `最佳: ${item.best}${arrow}`, {
+          font: '11px Arial',
+          color: '#aaaaaa'
+        }).setOrigin(0.5);
+      });
+
+      infoY += 75;
+    }
+
+    let dropBannerY = infoY + 5;
 
     if (conservationMultiplier && (conservationMultiplier.scoreMultiplier < 1 || conservationMultiplier.fragmentMultiplier < 1 || conservationMultiplier.researchMultiplier < 1)) {
       const warnBg = this.add.graphics();
@@ -2216,85 +2643,333 @@ export class GameScene extends Phaser.Scene {
   ): void {
     const { overlay } = this.createModal('🏆 挑战成功！', '#ffd700', 0xffd700);
 
-    this.drawStars(375, 480, result.stars, 50);
+    let newRecordBadgeY = 458;
+    const hasNewRecord = result.isNewRecord || result.isNewBestTime || result.starsImproved;
+    if (hasNewRecord) {
+      const recordBg = this.add.graphics();
+      recordBg.fillStyle(0xff9800, 1);
+      recordBg.fillRoundedRect(240, newRecordBadgeY - 18, 270, 34, 10);
 
-    if (result.isNewRecord) {
-      const recordBadge = this.add.graphics();
-      recordBadge.fillStyle(0xff9800, 1);
-      recordBadge.fillRoundedRect(260, 540, 230, 35, 10);
-      this.add.text(375, 557, '🎉 新纪录！', {
-        font: 'bold 18px Arial',
+      const badgeTexts: string[] = [];
+      if (result.starsImproved) badgeTexts.push('⭐ 星级提升！');
+      if (result.isNewRecord) badgeTexts.push('🏆 新纪录！');
+      if (result.isNewBestTime && !result.isNewRecord) badgeTexts.push('⏱️ 最快速度！');
+
+      this.add.text(375, newRecordBadgeY, badgeTexts.join('  '), {
+        font: 'bold 16px Arial',
         color: '#ffffff'
       }).setOrigin(0.5);
+
+      this.tweens.add({
+        targets: recordBg,
+        scaleX: { from: 0, to: 1 },
+        scaleY: { from: 0, to: 1 },
+        duration: 400,
+        ease: 'Back.easeOut'
+      });
     }
+
+    const starsContainer = this.add.container(375, hasNewRecord ? 515 : 485);
+    const starSize = 50;
+    const starSpacing = 15;
+    const starStartX = -starSize - starSpacing;
+
+    for (let i = 0; i < 3; i++) {
+      const starX = starStartX + i * (starSize + starSpacing);
+      const isFilled = i < result.stars;
+      const wasFilled = i < result.previousStars;
+
+      const tex = isFilled ? 'star-filled' : 'star-empty';
+      const starImg = this.add.image(starX, 0, tex).setDisplaySize(starSize, starSize);
+      starImg.setScale(0);
+      starsContainer.add(starImg);
+
+      const isNewlyUpgraded = result.starsImproved && !wasFilled && isFilled;
+      if (isNewlyUpgraded) {
+        const glow = this.add.graphics();
+        glow.fillStyle(0xffd700, 0);
+        glow.fillCircle(starX, 0, starSize * 0.8);
+        starsContainer.add(glow);
+
+        this.tweens.add({
+          targets: starImg,
+          scale: { from: 0, to: 1.3 },
+          delay: 600 + i * 200,
+          duration: 350,
+          ease: 'Back.easeOut',
+          yoyo: true,
+          onYoyo: () => {
+            this.tweens.add({
+              targets: starImg,
+              scale: 1,
+              duration: 200,
+              ease: 'Cubic.easeOut'
+            });
+          }
+        });
+
+        this.tweens.add({
+          targets: glow,
+          alpha: { from: 0, to: 0.8 },
+          scale: { from: 0.3, to: 1.5 },
+          delay: 600 + i * 200,
+          duration: 500,
+          ease: 'Cubic.easeOut',
+          yoyo: true,
+          onYoyo: () => glow.destroy()
+        });
+      } else {
+        this.tweens.add({
+          targets: starImg,
+          scale: 1,
+          delay: i * 150,
+          duration: 300,
+          ease: 'Back.easeOut'
+        });
+      }
+    }
+
+    let contentStartY = hasNewRecord ? 595 : 565;
 
     const scoreBg = this.add.graphics();
     scoreBg.fillStyle(0x0f3460, 0.6);
-    scoreBg.fillRoundedRect(130, result.isNewRecord ? 600 : 580, 490, 90, 16);
+    scoreBg.fillRoundedRect(130, contentStartY, 490, 120, 16);
 
-    this.add.text(375, result.isNewRecord ? 630 : 610, `最终得分`, {
-      font: '20px Arial',
+    this.add.text(375, contentStartY + 28, `最终得分`, {
+      font: '18px Arial',
       color: '#aaaaaa'
     }).setOrigin(0.5);
 
-    this.add.text(375, result.isNewRecord ? 665 : 645, result.score.toLocaleString(), {
-      font: 'bold 40px Arial',
+    this.add.text(375, contentStartY + 72, result.score.toLocaleString(), {
+      font: 'bold 38px Arial',
       color: '#ffd700'
     }).setOrigin(0.5);
 
-    let statsY = result.isNewRecord ? 710 : 690;
-    const stats = [
-      { label: '用时', value: formatTime(result.time), color: '#2196f3' },
-      { label: '精准度', value: `${Math.max(0, Math.min(100, result.accuracy))}%`, color: '#4caf50' },
-      { label: '最大连击', value: `${result.maxCombo}`, color: '#ff9800' },
-      { label: '完美吸附', value: `${result.perfectSnaps}`, color: '#9c27b0' }
+    if (result.isNewRecord && result.previousBestScore > 0) {
+      const diff = result.score - result.previousBestScore;
+      if (diff > 0) {
+        this.add.text(375, contentStartY + 102,
+          `↑ 超越历史最佳 +${diff.toLocaleString()} 分`,
+          {
+            font: 'bold 13px Arial',
+            color: '#4caf50'
+          }
+        ).setOrigin(0.5);
+      }
+    } else if (result.previousBestScore > 0 && !result.isNewRecord) {
+      const diff = result.previousBestScore - result.score;
+      this.add.text(375, contentStartY + 102,
+        `距离最高分还差 ${diff.toLocaleString()} 分`,
+        {
+          font: '12px Arial',
+          color: '#ff9800'
+        }
+      ).setOrigin(0.5);
+    }
+
+    let infoY = contentStartY + 140;
+
+    const timeParts = this.calculateTimeBreakdown(
+      result.snapTimestamps || [],
+      result.time,
+      result.realPiecesCount || this.pieces.length
+    );
+
+    this.add.text(375, infoY, '⏱️ 用时分解', {
+      font: 'bold 16px Arial',
+      color: '#2196f3'
+    }).setOrigin(0.5);
+    infoY += 22;
+
+    const breakdownBg = this.add.graphics();
+    breakdownBg.fillStyle(0x1a2a4a, 0.9);
+    breakdownBg.fillRoundedRect(130, infoY, 490, 80, 12);
+    breakdownBg.lineStyle(1, 0x2196f3, 0.3);
+    breakdownBg.strokeRoundedRect(130, infoY, 490, 80, 12);
+
+    const breakdownItems = [
+      { label: '首片吸附', value: formatTime(timeParts.firstPiece), icon: '🌱' },
+      { label: '前半段', value: formatTime(timeParts.firstHalf), icon: '📖' },
+      { label: '后半段', value: formatTime(timeParts.secondHalf), icon: '💪' },
+      { label: '总用时', value: formatTime(result.time), icon: '🏁', highlight: true }
     ];
 
-    stats.forEach((stat, index) => {
-      const x = 155 + (index % 2) * 240;
-      const y = statsY + Math.floor(index / 2) * 50;
-      this.add.text(x, y, `${stat.label}: `, {
-        font: '14px Arial',
-        color: '#aaaaaa'
-      }).setOrigin(0, 0.5);
-      this.add.text(x + 70, y, stat.value, {
-        font: 'bold 16px Arial',
-        color: stat.color
-      }).setOrigin(0, 0.5);
+    breakdownItems.forEach((item, idx) => {
+      const bx = 155 + idx * 120;
+      this.add.text(bx, infoY + 22, item.icon, {
+        font: '20px Arial'
+      }).setOrigin(0.5);
+      this.add.text(bx, infoY + 45, item.label, {
+        font: '11px Arial',
+        color: '#888888'
+      }).setOrigin(0.5);
+      this.add.text(bx, infoY + 64, item.value, {
+        font: item.highlight ? 'bold 14px Arial' : '13px Arial',
+        color: item.highlight ? '#ffd700' : '#eaeaea'
+      }).setOrigin(0.5);
     });
 
-    let breakdownY = statsY + 110;
-    this.add.text(375, breakdownY, '📊 评分详情', {
-      font: 'bold 18px Arial',
+    infoY += 95;
+
+    const accuracyPercent = Math.max(0, Math.min(100, result.accuracy));
+    const perfectRate = result.snapCount > 0 ? Math.round((result.perfectSnaps / result.snapCount) * 100) : 0;
+    const avgDist = result.snapCount > 0 ? (result.totalSnapDistance / result.snapCount).toFixed(1) : '0';
+
+    this.add.text(375, infoY, '🎯 精准吸附统计', {
+      font: 'bold 16px Arial',
+      color: '#4caf50'
+    }).setOrigin(0.5);
+    infoY += 22;
+
+    const snapBg = this.add.graphics();
+    snapBg.fillStyle(0x1a2a1a, 0.9);
+    snapBg.fillRoundedRect(130, infoY, 490, 85, 12);
+    snapBg.lineStyle(1, 0x4caf50, 0.3);
+    snapBg.strokeRoundedRect(130, infoY, 490, 85, 12);
+
+    const snapItems = [
+      { label: '精准度', value: `${accuracyPercent}%`, color: accuracyPercent >= 80 ? '#4caf50' : accuracyPercent >= 50 ? '#ff9800' : '#f44336' },
+      { label: '完美吸附', value: `${result.perfectSnaps}/${result.snapCount}`, subValue: `${perfectRate}%`, color: '#9c27b0' },
+      { label: '平均偏差', value: `${avgDist}px`, color: '#2196f3' },
+      { label: '旋转次数', value: `${result.rotationAdjustCount}`, color: '#ffc107' }
+    ];
+
+    snapItems.forEach((item, idx) => {
+      const bx = 155 + idx * 120;
+      this.add.text(bx, infoY + 25, item.label, {
+        font: '11px Arial',
+        color: '#888888'
+      }).setOrigin(0.5);
+      this.add.text(bx, infoY + 46, item.value, {
+        font: 'bold 16px Arial',
+        color: item.color
+      }).setOrigin(0.5);
+      if (item.subValue) {
+        this.add.text(bx, infoY + 66, item.subValue, {
+          font: '11px Arial',
+          color: '#aaaaaa'
+        }).setOrigin(0.5);
+      }
+    });
+
+    infoY += 100;
+
+    const barBg = this.add.graphics();
+    barBg.fillStyle(0x0a1a2a, 1);
+    barBg.fillRoundedRect(150, infoY, 450, 20, 6);
+    const barRatio = accuracyPercent / 100;
+    const barColor = accuracyPercent >= 80 ? 0x4caf50 : accuracyPercent >= 50 ? 0xff9800 : 0xf44336;
+    const barFill = this.add.graphics();
+    barFill.fillStyle(barColor, 1);
+    barFill.fillRoundedRect(150, infoY, 450 * barRatio, 20, 6);
+
+    const accuracyLabels: { threshold: number; label: string }[] = [
+      { threshold: 95, label: '神乎其技！' },
+      { threshold: 80, label: '技艺精湛！' },
+      { threshold: 60, label: '手法熟练' },
+      { threshold: 40, label: '初窥门径' },
+      { threshold: 0, label: '继续努力' }
+    ];
+    const skillLabel = accuracyLabels.find(l => accuracyPercent >= l.threshold)?.label || '';
+    this.add.text(375, infoY + 10, `吸附精准度  ${skillLabel}`, {
+      font: 'bold 11px Arial',
       color: '#ffffff'
     }).setOrigin(0.5);
-    breakdownY += 25;
+
+    infoY += 32;
+
+    if (result.previousBestTime > 0 || result.previousBestScore > 0) {
+      this.add.text(375, infoY, '📊 历史最佳对比', {
+        font: 'bold 16px Arial',
+        color: '#ce93d8'
+      }).setOrigin(0.5);
+      infoY += 22;
+
+      const histBg = this.add.graphics();
+      histBg.fillStyle(0x2a1a4a, 0.9);
+      histBg.fillRoundedRect(130, infoY, 490, 60, 12);
+      histBg.lineStyle(1, 0x9c27b0, 0.3);
+      histBg.strokeRoundedRect(130, infoY, 490, 60, 12);
+
+      const histItems = [
+        {
+          label: '分数',
+          current: result.score.toLocaleString(),
+          best: result.previousBestScore > 0 ? result.previousBestScore.toLocaleString() : '首通',
+          currentColor: '#ffd700',
+          isBetter: result.isNewRecord
+        },
+        {
+          label: '用时',
+          current: formatTime(result.time),
+          best: result.previousBestTime > 0 ? formatTime(result.previousBestTime) : '首通',
+          currentColor: '#2196f3',
+          isBetter: result.isNewBestTime
+        },
+        {
+          label: '星级',
+          current: '★'.repeat(result.stars) + '☆'.repeat(3 - result.stars),
+          best: '★'.repeat(result.previousStars) + '☆'.repeat(3 - result.previousStars),
+          currentColor: '#ff9800',
+          isBetter: result.starsImproved
+        }
+      ];
+
+      histItems.forEach((item, idx) => {
+        const hx = 150 + idx * 165;
+        this.add.text(hx + 40, infoY + 16, item.label, {
+          font: '11px Arial',
+          color: '#888888'
+        }).setOrigin(0.5);
+
+        this.add.text(hx + 40, infoY + 36, `本次: ${item.current}`, {
+          font: item.isBetter ? 'bold 12px Arial' : '12px Arial',
+          color: item.isBetter ? '#4caf50' : item.currentColor
+        }).setOrigin(0.5);
+
+        const arrow = item.isBetter ? ' ↓' : '';
+        this.add.text(hx + 40, infoY + 52, `最佳: ${item.best}${arrow}`, {
+          font: '11px Arial',
+          color: '#aaaaaa'
+        }).setOrigin(0.5);
+      });
+
+      infoY += 75;
+    }
+
+    infoY += 5;
+
+    this.add.text(375, infoY, '📊 评分详情', {
+      font: 'bold 16px Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+    infoY += 22;
 
     result.scoringBreakdown.forEach(item => {
-      const barBg = this.add.graphics();
-      barBg.fillStyle(0x0a1a2a, 1);
-      barBg.fillRoundedRect(150, breakdownY, 450, 18, 4);
+      const barBg2 = this.add.graphics();
+      barBg2.fillStyle(0x0a1a2a, 1);
+      barBg2.fillRoundedRect(150, infoY, 450, 18, 4);
 
       const ratio = item.maxScore > 0 ? item.score / item.maxScore : 0;
-      const barColor = ratio >= 0.8 ? 0x4caf50 : ratio >= 0.5 ? 0xff9800 : 0xf44336;
-      const barFill = this.add.graphics();
-      barFill.fillStyle(barColor, 1);
-      barFill.fillRoundedRect(150, breakdownY, 450 * ratio, 18, 4);
+      const barColor2 = ratio >= 0.8 ? 0x4caf50 : ratio >= 0.5 ? 0xff9800 : 0xf44336;
+      const barFill2 = this.add.graphics();
+      barFill2.fillStyle(barColor2, 1);
+      barFill2.fillRoundedRect(150, infoY, 450 * ratio, 18, 4);
 
-      this.add.text(155, breakdownY + 9, item.condition, {
+      this.add.text(155, infoY + 9, item.condition, {
         font: '11px Arial',
         color: '#ffffff'
       }).setOrigin(0, 0.5);
 
-      this.add.text(595, breakdownY + 9, `${item.score}/${item.maxScore}`, {
+      this.add.text(595, infoY + 9, `${item.score}/${item.maxScore}`, {
         font: 'bold 11px Arial',
         color: '#ffffff'
       }).setOrigin(1, 0.5);
 
-      breakdownY += 24;
+      infoY += 22;
     });
 
-    let bannerY = breakdownY + 15;
+    let bannerY = infoY + 10;
 
     if (completeResult.unlockedNextFloor) {
       const unlockBanner = this.add.graphics();

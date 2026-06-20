@@ -101,6 +101,20 @@ export class SaveManager {
     if (!oldData.chapterProgress) {
       oldData.chapterProgress = defaultData.chapterProgress;
     }
+    if (oldData.progress) {
+      Object.keys(oldData.progress).forEach(key => {
+        const p = oldData.progress[parseInt(key)];
+        if (p) {
+          if (p.attempts === undefined) p.attempts = 0;
+          if (p.bestAccuracy === undefined) p.bestAccuracy = 0;
+          if (p.bestCombo === undefined) p.bestCombo = 0;
+          if (p.bestPerfectSnaps === undefined) p.bestPerfectSnaps = 0;
+          if (p.leastRotations === undefined) p.leastRotations = -1;
+          if (p.leastHintTime === undefined) p.leastHintTime = -1;
+          if (p.playCount === undefined) p.playCount = 0;
+        }
+      });
+    }
     if (!oldData.badges) {
       oldData.badges = defaultData.badges;
     }
@@ -518,7 +532,14 @@ export class SaveManager {
         bestScore: 0,
         bestTime: 0,
         stars: 0,
-        completed: false
+        completed: false,
+        attempts: 0,
+        bestAccuracy: 0,
+        bestCombo: 0,
+        bestPerfectSnaps: 0,
+        leastRotations: -1,
+        leastHintTime: -1,
+        playCount: 0
       };
     });
 
@@ -907,22 +928,48 @@ export class SaveManager {
     return this.data.badges[badgeId] ?? false;
   }
 
-  static completeLevel(levelId: number, score: number, time: number, stars: number): { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[]; researchRewards: { pointsGained: number; expGained: number }; achievementResult: AchievementUnlockResult; conservationInfo: { specimenId: number | null; healthLevel: ConservationHealthLevel | null; scoreMultiplier: number; researchMultiplier: number; finalScore: number; finalPoints: number }; familyProgressResult: { familyCompleted: boolean; familyId: string | null; newlyUnlockedRewardIds: number[]; illustrationUnlocked: boolean } } {
+  static completeLevel(levelId: number, score: number, time: number, stars: number, extra?: { accuracy?: number; combo?: number; perfectSnaps?: number; rotations?: number; hintTime?: number }): { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[]; researchRewards: { pointsGained: number; expGained: number }; achievementResult: AchievementUnlockResult; conservationInfo: { specimenId: number | null; healthLevel: ConservationHealthLevel | null; scoreMultiplier: number; researchMultiplier: number; finalScore: number; finalPoints: number }; familyProgressResult: { familyCompleted: boolean; familyId: string | null; newlyUnlockedRewardIds: number[]; illustrationUnlocked: boolean }; levelProgress: { previousStars: number; previousBestScore: number; previousBestTime: number; isNewRecord: boolean; isNewBestTime: boolean; starsImproved: boolean } } {
     const progress = this.data.progress[levelId];
-    if (!progress) return { chapterCompleted: false, completedChapterId: null, newlyUnlockedChapterId: null, updatedQuests: [], researchRewards: { pointsGained: 0, expGained: 0 }, achievementResult: { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 }, conservationInfo: { specimenId: null, healthLevel: null, scoreMultiplier: 1, researchMultiplier: 1, finalScore: 0, finalPoints: 0 }, familyProgressResult: { familyCompleted: false, familyId: null, newlyUnlockedRewardIds: [], illustrationUnlocked: false } };
+    if (!progress) return { chapterCompleted: false, completedChapterId: null, newlyUnlockedChapterId: null, updatedQuests: [], researchRewards: { pointsGained: 0, expGained: 0 }, achievementResult: { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 }, conservationInfo: { specimenId: null, healthLevel: null, scoreMultiplier: 1, researchMultiplier: 1, finalScore: 0, finalPoints: 0 }, familyProgressResult: { familyCompleted: false, familyId: null, newlyUnlockedRewardIds: [], illustrationUnlocked: false }, levelProgress: { previousStars: 0, previousBestScore: 0, previousBestTime: 0, isNewRecord: false, isNewBestTime: false, starsImproved: false } };
+
+    const previousStars = progress.stars;
+    const previousBestScore = progress.bestScore;
+    const previousBestTime = progress.bestTime;
 
     const isFirstCompletion = !progress.completed;
     const starsImproved = stars > progress.stars;
+    const isNewRecord = score > progress.bestScore;
+    const isNewBestTime = progress.bestTime === 0 || time < progress.bestTime;
 
     progress.completed = true;
-    if (score > progress.bestScore) {
+    progress.playCount = (progress.playCount || 0) + 1;
+    progress.lastPlayedAt = Date.now();
+    if (isNewRecord) {
       progress.bestScore = score;
     }
-    if (progress.bestTime === 0 || time < progress.bestTime) {
+    if (isNewBestTime) {
       progress.bestTime = time;
     }
     if (starsImproved) {
       progress.stars = stars;
+    }
+
+    if (extra) {
+      if (extra.accuracy !== undefined && extra.accuracy > (progress.bestAccuracy || 0)) {
+        progress.bestAccuracy = extra.accuracy;
+      }
+      if (extra.combo !== undefined && extra.combo > (progress.bestCombo || 0)) {
+        progress.bestCombo = extra.combo;
+      }
+      if (extra.perfectSnaps !== undefined && extra.perfectSnaps > (progress.bestPerfectSnaps || 0)) {
+        progress.bestPerfectSnaps = extra.perfectSnaps;
+      }
+      if (extra.rotations !== undefined && (progress.leastRotations === -1 || extra.rotations < progress.leastRotations)) {
+        progress.leastRotations = extra.rotations;
+      }
+      if (extra.hintTime !== undefined && (progress.leastHintTime === -1 || extra.hintTime < progress.leastHintTime)) {
+        progress.leastHintTime = extra.hintTime;
+      }
     }
 
     const nextLevelId = levelId + 1;
@@ -1090,7 +1137,15 @@ export class SaveManager {
         finalScore,
         finalPoints: actualPoints
       },
-      familyProgressResult
+      familyProgressResult,
+      levelProgress: {
+        previousStars,
+        previousBestScore,
+        previousBestTime,
+        isNewRecord,
+        isNewBestTime,
+        starsImproved
+      }
     };
   }
 
