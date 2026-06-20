@@ -1503,6 +1503,7 @@ export interface ReplaySaveData {
 
 export type HiddenLevelTriggerType =
   | 'chapter_perfect'
+  | 'chapters_completed'
   | 'gallery_collect'
   | 'star_threshold'
   | 'speed_clear'
@@ -1514,6 +1515,7 @@ export interface HiddenLevelTrigger {
   chapterId?: number;
   requiredStars?: number;
   requiredGalleryIds?: number[];
+  requiredChapterIds?: number[];
   requiredCombo?: number;
   maxTimeSeconds?: number;
 }

@@ -1583,6 +1583,13 @@ export class SaveManager {
         const chapterStars = this.getChapterStars(trigger.chapterId);
         return chapterStars >= trigger.requiredStars;
       }
+      case 'chapters_completed': {
+        if (!trigger.requiredChapterIds || trigger.requiredChapterIds.length === 0) return false;
+        return trigger.requiredChapterIds.every(id => {
+          const cp = this.data.chapterProgress[id];
+          return cp?.completed === true;
+        });
+      }
       case 'gallery_collect': {
         if (!trigger.requiredGalleryIds || trigger.requiredGalleryIds.length === 0) return false;
         const unlockedGallery = this.getUnlockedGalleryItems();

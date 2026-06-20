@@ -150,10 +150,9 @@ export const Chapters: ChapterData[] = [
             requiredStars: 5
           },
           {
-            type: 'chapter_perfect',
+            type: 'chapters_completed',
             description: '前两章全部通关',
-            chapterId: 1,
-            requiredStars: 1
+            requiredChapterIds: [1, 2]
           }
         ],
         revealedDescription: '兰幽深处，隐藏着最珍贵的兰花标本，只有真正的植物学家才能到达……'
