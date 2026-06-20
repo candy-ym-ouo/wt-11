@@ -757,13 +757,23 @@ export class GameScene extends Phaser.Scene {
   private generatePieceData(): PuzzlePieceData[] {
     const genConfig = this.levelRule.pieceGeneration;
     const sliceMode: SliceMode = genConfig?.sliceMode ?? 'regular_grid';
-    const { rows, cols } = this.levelRule;
+    const { rows, cols, id: levelId } = this.levelRule;
     const total = rows * cols;
     const areaW = GameScene.TARGET_AREA_W - 24;
     const areaH = GameScene.TARGET_AREA_H - 24;
+    const specimenId = this.specimen.id;
+
+    const hasCustomKey = genConfig && 
+      (sliceMode === 'irregular_custom' || sliceMode === 'variable_size');
+    const keySuffix = hasCustomKey ? `lv${levelId}-` : '';
 
     const shufflePositions = this.generateShufflePositions(total, genConfig?.scatterArea);
     const initialRotations = this.generateInitialRotations(total, genConfig?.initialRotation);
+
+    const deterministicRandom = (seed: number) => {
+      const x = Math.sin(seed * 9301 + 49297 + specimenId * 131) * 233280;
+      return x - Math.floor(x);
+    };
 
     const dataList: PuzzlePieceData[] = [];
 
@@ -779,7 +789,7 @@ export class GameScene extends Phaser.Scene {
           targetY: slice.targetY,
           width: slice.width,
           height: slice.height,
-          textureKey: `specimen-${this.specimen.id}-piece-${i}`,
+          textureKey: `specimen-${specimenId}-${keySuffix}piece-${i}`,
           sourceX: slice.sourceX,
           sourceY: slice.sourceY
         });
@@ -794,8 +804,12 @@ export class GameScene extends Phaser.Scene {
       for (let i = 0; i < total; i++) {
         const row = Math.floor(i / cols);
         const col = i % cols;
-        const widthRatio = Phaser.Math.FloatBetween(ranges.minWidthRatio, ranges.maxWidthRatio);
-        const heightRatio = Phaser.Math.FloatBetween(ranges.minHeightRatio, ranges.maxHeightRatio);
+        const seedBase = levelId * 1000 + i;
+
+        const widthRatio = ranges.minWidthRatio + 
+          deterministicRandom(seedBase * 7 + 1) * (ranges.maxWidthRatio - ranges.minWidthRatio);
+        const heightRatio = ranges.minHeightRatio + 
+          deterministicRandom(seedBase * 7 + 2) * (ranges.maxHeightRatio - ranges.minHeightRatio);
         const pieceW = Math.floor(basePieceW * widthRatio);
         const pieceH = Math.floor(basePieceH * heightRatio);
 
@@ -808,7 +822,7 @@ export class GameScene extends Phaser.Scene {
           targetY: startTargetY + row * basePieceH,
           width: pieceW,
           height: pieceH,
-          textureKey: `specimen-${this.specimen.id}-piece-${i}`,
+          textureKey: `specimen-${specimenId}-${keySuffix}piece-${i}`,
           sourceX: col * basePieceW,
           sourceY: row * basePieceH
         });
@@ -832,7 +846,7 @@ export class GameScene extends Phaser.Scene {
           targetY: startTargetY + row * pieceH,
           width: pieceW,
           height: pieceH,
-          textureKey: `specimen-${this.specimen.id}-piece-${i}`,
+          textureKey: `specimen-${specimenId}-${keySuffix}piece-${i}`,
           sourceX: col * pieceW,
           sourceY: row * pieceH
         });

@@ -1,11 +1,36 @@
 import Phaser from 'phaser';
-import { PlantSpecimen } from '../types/GameTypes';
+import { PlantSpecimen, IrregularSliceConfig, PieceGenerationConfig } from '../types/GameTypes';
 
 export const SPECIMEN_WIDTH = 500;
 export const SPECIMEN_HEIGHT = 400;
 
 export class SpecimenTextureGenerator {
   static generateSpecimenAndPieces(
+    scene: Phaser.Scene,
+    specimen: PlantSpecimen,
+    rows: number,
+    cols: number,
+    pieceGenerationConfig?: PieceGenerationConfig,
+    levelId?: number
+  ): {
+    targetTextureKey: string;
+    previewTextureKey: string;
+    pieceKeys: string[];
+    pieceWidth: number;
+    pieceHeight: number;
+  } {
+    const hasCustomConfig = pieceGenerationConfig && 
+      (pieceGenerationConfig.sliceMode === 'irregular_custom' || 
+       pieceGenerationConfig.sliceMode === 'variable_size');
+
+    if (!hasCustomConfig) {
+      return this.generateRegularPieces(scene, specimen, rows, cols);
+    }
+
+    return this.generateCustomPieces(scene, specimen, rows, cols, pieceGenerationConfig, levelId);
+  }
+
+  private static generateRegularPieces(
     scene: Phaser.Scene,
     specimen: PlantSpecimen,
     rows: number,
@@ -29,33 +54,39 @@ export class SpecimenTextureGenerator {
     this.drawPlantOnCanvas(ctx, specimen);
     this.drawSpecimenFrame(ctx);
 
-    scene.textures.addCanvas(targetKey, canvas);
+    if (!scene.textures.exists(targetKey)) {
+      scene.textures.addCanvas(targetKey, canvas);
+    }
 
-    const previewCanvas = document.createElement('canvas');
-    previewCanvas.width = 200;
-    previewCanvas.height = 200;
-    const pctx = previewCanvas.getContext('2d')!;
-    pctx.fillStyle = '#f5f5dc';
-    pctx.fillRect(0, 0, 200, 200);
-    pctx.drawImage(canvas, 0, 0, SPECIMEN_WIDTH, SPECIMEN_HEIGHT, 10, 10, 180, 180);
-    scene.textures.addCanvas(previewKey, previewCanvas);
+    if (!scene.textures.exists(previewKey)) {
+      const previewCanvas = document.createElement('canvas');
+      previewCanvas.width = 200;
+      previewCanvas.height = 200;
+      const pctx = previewCanvas.getContext('2d')!;
+      pctx.fillStyle = '#f5f5dc';
+      pctx.fillRect(0, 0, 200, 200);
+      pctx.drawImage(canvas, 0, 0, SPECIMEN_WIDTH, SPECIMEN_HEIGHT, 10, 10, 180, 180);
+      scene.textures.addCanvas(previewKey, previewCanvas);
+    }
 
-    const pieceWidth = Math.floor(SPECIMEN_WIDTH / cols);
-    const pieceHeight = Math.floor(SPECIMEN_HEIGHT / rows);
+    const basePieceWidth = Math.floor(SPECIMEN_WIDTH / cols);
+    const basePieceHeight = Math.floor(SPECIMEN_HEIGHT / rows);
     const pieceKeys: string[] = [];
 
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
         const pieceIndex = row * cols + col;
         const pieceKey = `specimen-${specimen.id}-piece-${pieceIndex}`;
-        const pieceCanvas = this.createPieceCanvas(
-          canvas,
-          col * pieceWidth,
-          row * pieceHeight,
-          pieceWidth,
-          pieceHeight
-        );
-        scene.textures.addCanvas(pieceKey, pieceCanvas);
+        if (!scene.textures.exists(pieceKey)) {
+          const pieceCanvas = this.createPieceCanvas(
+            canvas,
+            col * basePieceWidth,
+            row * basePieceHeight,
+            basePieceWidth,
+            basePieceHeight
+          );
+          scene.textures.addCanvas(pieceKey, pieceCanvas);
+        }
         pieceKeys.push(pieceKey);
       }
     }
@@ -64,9 +95,129 @@ export class SpecimenTextureGenerator {
       targetTextureKey: targetKey,
       previewTextureKey: previewKey,
       pieceKeys: pieceKeys,
-      pieceWidth: pieceWidth,
-      pieceHeight: pieceHeight
+      pieceWidth: basePieceWidth,
+      pieceHeight: basePieceHeight
     };
+  }
+
+  private static generateCustomPieces(
+    scene: Phaser.Scene,
+    specimen: PlantSpecimen,
+    rows: number,
+    cols: number,
+    pieceGenerationConfig: PieceGenerationConfig,
+    levelId?: number
+  ): {
+    targetTextureKey: string;
+    previewTextureKey: string;
+    pieceKeys: string[];
+    pieceWidth: number;
+    pieceHeight: number;
+  } {
+    const suffix = levelId !== undefined ? `lv${levelId}` : `custom_${specimen.id}_${rows}x${cols}`;
+    const targetKey = `specimen-${specimen.id}-target`;
+    const previewKey = `specimen-${specimen.id}-preview`;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = SPECIMEN_WIDTH;
+    canvas.height = SPECIMEN_HEIGHT;
+    const ctx = canvas.getContext('2d')!;
+
+    this.drawSpecimenBackground(ctx);
+    this.drawPlantOnCanvas(ctx, specimen);
+    this.drawSpecimenFrame(ctx);
+
+    if (!scene.textures.exists(targetKey)) {
+      scene.textures.addCanvas(targetKey, canvas);
+    }
+
+    if (!scene.textures.exists(previewKey)) {
+      const previewCanvas = document.createElement('canvas');
+      previewCanvas.width = 200;
+      previewCanvas.height = 200;
+      const pctx = previewCanvas.getContext('2d')!;
+      pctx.fillStyle = '#f5f5dc';
+      pctx.fillRect(0, 0, 200, 200);
+      pctx.drawImage(canvas, 0, 0, SPECIMEN_WIDTH, SPECIMEN_HEIGHT, 10, 10, 180, 180);
+      scene.textures.addCanvas(previewKey, previewCanvas);
+    }
+
+    const basePieceWidth = Math.floor(SPECIMEN_WIDTH / cols);
+    const basePieceHeight = Math.floor(SPECIMEN_HEIGHT / rows);
+    const pieceKeys: string[] = [];
+    const total = rows * cols;
+
+    if (pieceGenerationConfig.sliceMode === 'irregular_custom' && pieceGenerationConfig.irregularSlices) {
+      const slices = pieceGenerationConfig.irregularSlices;
+      slices.forEach((slice, i) => {
+        const pieceKey = `specimen-${specimen.id}-${suffix}-piece-${i}`;
+        if (!scene.textures.exists(pieceKey)) {
+          const pieceCanvas = this.createPieceCanvas(
+            canvas,
+            slice.sourceX,
+            slice.sourceY,
+            slice.width,
+            slice.height
+          );
+          scene.textures.addCanvas(pieceKey, pieceCanvas);
+        }
+        pieceKeys.push(pieceKey);
+      });
+    } else if (pieceGenerationConfig.sliceMode === 'variable_size' && pieceGenerationConfig.variableSizeRanges) {
+      const ranges = pieceGenerationConfig.variableSizeRanges;
+      const deterministicRandom = (seed: number) => {
+        const x = Math.sin(seed * 9301 + 49297 + specimen.id * 131) * 233280;
+        return x - Math.floor(x);
+      };
+
+      for (let i = 0; i < total; i++) {
+        const row = Math.floor(i / cols);
+        const col = i % cols;
+        const seedBase = (levelId ?? 0) * 1000 + i;
+
+        const widthRatio = ranges.minWidthRatio + 
+          deterministicRandom(seedBase * 7 + 1) * (ranges.maxWidthRatio - ranges.minWidthRatio);
+        const heightRatio = ranges.minHeightRatio + 
+          deterministicRandom(seedBase * 7 + 2) * (ranges.maxHeightRatio - ranges.minHeightRatio);
+
+        const sw = Math.floor(basePieceWidth * widthRatio);
+        const sh = Math.floor(basePieceHeight * heightRatio);
+        const sx = col * basePieceWidth;
+        const sy = row * basePieceHeight;
+
+        const pieceKey = `specimen-${specimen.id}-${suffix}-piece-${i}`;
+        if (!scene.textures.exists(pieceKey)) {
+          const pieceCanvas = this.createPieceCanvas(
+            canvas,
+            sx,
+            sy,
+            sw,
+            sh
+          );
+          scene.textures.addCanvas(pieceKey, pieceCanvas);
+        }
+        pieceKeys.push(pieceKey);
+      }
+    }
+
+    return {
+      targetTextureKey: targetKey,
+      previewTextureKey: previewKey,
+      pieceKeys: pieceKeys,
+      pieceWidth: basePieceWidth,
+      pieceHeight: basePieceHeight
+    };
+  }
+
+  static getPieceTextureKey(specimenId: number, levelId: number | undefined, pieceIndex: number): string {
+    if (levelId !== undefined) {
+      const customKey = `specimen-${specimenId}-lv${levelId}-piece-${pieceIndex}`;
+      const scene = (globalThis as any).__phaserScene;
+      if (scene && scene.textures && scene.textures.exists(customKey)) {
+        return customKey;
+      }
+    }
+    return `specimen-${specimenId}-piece-${pieceIndex}`;
   }
 
   private static drawSpecimenBackground(ctx: CanvasRenderingContext2D): void {

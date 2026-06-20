@@ -148,22 +148,37 @@ export class PreloadScene extends Phaser.Scene {
 
   private generateAllSpecimenTextures(): void {
     const allRules = [...LevelRules, ...EventLevelRules];
-    const processedSpecimens = new Set<string>();
+    const processedRegular = new Set<string>();
 
     allRules.forEach(rule => {
-      const key = `${rule.specimenId}-${rule.rows}-${rule.cols}`;
-      if (processedSpecimens.has(key)) return;
-      processedSpecimens.add(key);
-
       const specimen = PlantSpecimens[rule.specimenId];
       if (!specimen) return;
 
-      SpecimenTextureGenerator.generateSpecimenAndPieces(
-        this,
-        specimen,
-        rule.rows,
-        rule.cols
-      );
+      const hasCustomGeneration = rule.pieceGeneration && 
+        (rule.pieceGeneration.sliceMode === 'irregular_custom' || 
+         rule.pieceGeneration.sliceMode === 'variable_size');
+
+      if (hasCustomGeneration) {
+        SpecimenTextureGenerator.generateSpecimenAndPieces(
+          this,
+          specimen,
+          rule.rows,
+          rule.cols,
+          rule.pieceGeneration,
+          rule.id
+        );
+      } else {
+        const key = `${rule.specimenId}-${rule.rows}-${rule.cols}`;
+        if (processedRegular.has(key)) return;
+        processedRegular.add(key);
+
+        SpecimenTextureGenerator.generateSpecimenAndPieces(
+          this,
+          specimen,
+          rule.rows,
+          rule.cols
+        );
+      }
     });
   }
 

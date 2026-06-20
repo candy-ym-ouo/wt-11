@@ -363,22 +363,22 @@ export const LevelRules: LevelRule[] = [
     pieceGeneration: {
       sliceMode: 'irregular_custom',
       irregularSlices: [
-        { id: 0, targetX: 305, targetY: 345, width: 140, height: 110, sourceX: 0, sourceY: 0 },
-        { id: 1, targetX: 445, targetY: 345, width: 140, height: 110, sourceX: 140, sourceY: 0 },
-        { id: 2, targetX: 305, targetY: 455, width: 140, height: 110, sourceX: 0, sourceY: 110 },
-        { id: 3, targetX: 445, targetY: 455, width: 140, height: 110, sourceX: 140, sourceY: 110 },
-        { id: 4, targetX: 375, targetY: 400, width: 100, height: 80, sourceX: 70, sourceY: 55 },
-        { id: 5, targetX: 375, targetY: 510, width: 120, height: 90, sourceX: 60, sourceY: 165 },
-        { id: 6, targetX: 255, targetY: 400, width: 100, height: 80, sourceX: 0, sourceY: 55 },
-        { id: 7, targetX: 495, targetY: 400, width: 100, height: 80, sourceX: 200, sourceY: 55 },
-        { id: 8, targetX: 375, targetY: 290, width: 120, height: 90, sourceX: 60, sourceY: 0 },
-        { id: 9, targetX: 255, targetY: 510, width: 110, height: 90, sourceX: 0, sourceY: 165 },
-        { id: 10, targetX: 495, targetY: 510, width: 110, height: 90, sourceX: 190, sourceY: 165 },
-        { id: 11, targetX: 255, targetY: 290, width: 110, height: 90, sourceX: 0, sourceY: 0 },
-        { id: 12, targetX: 495, targetY: 290, width: 110, height: 90, sourceX: 190, sourceY: 0 },
-        { id: 13, targetX: 375, targetY: 565, width: 100, height: 70, sourceX: 70, sourceY: 220 },
-        { id: 14, targetX: 255, targetY: 565, width: 100, height: 70, sourceX: 0, sourceY: 220 },
-        { id: 15, targetX: 495, targetY: 565, width: 100, height: 70, sourceX: 200, sourceY: 220 }
+        { id: 0,  targetX: 265, targetY: 315, width: 145, height: 100, sourceX: 0,   sourceY: 0 },
+        { id: 1,  targetX: 380, targetY: 310, width: 150, height: 110, sourceX: 140, sourceY: 0 },
+        { id: 2,  targetX: 505, targetY: 315, width: 150, height: 100, sourceX: 315, sourceY: 0 },
+        { id: 3,  targetX: 265, targetY: 420, width: 140, height: 110, sourceX: 0,   sourceY: 95 },
+        { id: 4,  targetX: 385, targetY: 415, width: 140, height: 120, sourceX: 135, sourceY: 100 },
+        { id: 5,  targetX: 505, targetY: 420, width: 150, height: 110, sourceX: 310, sourceY: 95 },
+        { id: 6,  targetX: 268, targetY: 530, width: 145, height: 110, sourceX: 0,   sourceY: 200 },
+        { id: 7,  targetX: 385, targetY: 535, width: 140, height: 120, sourceX: 138, sourceY: 208 },
+        { id: 8,  targetX: 505, targetY: 530, width: 150, height: 110, sourceX: 312, sourceY: 200 },
+        { id: 9,  targetX: 270, targetY: 630, width: 140, height: 90,  sourceX: 0,   sourceY: 308 },
+        { id: 10, targetX: 385, targetY: 635, width: 145, height: 82,  sourceX: 140, sourceY: 318 },
+        { id: 11, targetX: 505, targetY: 630, width: 145, height: 90,  sourceX: 315, sourceY: 308 },
+        { id: 12, targetX: 325, targetY: 370, width: 110, height: 95,  sourceX: 65,  sourceY: 50 },
+        { id: 13, targetX: 460, targetY: 370, width: 110, height: 95,  sourceX: 375, sourceY: 50 },
+        { id: 14, targetX: 325, targetY: 480, width: 110, height: 100, sourceX: 60,  sourceY: 160 },
+        { id: 15, targetX: 460, targetY: 480, width: 110, height: 100, sourceX: 370, sourceY: 160 }
       ],
       initialRotation: {
         mode: 'random_90'
