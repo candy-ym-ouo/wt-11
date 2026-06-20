@@ -150,11 +150,21 @@ export class RandomEventManager {
 
   private static activateEvent(eventData: RandomEventData, currentTime: number): ActiveRandomEvent {
     const maxDuration = Math.max(...eventData.effects.map(e => e.duration || EVENT_DURATION_DEFAULT));
-    const hasInstantEffect = eventData.effects.some(e => 
-      e.type === 'piece_damage_count' || e.type === 'time_penalty' || e.type === 'reward_multiplier'
+    const hasOnlyInstantEffect = eventData.effects.every(e => 
+      e.type === 'piece_damage_count' || e.type === 'time_penalty'
+    );
+    const hasSessionEffect = eventData.effects.some(e => 
+      e.type === 'reward_multiplier'
     );
 
-    const duration = hasInstantEffect ? 3 : maxDuration;
+    let duration: number;
+    if (hasSessionEffect) {
+      duration = 99999;
+    } else if (hasOnlyInstantEffect) {
+      duration = 3;
+    } else {
+      duration = maxDuration;
+    }
 
     const activeEvent: ActiveRandomEvent = {
       eventId: eventData.id,

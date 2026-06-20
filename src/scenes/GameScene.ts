@@ -1136,7 +1136,7 @@ export class GameScene extends Phaser.Scene {
       }).setOrigin(0.5);
       iconContainer.add(icon);
 
-      if (event.remainingDuration > 0 && event.duration > 3) {
+      if (event.remainingDuration > 0 && event.duration > 3 && event.duration < 1000) {
         const progress = event.remainingDuration / event.duration;
         const progressBg = this.add.graphics();
         progressBg.fillStyle(0x000000, 0.5);
@@ -1147,6 +1147,16 @@ export class GameScene extends Phaser.Scene {
         progressBar.fillStyle(0x4caf50, 1);
         progressBar.fillRoundedRect(-22, 22, 44 * progress, 6, 3);
         iconContainer.add(progressBar);
+      } else if (event.duration >= 1000) {
+        const badge = this.add.graphics();
+        badge.fillStyle(0xffffff, 0.9);
+        badge.fillCircle(18, -18, 6);
+        iconContainer.add(badge);
+        const badgeText = this.add.text(18, -18, '★', {
+          font: 'bold 8px Arial',
+          color: '#ffd700'
+        }).setOrigin(0.5);
+        iconContainer.add(badgeText);
       }
 
       this.activeEventIcons.push(iconContainer);
@@ -1354,13 +1364,13 @@ export class GameScene extends Phaser.Scene {
     let rewardMultiplier = 1;
     
     if (this.randomEventsEnabled && !this.isTowerFloor && !this.isEventLevel) {
-      randomEventStats = RandomEventManager.endSession();
-      RandomEventManager.onLevelComplete(finalScore);
-      
       const eventScoreMultiplier = RandomEventManager.getScoreMultiplier();
+      rewardMultiplier = RandomEventManager.getRewardMultiplier();
+      
       finalScore = Math.floor(finalScore * eventScoreMultiplier);
       
-      rewardMultiplier = RandomEventManager.getRewardMultiplier();
+      RandomEventManager.onLevelComplete(finalScore);
+      randomEventStats = RandomEventManager.endSession();
       SaveManager.save();
     }
 
