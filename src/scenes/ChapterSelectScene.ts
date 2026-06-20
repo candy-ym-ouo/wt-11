@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { Chapters, getChapterById, Badges, getChapterTotalStars } from '../data/Chapters';
+import { Chapters, getChapterById, getChapterByLevelId, Badges, getChapterTotalStars } from '../data/Chapters';
 import { SaveManager } from '../utils/SaveManager';
 import { ChapterData, ConservationHealthLevel } from '../types/GameTypes';
 import { EventManager } from '../utils/EventManager';
@@ -15,6 +15,7 @@ import { getChapterQuiz, canAttemptQuiz } from '../data/ChapterQuizzes';
 import { QuizManager } from '../utils/QuizManager';
 import { BranchRoutesList } from '../data/BranchRoutes';
 import { DonationTiers } from '../data/DonationConfig';
+import { Levels } from '../data/Levels';
 
 export class ChapterSelectScene extends Phaser.Scene {
   constructor() {
@@ -25,6 +26,10 @@ export class ChapterSelectScene extends Phaser.Scene {
     this.addBackground();
     this.addTitle();
     this.addStatsBar();
+    this.addUnclaimedRewardsBanner();
+    this.addResumeButton();
+    this.addRecentPlaySection();
+    this.addRecommendedChallengesSection();
     this.addEventBanner();
     this.addTowerBanner();
     this.addExhibitionBanner();
@@ -318,11 +323,341 @@ export class ChapterSelectScene extends Phaser.Scene {
     }).setOrigin(1, 0.5);
   }
 
+  private addUnclaimedRewardsBanner(): void {
+    const rewards = SaveManager.getTotalUnclaimedRewards();
+    if (rewards.total === 0) return;
+
+    const bannerY = 235;
+    const bannerH = 70;
+
+    const banner = this.add.graphics();
+    const gradientSteps = 10;
+    for (let i = 0; i < gradientSteps; i++) {
+      const t = i / gradientSteps;
+      const r = Math.floor(((0xff9800 >> 16) & 0xff) * (1 - t) + ((0xf44336 >> 16) & 0xff) * t);
+      const g = Math.floor(((0xff9800 >> 8) & 0xff) * (1 - t) + ((0xf44336 >> 8) & 0xff) * t);
+      const b = Math.floor((0xff9800 & 0xff) * (1 - t) + (0xf44336 & 0xff) * t);
+      const color = (r << 16) | (g << 8) | b;
+      banner.fillStyle(color, 0.95);
+      banner.fillRect(45 + (660 * i) / gradientSteps, bannerY - bannerH / 2, 660 / gradientSteps + 1, bannerH);
+    }
+    banner.fillRoundedRect(45, bannerY - bannerH / 2, 660, bannerH, 16);
+    banner.lineStyle(3, 0xffeb3b, 0.8);
+    banner.strokeRoundedRect(45, bannerY - bannerH / 2, 660, bannerH, 16);
+
+    this.add.text(80, bannerY, '🎁', {
+      font: '32px Arial'
+    }).setOrigin(0, 0.5);
+
+    this.add.text(130, bannerY - 10, '有未领取的奖励！', {
+      font: 'bold 20px Arial',
+      color: '#ffffff'
+    }).setOrigin(0, 0.5);
+
+    const parts: string[] = [];
+    if (rewards.chapter > 0) parts.push(`章节×${rewards.chapter}`);
+    if (rewards.dailyQuest > 0) parts.push(`委托×${rewards.dailyQuest}`);
+    if (rewards.tower > 0) parts.push(`塔×${rewards.tower}`);
+    if (rewards.event > 0) parts.push(`活动×${rewards.event}`);
+    if (rewards.exhibition > 0) parts.push(`展览×${rewards.exhibition}`);
+    if (rewards.seasonPass) parts.push('通行证');
+    if (rewards.chapterMap > 0) parts.push(`地图×${rewards.chapterMap}`);
+
+    this.add.text(130, bannerY + 15, parts.join(' · '), {
+      font: '14px Arial',
+      color: 'rgba(255,255,255,0.85)'
+    }).setOrigin(0, 0.5);
+
+    const badge = this.add.graphics();
+    badge.fillStyle(0xffeb3b, 1);
+    badge.fillCircle(640, bannerY, 22);
+    this.add.text(640, bannerY, rewards.total.toString(), {
+      font: 'bold 18px Arial',
+      color: '#1a1a2e'
+    }).setOrigin(0.5);
+
+    this.add.text(680, bannerY, '→', {
+      font: 'bold 22px Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+
+    banner.setInteractive(
+      new Phaser.Geom.Rectangle(45, bannerY - bannerH / 2, 660, bannerH),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    const handleClick = () => {
+      if (rewards.dailyQuest > 0) {
+        this.scene.start('DailyQuestScene');
+      } else if (rewards.chapter > 0) {
+        const claimableChapter = Chapters.find(c => SaveManager.canClaimRewards(c.id));
+        if (claimableChapter) {
+          this.scene.start('LevelSelectScene', { chapterId: claimableChapter.id });
+        }
+      } else if (rewards.seasonPass) {
+        this.scene.start('SeasonPassScene');
+      } else if (rewards.tower > 0) {
+        this.scene.start('TowerSelectScene');
+      } else if (rewards.event > 0) {
+        this.scene.start('EventScene');
+      } else if (rewards.exhibition > 0) {
+        this.scene.start('ExhibitionScene');
+      } else if (rewards.chapterMap > 0) {
+        this.scene.start('ChapterMapScene');
+      }
+    };
+
+    banner.on('pointerup', handleClick);
+    banner.on('pointerover', () => banner.lineStyle(3, 0xffffff, 1));
+    banner.on('pointerout', () => banner.lineStyle(3, 0xffeb3b, 0.8));
+  }
+
+  private addResumeButton(): void {
+    const latestSave = SaveManager.getLatestPuzzleSave();
+    if (!latestSave) return;
+
+    const level = Levels.find(l => l.id === latestSave.levelId);
+    if (!level) return;
+
+    const btnY = 325;
+    const btnW = 660;
+    const btnH = 80;
+
+    const btn = this.add.graphics();
+    btn.fillStyle(0x2196f3, 0.95);
+    btn.fillRoundedRect(45, btnY - btnH / 2, btnW, btnH, 16);
+    btn.lineStyle(3, 0xffffff, 0.3);
+    btn.strokeRoundedRect(45, btnY - btnH / 2, btnW, btnH, 16);
+
+    btn.setInteractive(
+      new Phaser.Geom.Rectangle(45, btnY - btnH / 2, btnW, btnH),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    this.add.text(80, btnY - 15, '💾 继续上次游戏', {
+      font: 'bold 22px Arial',
+      color: '#ffffff'
+    }).setOrigin(0, 0.5);
+
+    const saveDate = new Date(latestSave.savedAt);
+    const timeStr = saveDate.toLocaleString('zh-CN', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const formatTime = (seconds: number): string => {
+      const m = Math.floor(seconds / 60);
+      const s = Math.floor(seconds % 60);
+      return `${m}:${s.toString().padStart(2, '0')}`;
+    };
+
+    this.add.text(80, btnY + 15, `${level.name} · 剩余 ${formatTime(latestSave.remainingTime)} · 进度 ${latestSave.snappedCount}/${latestSave.pieces.length} · ${timeStr}`, {
+      font: '14px Arial',
+      color: 'rgba(255,255,255,0.8)'
+    }).setOrigin(0, 0.5);
+
+    this.add.text(670, btnY, '开始 →', {
+      font: 'bold 18px Arial',
+      color: '#ffffff'
+    }).setOrigin(1, 0.5);
+
+    btn.on('pointerover', () => {
+      btn.clear();
+      btn.fillStyle(0x42a5f5, 0.95);
+      btn.fillRoundedRect(45, btnY - btnH / 2, btnW, btnH, 16);
+      btn.lineStyle(3, 0xffffff, 0.5);
+      btn.strokeRoundedRect(45, btnY - btnH / 2, btnW, btnH, 16);
+    });
+
+    btn.on('pointerout', () => {
+      btn.clear();
+      btn.fillStyle(0x2196f3, 0.95);
+      btn.fillRoundedRect(45, btnY - btnH / 2, btnW, btnH, 16);
+      btn.lineStyle(3, 0xffffff, 0.3);
+      btn.strokeRoundedRect(45, btnY - btnH / 2, btnW, btnH, 16);
+    });
+
+    btn.on('pointerup', () => {
+      this.scene.start('GameScene', {
+        levelId: latestSave.levelId,
+        isEventLevel: latestSave.isEventLevel,
+        eventId: latestSave.eventId ?? undefined,
+        isTowerFloor: latestSave.isTowerFloor,
+        towerFloorId: latestSave.towerFloorId ?? undefined,
+        loadSave: true
+      });
+    });
+  }
+
+  private addRecentPlaySection(): void {
+    const records = SaveManager.getRecentPlayRecords(5);
+    if (records.length === 0) return;
+
+    const sectionY = 435;
+    const sectionH = 160;
+
+    const sectionBg = this.add.graphics();
+    sectionBg.fillStyle(0x0f3460, 0.8);
+    sectionBg.fillRoundedRect(45, sectionY - sectionH / 2, 660, sectionH, 16);
+
+    this.add.text(70, sectionY - sectionH / 2 + 25, '🕒 最近游玩', {
+      font: 'bold 20px Arial',
+      color: '#ffffff'
+    }).setOrigin(0, 0.5);
+
+    const cardW = 180;
+    const cardH = 95;
+    const padding = 15;
+    const startX = 75 + cardW / 2;
+
+    records.slice(0, 3).forEach((record, index) => {
+      const x = startX + index * (cardW + padding);
+      const y = sectionY + 10;
+
+      const level = Levels.find(l => l.id === record.levelId);
+      const chapter = getChapterByLevelId(record.levelId);
+      if (!level) return;
+
+      const card = this.add.graphics();
+      const color = chapter?.primaryColor ?? 0xe94560;
+      card.fillStyle(color, 0.9);
+      card.fillRoundedRect(x - cardW / 2, y - cardH / 2, cardW, cardH, 12);
+      card.lineStyle(2, 0xffffff, 0.2);
+      card.strokeRoundedRect(x - cardW / 2, y - cardH / 2, cardW, cardH, 12);
+
+      const previewKey = `specimen-${level.specimen.id}-preview`;
+      if (this.textures.exists(previewKey)) {
+        const img = this.add.image(x - cardW / 2 + 25, y, previewKey);
+        img.setDisplaySize(45, 45);
+      }
+
+      this.add.text(x - cardW / 2 + 55, y - 15, level.name, {
+        font: 'bold 14px Arial',
+        color: '#ffffff'
+      }).setOrigin(0, 0.5);
+
+      const progress = SaveManager.getProgress(record.levelId);
+      const stars = progress?.stars ?? 0;
+      const starStr = '⭐'.repeat(stars) + '☆'.repeat(3 - stars);
+      this.add.text(x - cardW / 2 + 55, y + 8, starStr, {
+        font: '12px Arial',
+        color: '#ffd700'
+      }).setOrigin(0, 0.5);
+
+      const playDate = new Date(record.playedAt);
+      const dateStr = playDate.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+      this.add.text(x + cardW / 2 - 10, y + 28, dateStr, {
+        font: '11px Arial',
+        color: 'rgba(255,255,255,0.6)'
+      }).setOrigin(1, 0.5);
+
+      card.setInteractive(
+        new Phaser.Geom.Rectangle(x - cardW / 2, y - cardH / 2, cardW, cardH),
+        Phaser.Geom.Rectangle.Contains
+      );
+
+      card.on('pointerup', () => {
+        this.scene.start('GameScene', {
+          levelId: record.levelId,
+          isEventLevel: record.isEventLevel,
+          eventId: record.eventId ?? undefined,
+          isTowerFloor: record.isTowerFloor,
+          towerFloorId: record.towerFloorId ?? undefined
+        });
+      });
+
+      card.on('pointerover', () => card.lineStyle(2, 0xffffff, 0.6));
+      card.on('pointerout', () => card.lineStyle(2, 0xffffff, 0.2));
+    });
+  }
+
+  private addRecommendedChallengesSection(): void {
+    const recommendations = SaveManager.getRecommendedChallenges(4);
+    if (recommendations.length === 0) return;
+
+    const sectionY = 615;
+    const sectionH = 160;
+
+    const sectionBg = this.add.graphics();
+    sectionBg.fillStyle(0x0f3460, 0.8);
+    sectionBg.fillRoundedRect(45, sectionY - sectionH / 2, 660, sectionH, 16);
+
+    this.add.text(70, sectionY - sectionH / 2 + 25, '💡 推荐挑战', {
+      font: 'bold 20px Arial',
+      color: '#ffffff'
+    }).setOrigin(0, 0.5);
+
+    const cardW = 150;
+    const cardH = 95;
+    const padding = 12;
+    const totalW = cardW * Math.min(recommendations.length, 4) + padding * (Math.min(recommendations.length, 4) - 1);
+    const startX = 375 - totalW / 2 + cardW / 2;
+
+    recommendations.slice(0, 4).forEach((rec, index) => {
+      const x = startX + index * (cardW + padding);
+      const y = sectionY + 10;
+
+      const card = this.add.graphics();
+      card.fillStyle(rec.color, 0.9);
+      card.fillRoundedRect(x - cardW / 2, y - cardH / 2, cardW, cardH, 12);
+      card.lineStyle(2, 0xffffff, 0.2);
+      card.strokeRoundedRect(x - cardW / 2, y - cardH / 2, cardW, cardH, 12);
+
+      this.add.text(x, y - 20, rec.icon, {
+        font: '28px Arial'
+      }).setOrigin(0.5);
+
+      this.add.text(x, y + 8, rec.title, {
+        font: 'bold 15px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+
+      this.add.text(x, y + 28, rec.description, {
+        font: '10px Arial',
+        color: 'rgba(255,255,255,0.8)',
+        wordWrap: { width: cardW - 10 },
+        align: 'center'
+      }).setOrigin(0.5);
+
+      card.setInteractive(
+        new Phaser.Geom.Rectangle(x - cardW / 2, y - cardH / 2, cardW, cardH),
+        Phaser.Geom.Rectangle.Contains
+      );
+
+      card.on('pointerup', () => {
+        switch (rec.type) {
+          case 'next_level':
+          case 'incomplete':
+          case 'low_stars':
+          case 'hard_challenge':
+            if (rec.levelId) {
+              this.scene.start('GameScene', { levelId: rec.levelId });
+            }
+            break;
+          case 'daily_quest':
+            this.scene.start('DailyQuestScene');
+            break;
+          case 'tower':
+            this.scene.start('TowerSelectScene');
+            break;
+          case 'event':
+            this.scene.start('EventScene');
+            break;
+        }
+      });
+
+      card.on('pointerover', () => card.lineStyle(2, 0xffffff, 0.6));
+      card.on('pointerout', () => card.lineStyle(2, 0xffffff, 0.2));
+    });
+  }
+
   private addEventBanner(): void {
     const activeEvent = getActiveEvent();
     if (!activeEvent) return;
 
-    const bannerY = 230;
+    const bannerY = 730;
     const bannerH = 90;
     const access = EventManager.canAccessEvent(activeEvent.id);
     const canEnter = access.allowed;
@@ -454,7 +789,7 @@ export class ChapterSelectScene extends Phaser.Scene {
   }
 
   private addTowerBanner(): void {
-    const bannerY = 340;
+    const bannerY = 840;
     const bannerH = 80;
     const totalStars = SaveManager.getTotalStars();
     const requiredStars = getTowerStarsRequired();
@@ -559,7 +894,7 @@ export class ChapterSelectScene extends Phaser.Scene {
   }
 
   private addExhibitionBanner(): void {
-    const bannerY = 445;
+    const bannerY = 945;
     const bannerH = 80;
     const totalStars = SaveManager.getTotalStars();
     const allThemes = getAllExhibitionThemes();
@@ -670,7 +1005,7 @@ export class ChapterSelectScene extends Phaser.Scene {
   }
 
   private addAchievementBanner(): void {
-    const bannerY = 550;
+    const bannerY = 1050;
     const bannerH = 80;
     const achievementCount = SaveManager.getUnlockedAchievementsCount();
     const titleCount = SaveManager.getUnlockedTitlesCount();
@@ -756,7 +1091,7 @@ export class ChapterSelectScene extends Phaser.Scene {
   }
 
   private addSeasonPassBanner(): void {
-    const bannerY = 655;
+    const bannerY = 1155;
     const bannerH = 80;
     const seasonInfo = SeasonPassManager.getSeasonInfo();
     const stats = SeasonPassManager.getTotalStats();
@@ -848,7 +1183,7 @@ export class ChapterSelectScene extends Phaser.Scene {
   }
 
   private addChapterMapBanner(): void {
-    const bannerY = 745;
+    const bannerY = 1265;
     const bannerH = 90;
     const unlockedRoutes = BranchRoutesList.filter(r => SaveManager.isRouteUnlocked(r.id)).length;
     const completedRoutes = SaveManager.getTotalRoutesCompleted();
@@ -959,7 +1294,7 @@ export class ChapterSelectScene extends Phaser.Scene {
   }
 
   private addChapterCards(): void {
-    const startY = 865;
+    const startY = 1385;
     const cardWidth = 660;
     const cardHeight = 280;
     const padding = 25;

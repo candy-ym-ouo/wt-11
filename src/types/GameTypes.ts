@@ -1587,6 +1587,7 @@ export interface SaveData {
   randomEvent: RandomEventSaveData;
   puzzleSaves: PuzzleSaves;
   replay: ReplaySaveData;
+  recentPlay: RecentPlaySaveData;
 }
 
 export interface SnapRecord {
@@ -1642,6 +1643,20 @@ export interface ReplayData {
 export interface ReplaySaveData {
   replays: ReplayData[];
   maxReplaysPerLevel: number;
+}
+
+export interface RecentPlayRecord {
+  levelId: number;
+  playedAt: number;
+  isEventLevel?: boolean;
+  eventId?: string | null;
+  isTowerFloor?: boolean;
+  towerFloorId?: number | null;
+}
+
+export interface RecentPlaySaveData {
+  records: RecentPlayRecord[];
+  maxRecords: number;
 }
 
 export type HiddenLevelTriggerType =

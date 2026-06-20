@@ -34,7 +34,9 @@ import {
   SaveMetadata,
   SaveMigrationLogEntry,
   HiddenLevelProgress,
-  HiddenLevelTrigger
+  HiddenLevelTrigger,
+  RecentPlayRecord,
+  RecentPlaySaveData
 } from '../types/GameTypes';
 import { TutorialManager } from './TutorialManager';
 import { ConservationManager } from './ConservationManager';
@@ -56,7 +58,7 @@ import {
 import { PlantFamilies, getPlantFamilyBySpecimenId, isFamilyComplete, getFamilyRewardById } from '../data/PlantFamilies';
 import { TowerFloors, getTowerFloor } from '../data/TowerConfig';
 import { TowerSaveData, TowerFloorProgress, TowerReward, TowerResultData, ExhibitionSaveData, ExhibitionProgress, ExhibitionSpecimenSubmission, ExhibitionReward, AchievementSaveData, AchievementUnlockResult, ConservationSaveData, ConservationHealthLevel, FamilyCollectionSaveData, FamilyProgress, FamilyReward } from '../types/GameTypes';
-import { ExhibitionThemes, getExhibitionTheme, getBadgesByThemeId, getExhibitionBadge } from '../data/ExhibitionConfig';
+import { ExhibitionThemes, getExhibitionTheme, getBadgesByThemeId, getExhibitionBadge, getAllExhibitionThemes } from '../data/ExhibitionConfig';
 import { AchievementManager } from './AchievementManager';
 import { SeasonPassManager } from './SeasonPassManager';
 import { SeasonPassSaveData, NotificationSaveData } from '../types/GameTypes';
@@ -65,6 +67,8 @@ import { NotificationManager } from './NotificationManager';
 import { QuizManager } from './QuizManager';
 import { DonationManager } from './DonationManager';
 import { RandomEventManager } from './RandomEventManager';
+import { EventManager } from './EventManager';
+import { ExhibitionManager } from './ExhibitionManager';
 
 const STORAGE_KEY = 'plant_specimen_puzzle_save';
 const BACKUP_STORAGE_KEY = 'plant_specimen_puzzle_save_backup';
@@ -656,6 +660,10 @@ export class SaveManager {
       migrated.puzzleSaves = defaultData.puzzleSaves;
     }
 
+    if (!migrated.recentPlay) {
+      migrated.recentPlay = { records: [], maxRecords: 10 };
+    }
+
     const fallbackTime = migrated.metadata?.createdAt || Date.now();
     if (migrated.galleryUnlocked && migrated.galleryUnlockTimes) {
       migrated.galleryUnlocked.forEach((specimenId: number) => {
@@ -811,7 +819,8 @@ export class SaveManager {
       donation: donationData,
       randomEvent: RandomEventManager.createDefaultSave(),
       puzzleSaves: { saves: {}, maxSavesPerLevel: 3 },
-      replay: { replays: [], maxReplaysPerLevel: 3 }
+      replay: { replays: [], maxReplaysPerLevel: 3 },
+      recentPlay: { records: [], maxRecords: 10 }
     };
   }
 
@@ -3729,5 +3738,257 @@ export class SaveManager {
   static clearAllReplays(): void {
     this.data.replay.replays = [];
     this.save();
+  }
+
+  static recordRecentPlay(
+    levelId: number,
+    isEventLevel?: boolean,
+    eventId?: string | null,
+    isTowerFloor?: boolean,
+    towerFloorId?: number | null
+  ): void {
+    const record: RecentPlayRecord = {
+      levelId,
+      playedAt: Date.now(),
+      isEventLevel,
+      eventId,
+      isTowerFloor,
+      towerFloorId
+    };
+
+    const existingIndex = this.data.recentPlay.records.findIndex(r =>
+      r.levelId === levelId &&
+      r.isEventLevel === isEventLevel &&
+      r.isTowerFloor === isTowerFloor
+    );
+
+    if (existingIndex >= 0) {
+      this.data.recentPlay.records.splice(existingIndex, 1);
+    }
+
+    this.data.recentPlay.records.unshift(record);
+
+    const maxRecords = this.data.recentPlay.maxRecords || 10;
+    if (this.data.recentPlay.records.length > maxRecords) {
+      this.data.recentPlay.records = this.data.recentPlay.records.slice(0, maxRecords);
+    }
+
+    this.save();
+  }
+
+  static getRecentPlayRecords(limit?: number): RecentPlayRecord[] {
+    const records = [...this.data.recentPlay.records];
+    if (limit !== undefined) {
+      return records.slice(0, limit);
+    }
+    return records;
+  }
+
+  static getLatestPuzzleSave(): PuzzleSaveData | undefined {
+    const allSaves = this.getAllPuzzleSaves();
+    return allSaves.length > 0 ? allSaves[0] : undefined;
+  }
+
+  static getRecommendedChallenges(limit: number = 4): Array<{
+    type: 'next_level' | 'incomplete' | 'low_stars' | 'hard_challenge' | 'daily_quest' | 'tower' | 'event';
+    levelId?: number;
+    chapterId?: number;
+    title: string;
+    description: string;
+    icon: string;
+    color: number;
+  }> {
+    const recommendations: Array<{
+      type: 'next_level' | 'incomplete' | 'low_stars' | 'hard_challenge' | 'daily_quest' | 'tower' | 'event';
+      levelId?: number;
+      chapterId?: number;
+      title: string;
+      description: string;
+      icon: string;
+      color: number;
+    }> = [];
+
+    const allProgress = this.getAllProgress();
+    const unlockedLevels = this.getUnlockedLevels();
+
+    const nextUnplayedLevel = Levels.find(l =>
+      unlockedLevels.includes(l.id) &&
+      !allProgress[l.id]?.completed &&
+      !isHiddenLevel(l.id)
+    );
+    if (nextUnplayedLevel) {
+      const chapter = getChapterByLevelId(nextUnplayedLevel.id);
+      recommendations.push({
+        type: 'next_level',
+        levelId: nextUnplayedLevel.id,
+        chapterId: chapter?.id,
+        title: '下一关',
+        description: `继续探索：${nextUnplayedLevel.name}`,
+        icon: '🎯',
+        color: chapter?.primaryColor ?? 0xe94560
+      });
+    }
+
+    const incompleteLevels = Levels.filter(l =>
+      unlockedLevels.includes(l.id) &&
+      !allProgress[l.id]?.completed &&
+      !isHiddenLevel(l.id)
+    );
+    if (incompleteLevels.length > 0 && !nextUnplayedLevel) {
+      const randomIncomplete = incompleteLevels[Math.floor(Math.random() * incompleteLevels.length)];
+      const chapter = getChapterByLevelId(randomIncomplete.id);
+      recommendations.push({
+        type: 'incomplete',
+        levelId: randomIncomplete.id,
+        chapterId: chapter?.id,
+        title: '待完成',
+        description: `${randomIncomplete.name} 等待修复`,
+        icon: '⏳',
+        color: chapter?.primaryColor ?? 0xff9800
+      });
+    }
+
+    const lowStarLevels = Levels.filter(l => {
+      const p = allProgress[l.id];
+      return p?.completed && p.stars < 3 && !isHiddenLevel(l.id);
+    });
+    if (lowStarLevels.length > 0) {
+      const lowStar = lowStarLevels[Math.floor(Math.random() * lowStarLevels.length)];
+      const chapter = getChapterByLevelId(lowStar.id);
+      const stars = allProgress[lowStar.id]?.stars ?? 0;
+      recommendations.push({
+        type: 'low_stars',
+        levelId: lowStar.id,
+        chapterId: chapter?.id,
+        title: '追求完美',
+        description: `${lowStar.name} (${stars}/3 ⭐) 挑战三星`,
+        icon: '⭐',
+        color: chapter?.primaryColor ?? 0xffd700
+      });
+    }
+
+    const hardLevels = Levels.filter(l =>
+      l.rule.difficulty === 'hard' &&
+      unlockedLevels.includes(l.id) &&
+      !isHiddenLevel(l.id)
+    );
+    if (hardLevels.length > 0) {
+      const hardUncompleted = hardLevels.filter(l => !allProgress[l.id]?.completed);
+      const targetHard = hardUncompleted.length > 0
+        ? hardUncompleted[0]
+        : hardLevels[Math.floor(Math.random() * hardLevels.length)];
+      const chapter = getChapterByLevelId(targetHard.id);
+      recommendations.push({
+        type: 'hard_challenge',
+        levelId: targetHard.id,
+        chapterId: chapter?.id,
+        title: '挑战自我',
+        description: `困难模式：${targetHard.name}`,
+        icon: '🔥',
+        color: 0xf44336
+      });
+    }
+
+    if (DailyQuestManager.hasClaimableQuests() || DailyQuestManager.getQuestsByStatus('in_progress').length > 0) {
+      recommendations.push({
+        type: 'daily_quest',
+        title: '每日委托',
+        description: '完成委托获取丰厚奖励',
+        icon: '📋',
+        color: 0x03a9f4
+      });
+    }
+
+    const towerSave = this.getTowerSaveData();
+    const nextFloor = towerSave ? Object.values(towerSave.floorProgress).find(p => p.unlocked && !p.completed) : null;
+    if (nextFloor) {
+      recommendations.push({
+        type: 'tower',
+        title: '挑战塔',
+        description: `第 ${nextFloor.floorId} 层等待攻克`,
+        icon: '🏰',
+        color: 0x9c27b0
+      });
+    }
+
+    const activeEvent = getActiveEvent();
+    if (activeEvent) {
+      const access = EventManager.canAccessEvent(activeEvent.id);
+      if (access.allowed) {
+        recommendations.push({
+          type: 'event',
+          title: activeEvent.name,
+          description: '限时活动进行中',
+          icon: '🔥',
+          color: activeEvent.primaryColor
+        });
+      }
+    }
+
+    return recommendations.slice(0, limit);
+  }
+
+  static getTotalUnclaimedRewards(): {
+    total: number;
+    chapter: number;
+    dailyQuest: number;
+    tower: number;
+    event: number;
+    exhibition: number;
+    seasonPass: boolean;
+    chapterMap: number;
+  } {
+    let chapterCount = 0;
+    Chapters.forEach(chapter => {
+      if (this.canClaimRewards(chapter.id)) chapterCount++;
+    });
+
+    const dailyQuestCount = DailyQuestManager.getClaimableQuestsCount();
+
+    let towerCount = 0;
+    const towerSave = this.getTowerSaveData();
+    if (towerSave) {
+      Object.values(towerSave.floorProgress).forEach(fp => {
+        if (this.canClaimTowerRewards(fp.floorId)) towerCount++;
+      });
+    }
+
+    let eventCount = 0;
+    const activeEvent = getActiveEvent();
+    if (activeEvent) {
+      eventCount = this.getClaimableEventRewards(activeEvent.id).length;
+    }
+
+    let exhibitionCount = 0;
+    getAllExhibitionThemes().forEach(theme => {
+      if (ExhibitionManager.canAccessTheme(theme.id).allowed) {
+        exhibitionCount += this.getClaimableExhibitionRewards(theme.id).length;
+      }
+    });
+
+    const seasonPassHasClaimable = SeasonPassManager.hasClaimableRewards();
+
+    let chapterMapCount = 0;
+    BranchRoutesList.forEach(route => {
+      if (this.isRouteUnlocked(route.id)) {
+        const completedNodes = this.getCompletedNodes(route.id);
+        completedNodes.forEach(nodeId => {
+          if (this.canClaimNodeReward(route.id, nodeId)) chapterMapCount++;
+        });
+      }
+    });
+
+    const total = chapterCount + dailyQuestCount + towerCount + eventCount + exhibitionCount + chapterMapCount + (seasonPassHasClaimable ? 1 : 0);
+
+    return {
+      total,
+      chapter: chapterCount,
+      dailyQuest: dailyQuestCount,
+      tower: towerCount,
+      event: eventCount,
+      exhibition: exhibitionCount,
+      seasonPass: seasonPassHasClaimable,
+      chapterMap: chapterMapCount
+    };
   }
 }

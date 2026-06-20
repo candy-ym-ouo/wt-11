@@ -271,6 +271,14 @@ export class GameScene extends Phaser.Scene {
     this.lastUpdateTime = this.time.now;
 
     this.setupAutoSave();
+
+    SaveManager.recordRecentPlay(
+      this.levelRule.id,
+      this.isEventLevel,
+      this.eventId,
+      this.isTowerFloor,
+      this.towerFloorId
+    );
   }
 
   private setupAutoSave(): void {
