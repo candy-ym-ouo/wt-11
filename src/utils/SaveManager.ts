@@ -1179,6 +1179,7 @@ export class SaveManager {
       illustrationUnlocked: boolean;
     };
     levelProgress: LevelProgressResult;
+    galleryFirstUnlock: { unlocked: boolean; specimenId: number | null };
   } {
     const progress = this.data.progress[levelId];
     if (!progress) return {
@@ -1187,6 +1188,7 @@ export class SaveManager {
       newlyUnlockedChapterId: null,
       updatedQuests: [],
       researchRewards: { pointsGained: 0, expGained: 0 },
+      galleryFirstUnlock: { unlocked: false, specimenId: null },
       achievementResult: { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 },
       conservationInfo: {
         specimenId: null,
@@ -1253,6 +1255,17 @@ export class SaveManager {
 
     const level = Levels.find(l => l.id === levelId);
     const specimenId = level?.specimen.id;
+
+    let galleryFirstUnlock = { unlocked: false, specimenId: specimenId ?? null };
+    if (isFirstCompletion && specimenId !== undefined) {
+      if (!this.data.galleryUnlocked.includes(specimenId)) {
+        this.data.galleryUnlocked.push(specimenId);
+        this.data.galleryUnlockTimes[specimenId] = Date.now();
+        this.syncFamilyProgress();
+        SeasonPassManager.onGalleryUnlock(specimenId);
+        galleryFirstUnlock = { unlocked: true, specimenId };
+      }
+    }
 
     let basePoints = 10 + stars * 15;
     let baseExp = 5 + stars * 10;
@@ -1408,7 +1421,8 @@ export class SaveManager {
         isNewRecord: score > previousBestScore,
         isNewBestTime: previousBestTime === 0 || time < previousBestTime,
         starsImproved
-      }
+      },
+      galleryFirstUnlock
     };
   }
 
@@ -2469,13 +2483,14 @@ export class SaveManager {
     score: number,
     time: number,
     stars: number
-  ): { newlyUnlockedLevelId: number | null; updatedTotalScore: number; achievementResult: AchievementUnlockResult } {
+  ): { newlyUnlockedLevelId: number | null; updatedTotalScore: number; achievementResult: AchievementUnlockResult; galleryFirstUnlock: { unlocked: boolean; specimenId: number | null } } {
     const eventProg = this.data.event.eventProgress[eventId];
-    if (!eventProg) return { newlyUnlockedLevelId: null, updatedTotalScore: 0, achievementResult: { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 } };
+    if (!eventProg) return { newlyUnlockedLevelId: null, updatedTotalScore: 0, achievementResult: { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 }, galleryFirstUnlock: { unlocked: false, specimenId: null } };
 
     const levelProg = eventProg.levelProgress[levelId];
-    if (!levelProg) return { newlyUnlockedLevelId: null, updatedTotalScore: 0, achievementResult: { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 } };
+    if (!levelProg) return { newlyUnlockedLevelId: null, updatedTotalScore: 0, achievementResult: { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 }, galleryFirstUnlock: { unlocked: false, specimenId: null } };
 
+    const isFirstCompletion = !levelProg.completed;
     const scoreImproved = score > levelProg.bestScore;
     const starsImproved = stars > levelProg.stars;
 
@@ -2515,6 +2530,26 @@ export class SaveManager {
       }
     }
 
+    let galleryFirstUnlock = { unlocked: false, specimenId: null as number | null };
+    if (isFirstCompletion) {
+      const eventLevels = getEventLevelRulesByEventId(eventId);
+      const currentLevelRule = eventLevels.find(r => r.id === levelId);
+      const specId = currentLevelRule?.specimenId;
+      if (specId !== undefined) {
+        if (!this.data.galleryUnlocked.includes(specId)) {
+          this.data.galleryUnlocked.push(specId);
+          this.data.galleryUnlockTimes[specId] = Date.now();
+          this.syncFamilyProgress();
+          SeasonPassManager.onGalleryUnlock(specId);
+          galleryFirstUnlock = { unlocked: true, specimenId: specId };
+        }
+        if (!this.data.event.eventGalleryUnlocked.includes(specId)) {
+          this.data.event.eventGalleryUnlocked.push(specId);
+          this.data.event.eventGalleryUnlockTimes[specId] = Date.now();
+        }
+      }
+    }
+
     const achievementResult = AchievementManager.onEventParticipation();
 
     const eventSpecimenCount = this.getUnlockedEventGalleryItems().length;
@@ -2529,7 +2564,7 @@ export class SaveManager {
     }
 
     this.save();
-    return { newlyUnlockedLevelId, updatedTotalScore: eventProg.totalScore, achievementResult };
+    return { newlyUnlockedLevelId, updatedTotalScore: eventProg.totalScore, achievementResult, galleryFirstUnlock };
   }
 
   static canClaimEventReward(eventId: string, rewardId: number): boolean {

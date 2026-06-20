@@ -2775,33 +2775,53 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.zoomTo(1.05, 400, 'Cubic.easeInOut', true);
     this.time.delayedCall(450, () => {
       this.cameras.main.zoomTo(1.0, 400, 'Cubic.easeInOut', true);
-      this.showVictory(
-        finalScore,
-        result.stars,
-        this.elapsedTime,
-        chapterResult,
-        drops,
-        eventResult,
-        updatedQuests,
-        achievementResult,
-        conservationMultiplier,
-        randomEventStats,
-        {
-          accuracy,
-          perfectSnaps: this.perfectSnaps,
-          totalSnapDistance: this.totalSnapDistance,
-          snapCount: this.snapCount,
-          snapTimestamps: [...this.snapTimestamps],
-          realPiecesCount: this.realPiecesCount,
-          rotationAdjustCount: this.rotationAdjustCount,
-          hintViewTime: this.hintViewTime,
-          hintsUsed: this.hintsUsed,
-          maxCombo: this.maxCombo,
-          mistakeCount: this.mistakeCount
-        },
-        levelProgressResult,
-        replayData
-      );
+
+      const firstUnlockInfo = this.isEventLevel
+        ? (eventResult as any)?.galleryFirstUnlock
+        : (chapterResult as any)?.galleryFirstUnlock;
+
+      const invokeVictory = () => {
+        this.showVictory(
+          finalScore,
+          result.stars,
+          this.elapsedTime,
+          chapterResult,
+          drops,
+          eventResult,
+          updatedQuests,
+          achievementResult,
+          conservationMultiplier,
+          randomEventStats,
+          {
+            accuracy,
+            perfectSnaps: this.perfectSnaps,
+            totalSnapDistance: this.totalSnapDistance,
+            snapCount: this.snapCount,
+            snapTimestamps: [...this.snapTimestamps],
+            realPiecesCount: this.realPiecesCount,
+            rotationAdjustCount: this.rotationAdjustCount,
+            hintViewTime: this.hintViewTime,
+            hintsUsed: this.hintsUsed,
+            maxCombo: this.maxCombo,
+            mistakeCount: this.mistakeCount
+          },
+          levelProgressResult,
+          replayData
+        );
+      };
+
+      if (firstUnlockInfo?.unlocked && firstUnlockInfo.specimenId !== null && this.specimen) {
+        this.scene.launch('FirstShowcaseScene', {
+          specimenId: firstUnlockInfo.specimenId,
+          specimen: this.specimen,
+          onComplete: () => {
+            this.scene.remove('FirstShowcaseScene');
+            invokeVictory();
+          }
+        });
+      } else {
+        invokeVictory();
+      }
     });
   }
 

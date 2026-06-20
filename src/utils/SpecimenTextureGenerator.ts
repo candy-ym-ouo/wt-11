@@ -849,4 +849,187 @@ export class SpecimenTextureGenerator {
 
     ctx.restore();
   }
+
+  static generateDamagedSpecimen(
+    scene: Phaser.Scene,
+    specimen: PlantSpecimen
+  ): { damagedTextureKey: string; damagedPreviewKey: string } {
+    const damagedKey = `specimen-${specimen.id}-damaged`;
+    const damagedPreviewKey = `specimen-${specimen.id}-damaged-preview`;
+
+    if (scene.textures.exists(damagedKey) && scene.textures.exists(damagedPreviewKey)) {
+      return { damagedTextureKey: damagedKey, damagedPreviewKey };
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = SPECIMEN_WIDTH;
+    canvas.height = SPECIMEN_HEIGHT;
+    const ctx = canvas.getContext('2d')!;
+
+    this.drawSpecimenBackground(ctx);
+    this.drawPlantOnCanvas(ctx, specimen);
+    this.applyDamageEffects(ctx);
+    this.drawDamagedFrame(ctx);
+
+    if (!scene.textures.exists(damagedKey)) {
+      scene.textures.addCanvas(damagedKey, canvas);
+    }
+
+    if (!scene.textures.exists(damagedPreviewKey)) {
+      const previewCanvas = document.createElement('canvas');
+      previewCanvas.width = 200;
+      previewCanvas.height = 200;
+      const pctx = previewCanvas.getContext('2d')!;
+      pctx.fillStyle = '#d4c4a8';
+      pctx.fillRect(0, 0, 200, 200);
+      pctx.drawImage(canvas, 0, 0, SPECIMEN_WIDTH, SPECIMEN_HEIGHT, 10, 10, 180, 180);
+      scene.textures.addCanvas(damagedPreviewKey, previewCanvas);
+    }
+
+    return { damagedTextureKey: damagedKey, damagedPreviewKey };
+  }
+
+  private static applyDamageEffects(ctx: CanvasRenderingContext2D): void {
+    const imageData = ctx.getImageData(0, 0, SPECIMEN_WIDTH, SPECIMEN_HEIGHT);
+    const data = imageData.data;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+
+      const gray = r * 0.299 + g * 0.587 + b * 0.114;
+      const desatR = gray * 0.85 + r * 0.15;
+      const desatG = gray * 0.85 + g * 0.15;
+      const desatB = gray * 0.85 + b * 0.15;
+
+      data[i] = Math.floor(desatR * 0.55);
+      data[i + 1] = Math.floor(desatG * 0.5);
+      data[i + 2] = Math.floor(desatB * 0.4);
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+
+    ctx.fillStyle = 'rgba(120, 90, 60, 0.12)';
+    for (let i = 0; i < 200; i++) {
+      const x = Math.random() * SPECIMEN_WIDTH;
+      const y = Math.random() * SPECIMEN_HEIGHT;
+      const size = Math.random() * 4 + 1;
+      ctx.fillRect(x, y, size, size);
+    }
+
+    ctx.fillStyle = 'rgba(60, 40, 20, 0.15)';
+    for (let i = 0; i < 30; i++) {
+      const x = Math.random() * SPECIMEN_WIDTH;
+      const y = Math.random() * SPECIMEN_HEIGHT;
+      const rx = Math.random() * 35 + 10;
+      const ry = Math.random() * 35 + 10;
+      ctx.beginPath();
+      ctx.ellipse(x, y, rx, ry, Math.random() * Math.PI, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.strokeStyle = 'rgba(40, 25, 10, 0.55)';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 8; i++) {
+      ctx.beginPath();
+      const startX = Math.random() * SPECIMEN_WIDTH;
+      const startY = Math.random() * SPECIMEN_HEIGHT;
+      ctx.moveTo(startX, startY);
+      let cx = startX;
+      let cy = startY;
+      const segments = 4 + Math.floor(Math.random() * 4);
+      for (let j = 0; j < segments; j++) {
+        cx += (Math.random() - 0.5) * 120;
+        cy += (Math.random() - 0.5) * 120;
+        ctx.lineTo(cx, cy);
+      }
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = 'rgba(80, 50, 30, 0.35)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 15; i++) {
+      ctx.beginPath();
+      const startX = Math.random() * SPECIMEN_WIDTH;
+      const startY = Math.random() * SPECIMEN_HEIGHT;
+      ctx.moveTo(startX, startY);
+      let cx = startX;
+      let cy = startY;
+      const segments = 3 + Math.floor(Math.random() * 3);
+      for (let j = 0; j < segments; j++) {
+        cx += (Math.random() - 0.5) * 80;
+        cy += (Math.random() - 0.5) * 80;
+        ctx.lineTo(cx, cy);
+      }
+      ctx.stroke();
+    }
+
+    const missingHoles = [
+      { x: SPECIMEN_WIDTH * 0.15, y: SPECIMEN_HEIGHT * 0.2, rx: 45, ry: 35 },
+      { x: SPECIMEN_WIDTH * 0.85, y: SPECIMEN_HEIGHT * 0.75, rx: 38, ry: 42 },
+      { x: SPECIMEN_WIDTH * 0.5, y: SPECIMEN_HEIGHT * 0.1, rx: 28, ry: 22 },
+      { x: SPECIMEN_WIDTH * 0.1, y: SPECIMEN_HEIGHT * 0.85, rx: 32, ry: 28 },
+      { x: SPECIMEN_WIDTH * 0.9, y: SPECIMEN_HEIGHT * 0.3, rx: 25, ry: 30 }
+    ];
+
+    missingHoles.forEach(hole => {
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+      ctx.beginPath();
+      ctx.ellipse(hole.x, hole.y, hole.rx, hole.ry, Math.random() * 0.8 - 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      ctx.strokeStyle = 'rgba(30, 20, 10, 0.7)';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.ellipse(hole.x, hole.y, hole.rx, hole.ry, Math.random() * 0.8 - 0.4, 0, Math.PI * 2);
+      ctx.stroke();
+    });
+
+    ctx.fillStyle = 'rgba(80, 60, 40, 0.2)';
+    for (let i = 0; i < 40; i++) {
+      const x = Math.random() * SPECIMEN_WIDTH;
+      const y = Math.random() * SPECIMEN_HEIGHT;
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+
+  private static drawDamagedFrame(ctx: CanvasRenderingContext2D): void {
+    ctx.strokeStyle = '#6d4c41';
+    ctx.lineWidth = 8;
+    ctx.setLineDash([8, 4]);
+    ctx.strokeRect(4, 4, SPECIMEN_WIDTH - 8, SPECIMEN_HEIGHT - 8);
+    ctx.setLineDash([]);
+
+    ctx.strokeStyle = '#8d6e63';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 6]);
+    ctx.strokeRect(12, 12, SPECIMEN_WIDTH - 24, SPECIMEN_HEIGHT - 24);
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = 'rgba(139, 90, 43, 0.08)';
+    for (let i = 0; i < 100; i++) {
+      const x = Math.random() * SPECIMEN_WIDTH;
+      const y = Math.random() * SPECIMEN_HEIGHT;
+      ctx.fillRect(x, y, 2, 2);
+    }
+  }
+
+  static generateShowcaseTextures(
+    scene: Phaser.Scene,
+    specimen: PlantSpecimen
+  ): { restoredKey: string; restoredPreview: string; damagedKey: string; damagedPreview: string } {
+    const restored = this.generateSpecimenAndPieces(scene, specimen, 3, 3);
+    const damaged = this.generateDamagedSpecimen(scene, specimen);
+
+    return {
+      restoredKey: restored.targetTextureKey,
+      restoredPreview: restored.previewTextureKey,
+      damagedKey: damaged.damagedTextureKey,
+      damagedPreview: damaged.damagedPreviewKey
+    };
+  }
 }

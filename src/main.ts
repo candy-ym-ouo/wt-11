@@ -32,6 +32,7 @@ import { EndingScene } from './scenes/EndingScene';
 import { DonationScene } from './scenes/DonationScene';
 import { ProfileScene } from './scenes/ProfileScene';
 import { ReplayScene } from './scenes/ReplayScene';
+import { FirstShowcaseScene } from './scenes/FirstShowcaseScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -75,7 +76,8 @@ const config: Phaser.Types.Core.GameConfig = {
     EndingScene,
     DonationScene,
     ProfileScene,
-    ReplayScene
+    ReplayScene,
+    FirstShowcaseScene
   ],
   physics: {
     default: 'arcade',
