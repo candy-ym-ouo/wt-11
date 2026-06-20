@@ -19,6 +19,7 @@ import {
 } from '../data/DonationConfig';
 import { getPlantSpecimen } from '../data/PlantSpecimens';
 import { Levels } from '../data/Levels';
+import { getRecipeBySpecimenId, Fragments } from '../data/WorkshopConfig';
 
 export class DonationManager {
   private static data: DonationSaveData;
@@ -270,6 +271,26 @@ export class DonationManager {
       isFirstDonation,
       isWorkshopRestoration: check.isFromWorkshop
     });
+
+    const recipe = getRecipeBySpecimenId(specimenId);
+    if (recipe) {
+      for (const req of recipe.requiredFragments) {
+        const currentCount = SaveManager.getFragmentCount(req.fragmentId);
+        if (currentCount < req.count) {
+          return {
+            success: false,
+            specimenId,
+            researchCoin: 0,
+            message: `材料不足：缺少${req.count}个${DonationManager.getFragmentName(req.fragmentId)}`,
+            newTierUnlocked: null,
+            newRewards: []
+          };
+        }
+      }
+      for (const req of recipe.requiredFragments) {
+        SaveManager.removeFragments(req.fragmentId, req.count);
+      }
+    }
 
     const oldTierInfo = this.getCurrentTierInfo();
     const oldTierId = oldTierInfo.tier.id;
@@ -582,5 +603,10 @@ export class DonationManager {
       legendary: 0xffd700
     };
     return colors[rarity] || 0x9e9e9e;
+  }
+
+  private static getFragmentName(fragmentId: number): string {
+    const fragment = Fragments.find(f => f.id === fragmentId);
+    return fragment?.name || `碎片#${fragmentId}`;
   }
 }

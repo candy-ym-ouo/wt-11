@@ -11,7 +11,7 @@ import { ConservationManager } from '../utils/ConservationManager';
 import { getPlantSpecimen } from '../data/PlantSpecimens';
 import { PlantFamilies } from '../data/PlantFamilies';
 import { SeasonPassManager } from '../utils/SeasonPassManager';
-import { ChapterQuiz, canAttemptQuiz } from '../data/ChapterQuizzes';
+import { getChapterQuiz, canAttemptQuiz } from '../data/ChapterQuizzes';
 import { QuizManager } from '../utils/QuizManager';
 import { BranchRoutesList } from '../data/BranchRoutes';
 import { DonationTiers } from '../data/DonationConfig';
