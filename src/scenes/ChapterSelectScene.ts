@@ -1060,7 +1060,9 @@ export class ChapterSelectScene extends Phaser.Scene {
       wordWrap: { width: width - 60 }
     }).setOrigin(0, 0);
 
-    const levelsText = `包含 ${chapter.levelIds.length} 个关卡`;
+    const levelsText = chapter.hiddenLevels && chapter.hiddenLevels.length > 0
+      ? `包含 ${chapter.levelIds.length} 个关卡 + ${chapter.hiddenLevels.length} 个隐藏关卡`
+      : `包含 ${chapter.levelIds.length} 个关卡`;
     this.add.text(x - width / 2 + 30, y + height / 2 - 55, levelsText, {
       font: '14px Arial',
       color: unlocked ? 'rgba(255,255,255,0.7)' : '#555555'
@@ -1081,17 +1083,35 @@ export class ChapterSelectScene extends Phaser.Scene {
     }).setOrigin(0, 0.5);
 
     if (!unlocked) {
-      this.add.image(x, y, 'lock').setScale(1.5);
+      this.add.image(x, y - 10, 'lock').setScale(1.3);
 
-      const lockText = starsLocked
-        ? `需要 ${requiredStars} 颗星星解锁 (当前: ${totalCollectedStars})`
-        : '完成前一章节解锁';
-
-      this.add.text(x, y + 100, lockText, {
-        font: '16px Arial',
-        color: '#ff9800',
-        align: 'center'
-      }).setOrigin(0.5);
+      const unlockStatus = SaveManager.getChapterUnlockStatus(chapter.id);
+      if (unlockStatus.progress.length > 0) {
+        let condY = y + 60;
+        unlockStatus.progress.forEach(p => {
+          const icon = p.met ? '✅' : '❌';
+          this.add.text(x - width / 2 + 30, condY, `${icon} ${p.condition}`, {
+            font: '14px Arial',
+            color: p.met ? '#81c784' : '#ff9800',
+            align: 'left'
+          }).setOrigin(0, 0.5);
+          this.add.text(x + width / 2 - 30, condY, p.current, {
+            font: 'bold 14px Arial',
+            color: p.met ? '#81c784' : '#ffcc80',
+            align: 'right'
+          }).setOrigin(1, 0.5);
+          condY += 25;
+        });
+      } else {
+        const lockText = starsLocked
+          ? `需要 ${requiredStars} 颗星星解锁 (当前: ${totalCollectedStars})`
+          : '完成前一章节解锁';
+        this.add.text(x, y + 100, lockText, {
+          font: '16px Arial',
+          color: '#ff9800',
+          align: 'center'
+        }).setOrigin(0.5);
+      }
     }
 
     const chapterQuiz = getChapterQuiz(chapter.id);

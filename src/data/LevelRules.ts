@@ -77,6 +77,39 @@ export const LevelRules: LevelRule[] = [
     timeLimit: 300,
     snapPositionThreshold: 35,
     snapRotationThreshold: 10
+  },
+  {
+    id: 7,
+    name: '隐藏关卡·银杏秘境',
+    specimenId: 1,
+    difficulty: 'hard',
+    rows: 4,
+    cols: 4,
+    timeLimit: 240,
+    snapPositionThreshold: 38,
+    snapRotationThreshold: 12
+  },
+  {
+    id: 8,
+    name: '隐藏关卡·花语迷踪',
+    specimenId: 4,
+    difficulty: 'hard',
+    rows: 4,
+    cols: 5,
+    timeLimit: 280,
+    snapPositionThreshold: 35,
+    snapRotationThreshold: 10
+  },
+  {
+    id: 9,
+    name: '隐藏关卡·兰幽深处',
+    specimenId: 5,
+    difficulty: 'hard',
+    rows: 5,
+    cols: 5,
+    timeLimit: 360,
+    snapPositionThreshold: 30,
+    snapRotationThreshold: 8
   }
 ];
 

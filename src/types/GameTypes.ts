@@ -237,6 +237,7 @@ export interface GalleryItem {
   isEventExclusive?: boolean;
   eventId?: string;
   eventName?: string;
+  isHiddenLevel?: boolean;
 }
 
 export interface Reward {
@@ -259,6 +260,8 @@ export interface ChapterData {
   rewards: Reward[];
   backgroundImage?: string;
   unlocked: boolean;
+  unlockCondition?: ChapterUnlockCondition;
+  hiddenLevels?: HiddenLevelData[];
 }
 
 export interface ChapterProgress {
@@ -268,6 +271,7 @@ export interface ChapterProgress {
   totalStars: number;
   rewardsClaimed: boolean;
   completedAt?: number;
+  hiddenLevelProgress?: Record<number, HiddenLevelProgress>;
 }
 
 export type BranchRouteType = 'flower' | 'tree' | 'herb';
@@ -1495,4 +1499,42 @@ export interface ReplayData {
 export interface ReplaySaveData {
   replays: ReplayData[];
   maxReplaysPerLevel: number;
+}
+
+export type HiddenLevelTriggerType =
+  | 'chapter_perfect'
+  | 'gallery_collect'
+  | 'star_threshold'
+  | 'speed_clear'
+  | 'combo_achieve';
+
+export interface HiddenLevelTrigger {
+  type: HiddenLevelTriggerType;
+  description: string;
+  chapterId?: number;
+  requiredStars?: number;
+  requiredGalleryIds?: number[];
+  requiredCombo?: number;
+  maxTimeSeconds?: number;
+}
+
+export interface HiddenLevelData {
+  levelRuleId: number;
+  triggers: HiddenLevelTrigger[];
+  revealedDescription: string;
+}
+
+export interface ChapterUnlockCondition {
+  requiredStars: number;
+  prevChapterStarThreshold?: number;
+  requiredGalleryIds?: number[];
+  prevChapterCompleted?: boolean;
+}
+
+export interface HiddenLevelProgress {
+  levelId: number;
+  revealed: boolean;
+  unlocked: boolean;
+  revealedAt?: number;
+  unlockedAt?: number;
 }

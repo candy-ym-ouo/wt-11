@@ -3,7 +3,7 @@ import { Levels } from '../data/Levels';
 import { SaveManager } from '../utils/SaveManager';
 import { getDifficultyColor, getDifficultyText, formatTime } from '../utils/GameUtils';
 import { LevelData, PuzzleSaveData } from '../types/GameTypes';
-import { Chapters, getChapterById, getChapterByLevelId } from '../data/Chapters';
+import { Chapters, getChapterById, getChapterByLevelId, getHiddenLevelsForChapter, isHiddenLevel, getHiddenLevelData } from '../data/Chapters';
 import { DailyQuestManager } from '../utils/DailyQuestManager';
 import { TutorialManager } from '../utils/TutorialManager';
 import { PlantFamilies, getPlantFamilyBySpecimenId } from '../data/PlantFamilies';
@@ -16,6 +16,7 @@ type SortType = 'default' | 'difficulty' | 'score' | 'stars' | 'name';
 export class LevelSelectScene extends Phaser.Scene {
   private currentChapterId: number | null = null;
   private selectedChapterId: number = 1;
+  private hiddenHintsHeight: number = 0;
 
   private difficultyFilter: DifficultyFilter = 'all';
   private familyFilter: string = 'all';
@@ -47,6 +48,7 @@ export class LevelSelectScene extends Phaser.Scene {
     }
     this.addChapterTabs();
     this.addTutorialCard();
+    this.addHiddenLevelHints();
     this.addFilterBar();
     this.addLevelGrid();
     this.addBottomButtons();
@@ -322,8 +324,73 @@ export class LevelSelectScene extends Phaser.Scene {
     });
   }
 
+  private addHiddenLevelHints(): void {
+    this.hiddenHintsHeight = 0;
+    if (!this.currentChapterId) return;
+
+    const chapter = getChapterById(this.currentChapterId);
+    if (!chapter || !chapter.hiddenLevels || chapter.hiddenLevels.length === 0) return;
+
+    const hintH = 80;
+    const startY = 395 + this.contentOffsetY;
+
+    chapter.hiddenLevels.forEach((hl, index) => {
+      const hintY = startY + index * hintH;
+      const isRevealed = SaveManager.isHiddenLevelRevealed(chapter.id, hl.levelRuleId);
+
+      const hintBg = this.add.graphics();
+      hintBg.fillStyle(isRevealed ? 0x4a148c : 0x1a0a3e, 0.9);
+      hintBg.fillRoundedRect(40, hintY, 670, 70, 12);
+
+      if (isRevealed) {
+        hintBg.lineStyle(2, 0xce93d8, 0.8);
+      } else {
+        hintBg.lineStyle(2, 0x7b1fa2, 0.5);
+      }
+      hintBg.strokeRoundedRect(40, hintY, 670, 70, 12);
+
+      this.add.text(60, hintY + 20, isRevealed ? '🔮 隐藏关卡已解锁！' : '🔒 隐藏关卡', {
+        font: 'bold 18px Arial',
+        color: isRevealed ? '#ce93d8' : '#7b1fa2'
+      }).setOrigin(0, 0.5);
+
+      if (isRevealed) {
+        const hlData = getHiddenLevelData(hl.levelRuleId);
+        this.add.text(60, hintY + 48, hlData?.revealedDescription ?? '隐藏关卡已出现', {
+          font: '14px Arial',
+          color: 'rgba(206,147,216,0.85)'
+        }).setOrigin(0, 0.5);
+
+        const goBtn = this.add.graphics();
+        goBtn.fillStyle(0x9c27b0, 1);
+        goBtn.fillRoundedRect(580, hintY + 15, 110, 40, 10);
+        goBtn.setInteractive(new Phaser.Geom.Rectangle(580, hintY + 15, 110, 40), Phaser.Geom.Rectangle.Contains);
+
+        this.add.text(635, hintY + 35, '挑战 →', {
+          font: 'bold 16px Arial',
+          color: '#ffffff'
+        }).setOrigin(0.5);
+
+        goBtn.on('pointerup', () => {
+          this.scene.start('GameScene', { levelId: hl.levelRuleId });
+        });
+      } else {
+        const triggerDescs = hl.triggers.map(t => t.description);
+        const hintText = triggerDescs.length > 0
+          ? `解锁条件: ${triggerDescs.join(' 且 ')}`
+          : '神秘条件尚未揭示...';
+        this.add.text(60, hintY + 48, hintText, {
+          font: '13px Arial',
+          color: 'rgba(123,31,162,0.7)'
+        }).setOrigin(0, 0.5);
+      }
+    });
+
+    this.hiddenHintsHeight = chapter.hiddenLevels.length * hintH;
+  }
+
   private addFilterBar(): void {
-    const barY = 350 + this.contentOffsetY;
+    const barY = 350 + this.contentOffsetY + this.hiddenHintsHeight;
     const barHeight = 160;
 
     const barBg = this.add.graphics();
@@ -537,6 +604,16 @@ export class LevelSelectScene extends Phaser.Scene {
 
     if (chapter) {
       levels = Levels.filter(level => chapter.levelIds.includes(level.id));
+
+      const hiddenLevels = getHiddenLevelsForChapter(chapter.id);
+      for (const hl of hiddenLevels) {
+        if (SaveManager.isHiddenLevelRevealed(chapter.id, hl.levelRuleId)) {
+          const hiddenLevel = Levels.find(l => l.id === hl.levelRuleId);
+          if (hiddenLevel && !levels.find(l => l.id === hl.levelRuleId)) {
+            levels.push(hiddenLevel);
+          }
+        }
+      }
     } else {
       levels = [...Levels];
     }
@@ -611,7 +688,7 @@ export class LevelSelectScene extends Phaser.Scene {
     if (!this.levelGridContainer) return;
 
     const levelsToShow = this.getFilteredLevels();
-    const startY = 540 + this.contentOffsetY;
+    const startY = 540 + this.contentOffsetY + this.hiddenHintsHeight;
     const cardWidth = 320;
     const cardHeight = 320;
     const padding = 30;
@@ -650,15 +727,32 @@ export class LevelSelectScene extends Phaser.Scene {
     const isFirstCompletion = progress?.completed ?? false;
     const levelEntries = RepairLogManager.getEntriesByLevel(level.id);
     const firstCompletionEntry = levelEntries.find(e => e.keyOperations.includes('first_completion'));
+    const hidden = isHiddenLevel(level.id);
 
     const card = this.add.graphics();
-    card.fillStyle(unlocked ? 0x0f3460 : 0x333344, 1);
-    card.lineStyle(3, unlocked ? 0xe94560 : 0x555566, 1);
+    const cardBgColor = hidden ? (unlocked ? 0x1a0a3e : 0x2a1a4e) : (unlocked ? 0x0f3460 : 0x333344);
+    const cardBorderColor = hidden ? (unlocked ? 0x9c27b0 : 0x553388) : (unlocked ? 0xe94560 : 0x555566);
+    card.fillStyle(cardBgColor, 1);
+    card.lineStyle(3, cardBorderColor, 1);
     card.strokeRoundedRect(x - width / 2, y - height / 2, width, height, 15);
     card.fillRoundedRect(x - width / 2, y - height / 2, width, height, 15);
 
     if (this.levelGridContainer) {
       this.levelGridContainer.add(card);
+    }
+
+    if (hidden) {
+      const hiddenBadge = this.add.graphics();
+      hiddenBadge.fillStyle(0x9c27b0, 0.95);
+      hiddenBadge.fillRoundedRect(x - width / 2 + 10, y - height / 2 + 10, 60, 22, 6);
+      const hiddenLabel = this.add.text(x - width / 2 + 40, y - height / 2 + 21, '🔮 隐藏', {
+        font: 'bold 11px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+      if (this.levelGridContainer) {
+        this.levelGridContainer.add(hiddenBadge);
+        this.levelGridContainer.add(hiddenLabel);
+      }
     }
 
     const previewKey = `specimen-${level.specimen.id}-preview`;
@@ -672,7 +766,7 @@ export class LevelSelectScene extends Phaser.Scene {
     }
 
     const nameText = this.add.text(x, y - 40, level.name, {
-      font: 'bold 20px Arial',
+      font: hidden ? 'bold 18px Arial' : 'bold 20px Arial',
       color: unlocked ? '#ffffff' : '#888888'
     }).setOrigin(0.5);
     if (this.levelGridContainer) this.levelGridContainer.add(nameText);

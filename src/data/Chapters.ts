@@ -1,4 +1,4 @@
-import { ChapterData, Reward } from '../types/GameTypes';
+import { ChapterData, Reward, ChapterUnlockCondition, HiddenLevelData } from '../types/GameTypes';
 import { LevelRules } from './LevelRules';
 
 const chapterRewards: Record<number, Reward[]> = {
@@ -60,7 +60,25 @@ export const Chapters: ChapterData[] = [
     levelIds: [1, 2],
     requiredStars: 0,
     rewards: chapterRewards[1],
-    unlocked: true
+    unlocked: true,
+    unlockCondition: {
+      requiredStars: 0,
+      prevChapterCompleted: false
+    },
+    hiddenLevels: [
+      {
+        levelRuleId: 7,
+        triggers: [
+          {
+            type: 'chapter_perfect',
+            description: '本章所有关卡获得满星',
+            chapterId: 1,
+            requiredStars: 6
+          }
+        ],
+        revealedDescription: '传说在银杏古道的尽头，隐藏着一片被遗忘的银杏秘境……'
+      }
+    ]
   },
   {
     id: 2,
@@ -72,7 +90,32 @@ export const Chapters: ChapterData[] = [
     levelIds: [3, 4],
     requiredStars: 4,
     rewards: chapterRewards[2],
-    unlocked: false
+    unlocked: false,
+    unlockCondition: {
+      requiredStars: 4,
+      prevChapterStarThreshold: 4,
+      prevChapterCompleted: true,
+      requiredGalleryIds: [1, 2]
+    },
+    hiddenLevels: [
+      {
+        levelRuleId: 8,
+        triggers: [
+          {
+            type: 'gallery_collect',
+            description: '收集图鉴中的薰衣草标本',
+            requiredGalleryIds: [4]
+          },
+          {
+            type: 'star_threshold',
+            description: '本章累计获得5颗星星',
+            chapterId: 2,
+            requiredStars: 5
+          }
+        ],
+        revealedDescription: '在薰衣草花海的深处，流传着一段关于花语的古老传说……'
+      }
+    ]
   },
   {
     id: 3,
@@ -84,7 +127,38 @@ export const Chapters: ChapterData[] = [
     levelIds: [5, 6],
     requiredStars: 8,
     rewards: chapterRewards[3],
-    unlocked: false
+    unlocked: false,
+    unlockCondition: {
+      requiredStars: 8,
+      prevChapterStarThreshold: 5,
+      prevChapterCompleted: true,
+      requiredGalleryIds: [3, 4]
+    },
+    hiddenLevels: [
+      {
+        levelRuleId: 9,
+        triggers: [
+          {
+            type: 'gallery_collect',
+            description: '收集图鉴中的兰花标本',
+            requiredGalleryIds: [5]
+          },
+          {
+            type: 'star_threshold',
+            description: '本章累计获得5颗星星',
+            chapterId: 3,
+            requiredStars: 5
+          },
+          {
+            type: 'chapter_perfect',
+            description: '前两章全部通关',
+            chapterId: 1,
+            requiredStars: 1
+          }
+        ],
+        revealedDescription: '兰幽深处，隐藏着最珍贵的兰花标本，只有真正的植物学家才能到达……'
+      }
+    ]
   }
 ];
 
@@ -112,6 +186,33 @@ export function getChapterTotalStars(chapterId: number): number {
   const chapter = getChapterById(chapterId);
   if (!chapter) return 0;
   return chapter.levelIds.length * 3;
+}
+
+export function getHiddenLevelsForChapter(chapterId: number): HiddenLevelData[] {
+  const chapter = getChapterById(chapterId);
+  return chapter?.hiddenLevels ?? [];
+}
+
+export function getChapterUnlockCondition(chapterId: number): ChapterUnlockCondition | undefined {
+  const chapter = getChapterById(chapterId);
+  return chapter?.unlockCondition;
+}
+
+export function isHiddenLevel(levelId: number): boolean {
+  return Chapters.some(ch => ch.hiddenLevels?.some(hl => hl.levelRuleId === levelId));
+}
+
+export function getHiddenLevelChapterId(levelId: number): number | null {
+  const chapter = Chapters.find(ch => ch.hiddenLevels?.some(hl => hl.levelRuleId === levelId));
+  return chapter?.id ?? null;
+}
+
+export function getHiddenLevelData(levelId: number): HiddenLevelData | undefined {
+  for (const chapter of Chapters) {
+    const found = chapter.hiddenLevels?.find(hl => hl.levelRuleId === levelId);
+    if (found) return found;
+  }
+  return undefined;
 }
 
 export function getNextChapter(currentChapterId: number): ChapterData | undefined {

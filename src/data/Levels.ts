@@ -1,7 +1,7 @@
 import { LevelData, GalleryItem } from '../types/GameTypes';
 import { LevelRules, getLevelRule } from './LevelRules';
 import { PlantSpecimens, getPlantSpecimen } from './PlantSpecimens';
-import { getChapterByLevelId } from './Chapters';
+import { getChapterByLevelId, isHiddenLevel, getHiddenLevelChapterId } from './Chapters';
 import { EventLevelRules, getEventLevelRule } from './EventLevelRules';
 import { Events } from './Events';
 
@@ -30,6 +30,8 @@ export const AllLevels: LevelData[] = [...Levels, ...EventLevels];
 export const GalleryItems: GalleryItem[] = LevelRules.map(rule => {
   const specimen = getPlantSpecimen(rule.specimenId)!;
   const chapter = getChapterByLevelId(rule.id);
+  const hidden = isHiddenLevel(rule.id);
+  const hiddenChapterId = getHiddenLevelChapterId(rule.id);
   return {
     id: rule.id,
     name: specimen.name, 
@@ -37,7 +39,8 @@ export const GalleryItems: GalleryItem[] = LevelRules.map(rule => {
     description: specimen.description,
     specimenId: specimen.id,
     unlocked: false,
-    chapterId: chapter?.id ?? 1
+    chapterId: hidden ? (hiddenChapterId ?? 1) : (chapter?.id ?? 1),
+    isHiddenLevel: hidden
   };
 });
 

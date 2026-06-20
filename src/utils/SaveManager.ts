@@ -32,12 +32,15 @@ import {
   ReplayData,
   ReplaySaveData,
   SaveMetadata,
-  SaveMigrationLogEntry
+  SaveMigrationLogEntry,
+  HiddenLevelProgress,
+  HiddenLevelTrigger
 } from '../types/GameTypes';
 import { TutorialManager } from './TutorialManager';
 import { ConservationManager } from './ConservationManager';
 import { Levels, EventGalleryItems } from '../data/Levels';
-import { Chapters, getChapterById, getChapterByLevelId, getNextChapter, getRewardsByChapterId } from '../data/Chapters';
+import { Chapters, getChapterById, getChapterByLevelId, getNextChapter, getRewardsByChapterId, getHiddenLevelsForChapter, getChapterUnlockCondition, isHiddenLevel, getHiddenLevelChapterId, getHiddenLevelData } from '../data/Chapters';
+import { getPlantSpecimen } from '../data/PlantSpecimens';
 import { BranchRoutes, BranchRoutesList, getMapNode, getNextNodes, getPrevNodes, getRouteEnding, getRouteByNodeId, getRouteLevelIds } from '../data/BranchRoutes';
 import { WorkshopRecipes, getRecipeBySpecimenId } from '../data/WorkshopConfig';
 import { Events, getActiveEvent, getEventById } from '../data/Events';
@@ -205,6 +208,7 @@ export class SaveManager {
     this.recalculateTotalScore();
     this.updateChapterProgress();
     this.syncChapterUnlocks();
+    this.syncHiddenLevelProgress();
     this.syncFamilyProgress();
     this.syncRouteUnlocks();
     DailyQuestManager.init(this.data.dailyQuest);
@@ -718,12 +722,22 @@ export class SaveManager {
 
     const chapterProgress: Record<number, ChapterProgress> = {};
     Chapters.forEach((chapter, index) => {
+      const hiddenLevelProgress: Record<number, HiddenLevelProgress> = {};
+      chapter.hiddenLevels?.forEach(hl => {
+        hiddenLevelProgress[hl.levelRuleId] = {
+          levelId: hl.levelRuleId,
+          revealed: false,
+          unlocked: false
+        };
+      });
+
       chapterProgress[chapter.id] = {
         chapterId: chapter.id,
         unlocked: index === 0,
         completed: false,
         totalStars: 0,
-        rewardsClaimed: false
+        rewardsClaimed: false,
+        hiddenLevelProgress
       };
     });
 
@@ -1193,7 +1207,7 @@ export class SaveManager {
     }
 
     const nextLevelId = levelId + 1;
-    if (this.data.progress[nextLevelId]) {
+    if (this.data.progress[nextLevelId] && !isHiddenLevel(nextLevelId)) {
       this.data.progress[nextLevelId].unlocked = true;
       if (!this.data.unlockedLevels.includes(nextLevelId)) {
         this.data.unlockedLevels.push(nextLevelId);
@@ -1205,6 +1219,11 @@ export class SaveManager {
 
     const completionResult = this.checkChapterCompletion(levelId);
     const unlockResult = this.syncChapterUnlocks();
+
+    const levelChapter = getChapterByLevelId(levelId);
+    if (levelChapter) {
+      this.checkAndRevealHiddenLevels(levelChapter.id);
+    }
 
     const updatedQuests = DailyQuestManager.onLevelComplete(levelId, score, time, stars);
 
@@ -1385,6 +1404,61 @@ export class SaveManager {
     });
   }
 
+  private static syncHiddenLevelProgress(): void {
+    Chapters.forEach(chapter => {
+      if (!chapter.hiddenLevels || chapter.hiddenLevels.length === 0) return;
+
+      const chapterProgress = this.data.chapterProgress[chapter.id];
+      if (!chapterProgress) return;
+
+      if (!chapterProgress.hiddenLevelProgress) {
+        chapterProgress.hiddenLevelProgress = {};
+      }
+
+      chapter.hiddenLevels.forEach(hl => {
+        if (!chapterProgress.hiddenLevelProgress![hl.levelRuleId]) {
+          chapterProgress.hiddenLevelProgress![hl.levelRuleId] = {
+            levelId: hl.levelRuleId,
+            revealed: false,
+            unlocked: false
+          };
+        }
+      });
+
+      for (const hiddenLevel of chapter.hiddenLevels) {
+        const hlProgress = chapterProgress.hiddenLevelProgress[hiddenLevel.levelRuleId];
+        if (!hlProgress) continue;
+
+        if (!hlProgress.revealed) {
+          const allTriggersMet = hiddenLevel.triggers.every(t => this.checkHiddenLevelTrigger(t));
+          if (allTriggersMet) {
+            hlProgress.revealed = true;
+            hlProgress.revealedAt = hlProgress.revealedAt || Date.now();
+            hlProgress.unlocked = true;
+            hlProgress.unlockedAt = hlProgress.unlockedAt || Date.now();
+
+            if (!this.data.progress[hiddenLevel.levelRuleId]) {
+              this.data.progress[hiddenLevel.levelRuleId] = {
+                levelId: hiddenLevel.levelRuleId,
+                unlocked: true,
+                bestScore: 0,
+                bestTime: 0,
+                stars: 0,
+                completed: false
+              };
+            } else {
+              this.data.progress[hiddenLevel.levelRuleId].unlocked = true;
+            }
+
+            if (!this.data.unlockedLevels.includes(hiddenLevel.levelRuleId)) {
+              this.data.unlockedLevels.push(hiddenLevel.levelRuleId);
+            }
+          }
+        }
+      }
+    });
+  }
+
   private static checkChapterCompletion(levelId: number): { chapterCompleted: boolean; completedChapterId: number | null } {
     const chapter = getChapterByLevelId(levelId);
     if (!chapter) return { chapterCompleted: false, completedChapterId: null };
@@ -1416,10 +1490,31 @@ export class SaveManager {
       if (!chapterProgress) continue;
       if (chapterProgress.unlocked) continue;
 
-      const prevChapter = Chapters.find(c => c.id === chapter.id - 1);
-      const prevCompleted = prevChapter ? this.data.chapterProgress[prevChapter.id]?.completed ?? false : true;
+      const condition = chapter.unlockCondition;
+      let canUnlock = totalStars >= chapter.requiredStars;
 
-      if (prevCompleted && totalStars >= chapter.requiredStars) {
+      if (condition) {
+        if (condition.prevChapterCompleted) {
+          const prevChapter = Chapters.find(c => c.id === chapter.id - 1);
+          const prevCompleted = prevChapter ? this.data.chapterProgress[prevChapter.id]?.completed ?? false : true;
+          canUnlock = canUnlock && prevCompleted;
+        }
+
+        if (condition.prevChapterStarThreshold !== undefined) {
+          const prevChapter = Chapters.find(c => c.id === chapter.id - 1);
+          if (prevChapter) {
+            const prevStars = this.getChapterStars(prevChapter.id);
+            canUnlock = canUnlock && prevStars >= condition.prevChapterStarThreshold;
+          }
+        }
+
+        if (condition.requiredGalleryIds && condition.requiredGalleryIds.length > 0) {
+          const unlockedGallery = this.getUnlockedGalleryItems();
+          canUnlock = canUnlock && condition.requiredGalleryIds.every(id => unlockedGallery.includes(id));
+        }
+      }
+
+      if (canUnlock) {
         chapterProgress.unlocked = true;
         if (!this.data.unlockedChapters.includes(chapter.id)) {
           this.data.unlockedChapters.push(chapter.id);
@@ -1467,6 +1562,176 @@ export class SaveManager {
   static canClaimRewards(chapterId: number): boolean {
     const chapterProgress = this.data.chapterProgress[chapterId];
     return chapterProgress?.completed === true && chapterProgress.rewardsClaimed === false;
+  }
+
+  static isHiddenLevelRevealed(chapterId: number, levelId: number): boolean {
+    return this.data.chapterProgress[chapterId]?.hiddenLevelProgress?.[levelId]?.revealed ?? false;
+  }
+
+  static isHiddenLevelUnlocked(chapterId: number, levelId: number): boolean {
+    return this.data.chapterProgress[chapterId]?.hiddenLevelProgress?.[levelId]?.unlocked ?? false;
+  }
+
+  static getHiddenLevelProgress(chapterId: number, levelId: number): HiddenLevelProgress | undefined {
+    return this.data.chapterProgress[chapterId]?.hiddenLevelProgress?.[levelId];
+  }
+
+  static checkHiddenLevelTrigger(trigger: HiddenLevelTrigger): boolean {
+    switch (trigger.type) {
+      case 'chapter_perfect': {
+        if (trigger.chapterId === undefined || trigger.requiredStars === undefined) return false;
+        const chapterStars = this.getChapterStars(trigger.chapterId);
+        return chapterStars >= trigger.requiredStars;
+      }
+      case 'gallery_collect': {
+        if (!trigger.requiredGalleryIds || trigger.requiredGalleryIds.length === 0) return false;
+        const unlockedGallery = this.getUnlockedGalleryItems();
+        return trigger.requiredGalleryIds.every(id => unlockedGallery.includes(id));
+      }
+      case 'star_threshold': {
+        if (trigger.chapterId === undefined || trigger.requiredStars === undefined) return false;
+        const chapterStars = this.getChapterStars(trigger.chapterId);
+        return chapterStars >= trigger.requiredStars;
+      }
+      case 'speed_clear': {
+        if (trigger.maxTimeSeconds === undefined) return false;
+        const progress = this.data.progress[trigger.chapterId ?? 0];
+        return progress?.completed === true && progress.bestTime > 0 && progress.bestTime <= trigger.maxTimeSeconds;
+      }
+      case 'combo_achieve': {
+        if (trigger.requiredCombo === undefined) return false;
+        return false;
+      }
+      default:
+        return false;
+    }
+  }
+
+  static checkAndRevealHiddenLevels(chapterId: number): number[] {
+    const chapter = getChapterById(chapterId);
+    if (!chapter || !chapter.hiddenLevels) return [];
+
+    const chapterProgress = this.data.chapterProgress[chapterId];
+    if (!chapterProgress) return [];
+
+    if (!chapterProgress.hiddenLevelProgress) {
+      chapterProgress.hiddenLevelProgress = {};
+      chapter.hiddenLevels.forEach(hl => {
+        chapterProgress.hiddenLevelProgress![hl.levelRuleId] = {
+          levelId: hl.levelRuleId,
+          revealed: false,
+          unlocked: false
+        };
+      });
+    }
+
+    const newlyRevealed: number[] = [];
+
+    for (const hiddenLevel of chapter.hiddenLevels) {
+      const hlProgress = chapterProgress.hiddenLevelProgress[hiddenLevel.levelRuleId];
+      if (!hlProgress || hlProgress.revealed) continue;
+
+      const allTriggersMet = hiddenLevel.triggers.every(t => this.checkHiddenLevelTrigger(t));
+
+      if (allTriggersMet) {
+        hlProgress.revealed = true;
+        hlProgress.revealedAt = Date.now();
+        hlProgress.unlocked = true;
+        hlProgress.unlockedAt = Date.now();
+        newlyRevealed.push(hiddenLevel.levelRuleId);
+
+        if (this.data.progress[hiddenLevel.levelRuleId]) {
+          this.data.progress[hiddenLevel.levelRuleId].unlocked = true;
+        } else {
+          this.data.progress[hiddenLevel.levelRuleId] = {
+            levelId: hiddenLevel.levelRuleId,
+            unlocked: true,
+            bestScore: 0,
+            bestTime: 0,
+            stars: 0,
+            completed: false
+          };
+        }
+
+        if (!this.data.unlockedLevels.includes(hiddenLevel.levelRuleId)) {
+          this.data.unlockedLevels.push(hiddenLevel.levelRuleId);
+        }
+      }
+    }
+
+    if (newlyRevealed.length > 0) {
+      this.save();
+    }
+
+    return newlyRevealed;
+  }
+
+  static getChapterUnlockStatus(chapterId: number): {
+    canUnlock: boolean;
+    missingConditions: string[];
+    progress: { condition: string; met: boolean; current: string }[];
+  } {
+    const chapter = getChapterById(chapterId);
+    if (!chapter) return { canUnlock: false, missingConditions: [], progress: [] };
+
+    const chapterProgress = this.data.chapterProgress[chapterId];
+    if (chapterProgress?.unlocked) return { canUnlock: true, missingConditions: [], progress: [] };
+
+    const condition = chapter.unlockCondition;
+    const totalStars = this.getTotalStars();
+    const missingConditions: string[] = [];
+    const progressList: { condition: string; met: boolean; current: string }[] = [];
+
+    const starsMet = totalStars >= chapter.requiredStars;
+    progressList.push({
+      condition: `累计星星 ≥ ${chapter.requiredStars}`,
+      met: starsMet,
+      current: `${totalStars}/${chapter.requiredStars}`
+    });
+    if (!starsMet) missingConditions.push(`需要 ${chapter.requiredStars} 颗星星`);
+
+    if (condition?.prevChapterCompleted) {
+      const prevChapter = Chapters.find(c => c.id === chapter.id - 1);
+      const prevCompleted = prevChapter ? this.data.chapterProgress[prevChapter.id]?.completed ?? false : true;
+      progressList.push({
+        condition: `完成前一章节`,
+        met: prevCompleted,
+        current: prevCompleted ? '已完成' : '未完成'
+      });
+      if (!prevCompleted) missingConditions.push('完成前一章节');
+    }
+
+    if (condition?.prevChapterStarThreshold !== undefined) {
+      const prevChapter = Chapters.find(c => c.id === chapter.id - 1);
+      if (prevChapter) {
+        const prevStars = this.getChapterStars(prevChapter.id);
+        const prevStarMet = prevStars >= condition.prevChapterStarThreshold;
+        progressList.push({
+          condition: `前章星星 ≥ ${condition.prevChapterStarThreshold}`,
+          met: prevStarMet,
+          current: `${prevStars}/${condition.prevChapterStarThreshold}`
+        });
+        if (!prevStarMet) missingConditions.push(`前章需 ${condition.prevChapterStarThreshold} 颗星星`);
+      }
+    }
+
+    if (condition?.requiredGalleryIds && condition.requiredGalleryIds.length > 0) {
+      const unlockedGallery = this.getUnlockedGalleryItems();
+      const galleryMet = condition.requiredGalleryIds.every(id => unlockedGallery.includes(id));
+      const galleryNames = condition.requiredGalleryIds.map(id => {
+        const specimen = getPlantSpecimen(id);
+        const has = unlockedGallery.includes(id);
+        return has ? specimen?.name : `${specimen?.name}(未收集)`;
+      });
+      progressList.push({
+        condition: `收集图鉴: ${condition.requiredGalleryIds.map(id => getPlantSpecimen(id)?.name ?? `#${id}`).join('、')}`,
+        met: galleryMet,
+        current: galleryNames.join('、')
+      });
+      if (!galleryMet) missingConditions.push('收集所需图鉴标本');
+    }
+
+    return { canUnlock: missingConditions.length === 0, missingConditions, progress: progressList };
   }
 
   static getChapterMapSaveData(): ChapterMapSaveData {
