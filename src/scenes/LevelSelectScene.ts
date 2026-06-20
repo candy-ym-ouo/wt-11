@@ -1,15 +1,29 @@
 import Phaser from 'phaser';
 import { Levels } from '../data/Levels';
 import { SaveManager } from '../utils/SaveManager';
-import { getDifficultyColor, getDifficultyText } from '../utils/GameUtils';
+import { getDifficultyColor, getDifficultyText, formatTime } from '../utils/GameUtils';
 import { LevelData } from '../types/GameTypes';
 import { Chapters, getChapterById, getChapterByLevelId } from '../data/Chapters';
 import { DailyQuestManager } from '../utils/DailyQuestManager';
 import { TutorialManager } from '../utils/TutorialManager';
+import { PlantFamilies, getPlantFamilyBySpecimenId } from '../data/PlantFamilies';
+import { RepairLogManager } from '../utils/RepairLogManager';
+
+type DifficultyFilter = 'all' | 'easy' | 'medium' | 'hard';
+type CompletionFilter = 'all' | 'completed' | 'incomplete';
+type SortType = 'default' | 'difficulty' | 'score' | 'stars' | 'name';
 
 export class LevelSelectScene extends Phaser.Scene {
   private currentChapterId: number | null = null;
   private selectedChapterId: number = 1;
+
+  private difficultyFilter: DifficultyFilter = 'all';
+  private familyFilter: string = 'all';
+  private completionFilter: CompletionFilter = 'all';
+  private sortType: SortType = 'default';
+
+  private filterContainer: Phaser.GameObjects.Container | null = null;
+  private levelGridContainer: Phaser.GameObjects.Container | null = null;
 
   constructor() {
     super('LevelSelectScene');
@@ -27,6 +41,7 @@ export class LevelSelectScene extends Phaser.Scene {
     this.addTitle();
     this.addChapterTabs();
     this.addTutorialCard();
+    this.addFilterBar();
     this.addLevelGrid();
     this.addBottomButtons();
   }
@@ -36,7 +51,7 @@ export class LevelSelectScene extends Phaser.Scene {
 
     const bg = this.add.graphics();
     bg.fillStyle(0x16213e, 1);
-    bg.fillRoundedRect(25, 100, 700, 1150, 20);
+    bg.fillRoundedRect(25, 100, 700, 1400, 20);
   }
 
   private addTitle(): void {
@@ -215,21 +230,309 @@ export class LevelSelectScene extends Phaser.Scene {
     });
   }
 
-  private addLevelGrid(): void {
+  private addFilterBar(): void {
+    const barY = 350;
+    const barHeight = 160;
+
+    const barBg = this.add.graphics();
+    barBg.fillStyle(0x0f3460, 0.8);
+    barBg.fillRoundedRect(40, barY, 670, barHeight, 12);
+
+    this.add.text(60, barY + 15, '🔍 筛选与排序', {
+      font: 'bold 18px Arial',
+      color: '#ffffff'
+    }).setOrigin(0, 0);
+
+    this.addDifficultyFilter(60, barY + 50);
+    this.addFamilyFilter(60, barY + 90);
+    this.addCompletionFilter(375, barY + 50);
+    this.addSortSelector(375, barY + 90);
+
+    const resetBtn = this.createFilterButton(
+      640,
+      barY + 20,
+      80,
+      30,
+      '重置',
+      0x78909c,
+      () => this.resetFilters()
+    );
+  }
+
+  private addDifficultyFilter(x: number, y: number): void {
+    this.add.text(x, y, '难度:', {
+      font: '14px Arial',
+      color: '#b0bec5'
+    }).setOrigin(0, 0.5);
+
+    const options: { value: DifficultyFilter; label: string; color: number }[] = [
+      { value: 'all', label: '全部', color: 0x546e7a },
+      { value: 'easy', label: '简单', color: 0x4caf50 },
+      { value: 'medium', label: '中等', color: 0xff9800 },
+      { value: 'hard', label: '困难', color: 0xf44336 }
+    ];
+
+    let currentX = x + 50;
+    options.forEach(opt => {
+      const isSelected = this.difficultyFilter === opt.value;
+      const btn = this.createFilterButton(
+        currentX + 30,
+        y,
+        55,
+        28,
+        opt.label,
+        isSelected ? opt.color : 0x37474f,
+        () => {
+          this.difficultyFilter = opt.value;
+          this.refreshLevelGrid();
+        }
+      );
+      if (isSelected) {
+        btn.lineStyle(2, 0xffffff, 1);
+        btn.strokeRoundedRect(currentX + 30 - 27.5, y - 14, 55, 28, 6);
+      }
+      currentX += 65;
+    });
+  }
+
+  private addFamilyFilter(x: number, y: number): void {
+    this.add.text(x, y, '科属:', {
+      font: '14px Arial',
+      color: '#b0bec5'
+    }).setOrigin(0, 0.5);
+
+    const families = PlantFamilies.filter(f => !f.isLimited);
+    const familyOptions = [
+      { value: 'all', label: '全部' },
+      ...families.map(f => ({ value: f.id, label: f.genusName }))
+    ];
+
+    let currentX = x + 50;
+    familyOptions.forEach((opt, index) => {
+      if (index > 4) return;
+      const isSelected = this.familyFilter === opt.value;
+      const btn = this.createFilterButton(
+        currentX + 35,
+        y,
+        65,
+        28,
+        opt.label,
+        isSelected ? 0x9c27b0 : 0x37474f,
+        () => {
+          this.familyFilter = opt.value;
+          this.refreshLevelGrid();
+        }
+      );
+      if (isSelected) {
+        btn.lineStyle(2, 0xffffff, 1);
+        btn.strokeRoundedRect(currentX + 35 - 32.5, y - 14, 65, 28, 6);
+      }
+      currentX += 75;
+    });
+  }
+
+  private addCompletionFilter(x: number, y: number): void {
+    this.add.text(x, y, '状态:', {
+      font: '14px Arial',
+      color: '#b0bec5'
+    }).setOrigin(0, 0.5);
+
+    const options: { value: CompletionFilter; label: string; color: number }[] = [
+      { value: 'all', label: '全部', color: 0x546e7a },
+      { value: 'completed', label: '已完成', color: 0x4caf50 },
+      { value: 'incomplete', label: '未完成', color: 0xff9800 }
+    ];
+
+    let currentX = x + 50;
+    options.forEach(opt => {
+      const isSelected = this.completionFilter === opt.value;
+      const btn = this.createFilterButton(
+        currentX + 35,
+        y,
+        65,
+        28,
+        opt.label,
+        isSelected ? opt.color : 0x37474f,
+        () => {
+          this.completionFilter = opt.value;
+          this.refreshLevelGrid();
+        }
+      );
+      if (isSelected) {
+        btn.lineStyle(2, 0xffffff, 1);
+        btn.strokeRoundedRect(currentX + 35 - 32.5, y - 14, 65, 28, 6);
+      }
+      currentX += 75;
+    });
+  }
+
+  private addSortSelector(x: number, y: number): void {
+    this.add.text(x, y, '排序:', {
+      font: '14px Arial',
+      color: '#b0bec5'
+    }).setOrigin(0, 0.5);
+
+    const options: { value: SortType; label: string }[] = [
+      { value: 'default', label: '默认' },
+      { value: 'difficulty', label: '难度' },
+      { value: 'score', label: '分数' },
+      { value: 'stars', label: '星级' },
+      { value: 'name', label: '名称' }
+    ];
+
+    let currentX = x + 50;
+    options.forEach(opt => {
+      const isSelected = this.sortType === opt.value;
+      const btn = this.createFilterButton(
+        currentX + 30,
+        y,
+        55,
+        28,
+        opt.label,
+        isSelected ? 0x00bcd4 : 0x37474f,
+        () => {
+          this.sortType = opt.value;
+          this.refreshLevelGrid();
+        }
+      );
+      if (isSelected) {
+        btn.lineStyle(2, 0xffffff, 1);
+        btn.strokeRoundedRect(currentX + 30 - 27.5, y - 14, 55, 28, 6);
+      }
+      currentX += 65;
+    });
+  }
+
+  private createFilterButton(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    label: string,
+    color: number,
+    onClick: () => void
+  ): Phaser.GameObjects.Graphics {
+    const btn = this.add.graphics();
+    btn.fillStyle(color, 1);
+    btn.fillRoundedRect(x - width / 2, y - height / 2, width, height, 6);
+
+    btn.setInteractive(
+      new Phaser.Geom.Rectangle(x - width / 2, y - height / 2, width, height),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    this.add.text(x, y, label, {
+      font: '13px Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+
+    btn.on('pointerup', onClick);
+
+    return btn;
+  }
+
+  private resetFilters(): void {
+    this.difficultyFilter = 'all';
+    this.familyFilter = 'all';
+    this.completionFilter = 'all';
+    this.sortType = 'default';
+    this.refreshLevelGrid();
+  }
+
+  private getFilteredLevels(): LevelData[] {
     const chapter = this.currentChapterId ? getChapterById(this.currentChapterId) : null;
-    let levelsToShow: LevelData[];
+    let levels: LevelData[];
 
     if (chapter) {
-      levelsToShow = Levels.filter(level => chapter.levelIds.includes(level.id));
+      levels = Levels.filter(level => chapter.levelIds.includes(level.id));
     } else {
-      levelsToShow = Levels;
+      levels = [...Levels];
     }
 
-    const startY = chapter ? 400 : 400;
+    if (this.difficultyFilter !== 'all') {
+      levels = levels.filter(l => l.rule.difficulty === this.difficultyFilter);
+    }
+
+    if (this.familyFilter !== 'all') {
+      const family = PlantFamilies.find(f => f.id === this.familyFilter);
+      if (family) {
+        levels = levels.filter(l => family.specimenIds.includes(l.specimen.id));
+      }
+    }
+
+    if (this.completionFilter === 'completed') {
+      levels = levels.filter(l => SaveManager.getProgress(l.id)?.completed === true);
+    } else if (this.completionFilter === 'incomplete') {
+      levels = levels.filter(l => !SaveManager.getProgress(l.id)?.completed);
+    }
+
+    levels = this.sortLevels(levels);
+
+    return levels;
+  }
+
+  private sortLevels(levels: LevelData[]): LevelData[] {
+    const sorted = [...levels];
+
+    switch (this.sortType) {
+      case 'difficulty':
+        const diffOrder: Record<string, number> = { easy: 0, medium: 1, hard: 2 };
+        sorted.sort((a, b) => diffOrder[a.rule.difficulty] - diffOrder[b.rule.difficulty]);
+        break;
+      case 'score':
+        sorted.sort((a, b) => {
+          const scoreA = SaveManager.getProgress(a.id)?.bestScore ?? 0;
+          const scoreB = SaveManager.getProgress(b.id)?.bestScore ?? 0;
+          return scoreB - scoreA;
+        });
+        break;
+      case 'stars':
+        sorted.sort((a, b) => {
+          const starsA = SaveManager.getProgress(a.id)?.stars ?? 0;
+          const starsB = SaveManager.getProgress(b.id)?.stars ?? 0;
+          return starsB - starsA;
+        });
+        break;
+      case 'name':
+        sorted.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+        break;
+      default:
+        break;
+    }
+
+    return sorted;
+  }
+
+  private addLevelGrid(): void {
+    this.levelGridContainer = this.add.container(0, 0);
+    this.renderLevelGrid();
+  }
+
+  private refreshLevelGrid(): void {
+    if (this.levelGridContainer) {
+      this.levelGridContainer.removeAll(true);
+      this.renderLevelGrid();
+    }
+  }
+
+  private renderLevelGrid(): void {
+    if (!this.levelGridContainer) return;
+
+    const levelsToShow = this.getFilteredLevels();
+    const startY = 540;
     const cardWidth = 320;
-    const cardHeight = 240;
+    const cardHeight = 320;
     const padding = 30;
     const cols = 2;
+
+    if (levelsToShow.length === 0) {
+      const emptyText = this.add.text(375, startY + 50, '没有符合条件的关卡', {
+        font: '20px Arial',
+        color: '#90a4ae'
+      }).setOrigin(0.5);
+      this.levelGridContainer.add(emptyText);
+      return;
+    }
 
     levelsToShow.forEach((level, index) => {
       const col = index % cols;
@@ -251,6 +554,10 @@ export class LevelSelectScene extends Phaser.Scene {
     const progress = SaveManager.getProgress(level.id);
     const unlocked = progress?.unlocked ?? false;
     const chapter = getChapterByLevelId(level.id);
+    const family = getPlantFamilyBySpecimenId(level.specimen.id);
+    const isFirstCompletion = progress?.completed ?? false;
+    const levelEntries = RepairLogManager.getEntriesByLevel(level.id);
+    const firstCompletionEntry = levelEntries.find(e => e.keyOperations.includes('first_completion'));
 
     const card = this.add.graphics();
     card.fillStyle(unlocked ? 0x0f3460 : 0x333344, 1);
@@ -258,32 +565,99 @@ export class LevelSelectScene extends Phaser.Scene {
     card.strokeRoundedRect(x - width / 2, y - height / 2, width, height, 15);
     card.fillRoundedRect(x - width / 2, y - height / 2, width, height, 15);
 
-    const previewKey = `specimen-${level.specimen.id}-preview`;
-    if (unlocked) {
-      const previewImg = this.add.image(x, y - 65, previewKey);
-      previewImg.setDisplaySize(120, 120);
-    } else {
-      this.add.image(x, y - 65, 'lock').setScale(1.0);
+    if (this.levelGridContainer) {
+      this.levelGridContainer.add(card);
     }
 
-    this.add.text(x, y + 10, level.name, {
-      font: 'bold 22px Arial',
+    const previewKey = `specimen-${level.specimen.id}-preview`;
+    if (unlocked) {
+      const previewImg = this.add.image(x, y - 105, previewKey);
+      previewImg.setDisplaySize(100, 100);
+      if (this.levelGridContainer) this.levelGridContainer.add(previewImg);
+    } else {
+      const lockImg = this.add.image(x, y - 105, 'lock').setScale(0.8);
+      if (this.levelGridContainer) this.levelGridContainer.add(lockImg);
+    }
+
+    const nameText = this.add.text(x, y - 40, level.name, {
+      font: 'bold 20px Arial',
       color: unlocked ? '#ffffff' : '#888888'
     }).setOrigin(0.5);
+    if (this.levelGridContainer) this.levelGridContainer.add(nameText);
 
-    this.add.text(x, y + 40, level.specimen.name, {
-      font: '18px Arial',
-      color: unlocked ? '#eaeaea' : '#777777'
+    const specimenText = this.add.text(x, y - 18, level.specimen.name, {
+      font: '15px Arial',
+      color: unlocked ? '#b0bec5' : '#777777'
     }).setOrigin(0.5);
+    if (this.levelGridContainer) this.levelGridContainer.add(specimenText);
 
     const diffColor = getDifficultyColor(level.rule.difficulty);
-    this.add.text(x, y + 68, getDifficultyText(level.rule.difficulty), {
-      font: '15px Arial',
+    const diffText = this.add.text(x, y + 5, getDifficultyText(level.rule.difficulty), {
+      font: '14px Arial',
       color: '#' + diffColor.toString(16).padStart(6, '0')
     }).setOrigin(0.5);
+    if (this.levelGridContainer) this.levelGridContainer.add(diffText);
 
     if (unlocked && progress) {
-      this.drawStars(x, y + 98, progress.stars);
+      this.drawStars(x, y + 30, progress.stars);
+    }
+
+    if (unlocked && progress?.completed) {
+      const bestScoreY = y + 55;
+      const scoreLabel = this.add.text(x - 70, bestScoreY, '🏆 最佳', {
+        font: '12px Arial',
+        color: '#ffd700'
+      }).setOrigin(0, 0.5);
+      const scoreValue = this.add.text(x - 10, bestScoreY, `${progress.bestScore}`, {
+        font: 'bold 13px Arial',
+        color: '#ffffff'
+      }).setOrigin(0, 0.5);
+
+      const timeLabel = this.add.text(x + 30, bestScoreY, '⚡', {
+        font: '12px Arial',
+        color: '#4fc3f7'
+      }).setOrigin(0, 0.5);
+      const timeValue = this.add.text(x + 50, bestScoreY, formatTime(progress.bestTime), {
+        font: 'bold 13px Arial',
+        color: '#ffffff'
+      }).setOrigin(0, 0.5);
+
+      if (this.levelGridContainer) {
+        this.levelGridContainer.add([scoreLabel, scoreValue, timeLabel, timeValue]);
+      }
+    }
+
+    if (firstCompletionEntry) {
+      const firstText = this.add.text(x, y + 78, '🎯 首次通关', {
+        font: '12px Arial',
+        color: '#81c784'
+      }).setOrigin(0.5);
+      if (this.levelGridContainer) this.levelGridContainer.add(firstText);
+    } else if (progress?.completed) {
+      const completedText = this.add.text(x, y + 78, '✓ 已完成', {
+        font: '12px Arial',
+        color: '#81c784'
+      }).setOrigin(0.5);
+      if (this.levelGridContainer) this.levelGridContainer.add(completedText);
+    }
+
+    if (family && unlocked) {
+      const rewardPreviewY = y + 105;
+      const rewardLabel = this.add.text(x - 70, rewardPreviewY, '🎁 奖励', {
+        font: '12px Arial',
+        color: '#ce93d8'
+      }).setOrigin(0, 0.5);
+
+      const rewards = family.rewards.slice(0, 2);
+      rewards.forEach((reward, idx) => {
+        const rewardIcon = this.add.text(x - 10 + idx * 50, rewardPreviewY, reward.icon, {
+          font: '16px Arial',
+          color: '#ffffff'
+        }).setOrigin(0, 0.5);
+        if (this.levelGridContainer) this.levelGridContainer.add(rewardIcon);
+      });
+
+      if (this.levelGridContainer) this.levelGridContainer.add(rewardLabel);
     }
 
     if (chapter && !this.currentChapterId) {
@@ -291,10 +665,31 @@ export class LevelSelectScene extends Phaser.Scene {
       chapterBadge.fillStyle(chapter.primaryColor, 0.9);
       chapterBadge.fillRoundedRect(x - width / 2 + 10, y - height / 2 + 10, 70, 24, 6);
 
-      this.add.text(x - width / 2 + 45, y - height / 2 + 22, chapter.theme, {
+      const chapterLabel = this.add.text(x - width / 2 + 45, y - height / 2 + 22, chapter.theme, {
         font: 'bold 11px Arial',
         color: '#ffffff'
       }).setOrigin(0.5);
+
+      if (this.levelGridContainer) {
+        this.levelGridContainer.add(chapterBadge);
+        this.levelGridContainer.add(chapterLabel);
+      }
+    }
+
+    if (isFirstCompletion && firstCompletionEntry) {
+      const firstBadge = this.add.graphics();
+      firstBadge.fillStyle(0xff9800, 0.95);
+      firstBadge.fillRoundedRect(x + width / 2 - 65, y - height / 2 + 10, 55, 22, 6);
+
+      const firstLabel = this.add.text(x + width / 2 - 37, y - height / 2 + 21, '首次', {
+        font: 'bold 11px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+
+      if (this.levelGridContainer) {
+        this.levelGridContainer.add(firstBadge);
+        this.levelGridContainer.add(firstLabel);
+      }
     }
 
     if (unlocked) {
@@ -318,19 +713,20 @@ export class LevelSelectScene extends Phaser.Scene {
   }
 
   private drawStars(x: number, y: number, stars: number): void {
-    const starSize = 22;
-    const spacing = 6;
+    const starSize = 20;
+    const spacing = 5;
     const startX = x - starSize - spacing;
 
     for (let i = 0; i < 3; i++) {
       const starX = startX + i * (starSize + spacing);
       const texture = i < stars ? 'star-filled' : 'star-empty';
-      this.add.image(starX, y, texture).setDisplaySize(starSize, starSize);
+      const starImg = this.add.image(starX, y, texture).setDisplaySize(starSize, starSize);
+      if (this.levelGridContainer) this.levelGridContainer.add(starImg);
     }
   }
 
   private addBottomButtons(): void {
-    const btnY = 1250;
+    const btnY = 1470;
     const btnW = 220;
     const btnH = 65;
     const spacing = 15;
