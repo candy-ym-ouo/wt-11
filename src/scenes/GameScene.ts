@@ -15,6 +15,9 @@ import { getGameTutorial } from '../data/TutorialConfig';
 import { AchievementNotification } from '../utils/AchievementNotification';
 import { ConservationManager } from '../utils/ConservationManager';
 import { RepairLogManager } from '../utils/RepairLogManager';
+import { RandomEventManager } from '../utils/RandomEventManager';
+import { RandomEventData, ActiveRandomEvent, RandomEventSessionStats } from '../types/GameTypes';
+import { getRandomEventById, getRarityColor } from '../data/RandomEvents';
 
 export class GameScene extends Phaser.Scene {
   private levelRule!: LevelRule;
@@ -68,6 +71,13 @@ export class GameScene extends Phaser.Scene {
   private levelTutorialSteps: TutorialStep[] = [];
   private currentLevelTutorialIndex: number = 0;
   private isShowingLevelTutorial: boolean = false;
+
+  private randomEventsEnabled: boolean = true;
+  private randomEventContainer!: Phaser.GameObjects.Container;
+  private activeEventIcons: Phaser.GameObjects.Container[] = [];
+  private randomEventStats!: RandomEventSessionStats;
+  private lastUpdateTime: number = 0;
+  private eventNotificationTimer: Phaser.Time.TimerEvent | null = null;
 
   private static readonly TARGET_AREA_X = 375;
   private static readonly TARGET_AREA_Y = 420;
@@ -148,6 +158,10 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     this.specimen = specimen;
+
+    if (this.randomEventsEnabled && !this.isTowerFloor && !this.isEventLevel) {
+      RandomEventManager.startSession(this.levelRule.difficulty);
+    }
   }
 
   create(): void {
@@ -159,6 +173,7 @@ export class GameScene extends Phaser.Scene {
     this.createPuzzlePieces();
     this.addControlButtons();
     this.setupEvents();
+    this.setupRandomEventUI();
 
     if (!this.isEventLevel && !this.isTowerFloor && TutorialManager.shouldShowLevelTutorial(this.levelRule.id)) {
       const tutorialSteps = getGameTutorial(this.levelRule.id);
@@ -173,6 +188,23 @@ export class GameScene extends Phaser.Scene {
     } else {
       this.startTimer();
     }
+
+    this.lastUpdateTime = this.time.now;
+  }
+
+  update(time: number, delta: number): void {
+    if (this.isPaused || this.isCompleted || !this.randomEventsEnabled || this.isTowerFloor || this.isEventLevel) {
+      return;
+    }
+
+    const deltaSeconds = delta / 1000;
+    const triggeredEvent = RandomEventManager.update(this.elapsedTime, deltaSeconds, this.snappedCount);
+
+    if (triggeredEvent) {
+      this.handleRandomEventTriggered(triggeredEvent);
+    }
+
+    this.updateActiveEventUI();
   }
 
   private addBackground(): void {
@@ -785,6 +817,11 @@ export class GameScene extends Phaser.Scene {
   private toggleHint(): void {
     if (this.hasTowerRule('no_hint_restriction')) return;
 
+    if (this.randomEventsEnabled && !this.isTowerFloor && !this.isEventLevel && RandomEventManager.isHintDisabled()) {
+      this.cameras.main.flash(100, 255, 100, 100, false);
+      return;
+    }
+
     this.showHint = !this.showHint;
     if (this.showHint && this.isTowerFloor) {
       this.hintsUsed++;
@@ -827,6 +864,10 @@ export class GameScene extends Phaser.Scene {
 
     if (this.isTowerFloor && this.hasTowerRule('mirror_pieces')) {
       this.createMirrorPieces();
+    }
+
+    if (this.randomEventsEnabled && !this.isTowerFloor && !this.isEventLevel) {
+      RandomEventManager.startSession(this.levelRule.difficulty);
     }
 
     this.startTimer();
@@ -919,6 +960,196 @@ export class GameScene extends Phaser.Scene {
       if (!pieceHit) {
         PuzzlePieceSprite.clearSelection();
       }
+    });
+  }
+
+  private setupRandomEventUI(): void {
+    if (!this.randomEventsEnabled || this.isTowerFloor || this.isEventLevel) return;
+
+    this.randomEventContainer = this.add.container(375, 700);
+    this.randomEventContainer.setDepth(50);
+    this.randomEventContainer.setVisible(true);
+  }
+
+  private handleRandomEventTriggered(activeEvent: ActiveRandomEvent): void {
+    const eventData = getRandomEventById(activeEvent.eventId);
+    if (!eventData) return;
+
+    this.showEventNotification(eventData);
+
+    eventData.effects.forEach(effect => {
+      switch (effect.type) {
+        case 'time_penalty':
+          this.applyTimePenalty(effect.value);
+          break;
+        case 'piece_damage_count':
+          this.applyPieceDamage(effect.value);
+          break;
+        case 'hint_disable':
+          if (this.showHint) {
+            this.toggleHint();
+          }
+          break;
+      }
+    });
+  }
+
+  private showEventNotification(eventData: RandomEventData): void {
+    const isPositive = eventData.direction === 'positive';
+    const bgColor = isPositive ? 0x4caf50 : eventData.color;
+
+    const notification = this.add.container(375, 200);
+    notification.setDepth(100);
+    notification.setScale(0);
+
+    const bg = this.add.graphics();
+    bg.fillStyle(bgColor, 0.95);
+    bg.fillRoundedRect(-200, -50, 400, 100, 16);
+    bg.lineStyle(3, 0xffffff, 0.3);
+    bg.strokeRoundedRect(-200, -50, 400, 100, 16);
+    notification.add(bg);
+
+    const iconText = this.add.text(0, -15, eventData.icon, {
+      font: '36px Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+    notification.add(iconText);
+
+    const nameText = this.add.text(0, 20, eventData.name, {
+      font: 'bold 18px Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+    notification.add(nameText);
+
+    const descText = this.add.text(0, 42, eventData.description, {
+      font: '13px Arial',
+      color: 'rgba(255,255,255,0.9)'
+    }).setOrigin(0.5);
+    notification.add(descText);
+
+    this.tweens.add({
+      targets: notification,
+      scale: 1,
+      duration: 300,
+      ease: 'Back.easeOut'
+    });
+
+    this.tweens.add({
+      targets: notification,
+      y: 160,
+      alpha: 0,
+      delay: 2000,
+      duration: 400,
+      ease: 'Cubic.easeIn',
+      onComplete: () => notification.destroy()
+    });
+
+    if (!isPositive) {
+      this.cameras.main.shake(200, 0.008, false);
+    } else {
+      this.cameras.main.flash(150, 255, 255, 200, false);
+    }
+  }
+
+  private applyTimePenalty(penalty: number): void {
+    this.elapsedTime += penalty;
+
+    const penaltyText = this.add.text(375, 300, `-${penalty}秒`, {
+      font: 'bold 32px Arial',
+      color: '#f44336'
+    }).setOrigin(0.5).setDepth(100);
+
+    this.tweens.add({
+      targets: penaltyText,
+      y: 260,
+      alpha: 0,
+      duration: 800,
+      ease: 'Cubic.easeOut',
+      onComplete: () => penaltyText.destroy()
+    });
+
+    this.updateTimerDisplay();
+    this.updateUI();
+  }
+
+  private applyPieceDamage(count: number): void {
+    const snappedPieces = this.pieces.filter(p => p.isPieceSnapped() && !p.isMirror);
+    const damageCount = Math.min(count, snappedPieces.length);
+
+    if (damageCount <= 0) return;
+
+    const shuffled = Phaser.Utils.Array.Shuffle([...snappedPieces]);
+    const toDamage = shuffled.slice(0, damageCount);
+
+    toDamage.forEach((piece, index) => {
+      this.time.delayedCall(index * 150, () => {
+        piece.setSnapped(false);
+        piece.setData('snapped', false);
+
+        const targetX = Phaser.Math.Between(80, 670);
+        const targetY = Phaser.Math.Between(920, 1100);
+
+        this.tweens.add({
+          targets: piece,
+          x: targetX,
+          y: targetY,
+          angle: Phaser.Math.Between(-30, 30),
+          duration: 500,
+          ease: 'Bounce.easeOut'
+        });
+
+        piece.setDepth(10);
+        this.snappedCount = Math.max(0, this.snappedCount - 1);
+        this.updateUI();
+      });
+    });
+
+    this.cameras.main.shake(300, 0.01, false);
+  }
+
+  private updateActiveEventUI(): void {
+    if (!this.randomEventsEnabled || this.isTowerFloor || this.isEventLevel) return;
+
+    const activeEvents = RandomEventManager.getActiveEvents();
+
+    this.activeEventIcons.forEach(icon => icon.destroy());
+    this.activeEventIcons = [];
+
+    activeEvents.forEach((event, index) => {
+      const eventData = getRandomEventById(event.eventId);
+      if (!eventData) return;
+
+      const iconContainer = this.add.container(60 + index * 60, 150);
+      iconContainer.setDepth(60);
+
+      const bg = this.add.graphics();
+      const bgColor = eventData.color;
+      bg.fillStyle(bgColor, 0.85);
+      bg.fillRoundedRect(-25, -25, 50, 50, 10);
+      bg.lineStyle(2, 0xffffff, 0.5);
+      bg.strokeRoundedRect(-25, -25, 50, 50, 10);
+      iconContainer.add(bg);
+
+      const icon = this.add.text(0, 0, eventData.icon, {
+        font: '24px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+      iconContainer.add(icon);
+
+      if (event.remainingDuration > 0 && event.duration > 3) {
+        const progress = event.remainingDuration / event.duration;
+        const progressBg = this.add.graphics();
+        progressBg.fillStyle(0x000000, 0.5);
+        progressBg.fillRoundedRect(-22, 22, 44, 6, 3);
+        iconContainer.add(progressBg);
+
+        const progressBar = this.add.graphics();
+        progressBar.fillStyle(0x4caf50, 1);
+        progressBar.fillRoundedRect(-22, 22, 44 * progress, 6, 3);
+        iconContainer.add(progressBar);
+      }
+
+      this.activeEventIcons.push(iconContainer);
     });
   }
 
@@ -1059,7 +1290,13 @@ export class GameScene extends Phaser.Scene {
       this.pieces.length,
       this.snappedCount
     );
-    const finalScore = Math.floor(result.score * this.scoreMultiplier);
+    let finalMultiplier = this.scoreMultiplier;
+    
+    if (this.randomEventsEnabled && !this.isTowerFloor && !this.isEventLevel) {
+      finalMultiplier *= RandomEventManager.getScoreMultiplier();
+    }
+    
+    const finalScore = Math.floor(result.score * finalMultiplier);
     this.scoreText.setText(`得分: ${finalScore}`);
   }
 
@@ -1112,6 +1349,20 @@ export class GameScene extends Phaser.Scene {
       this.snappedCount
     );
     let finalScore = Math.floor(result.score * this.scoreMultiplier);
+    
+    let randomEventStats: RandomEventSessionStats | null = null;
+    let rewardMultiplier = 1;
+    
+    if (this.randomEventsEnabled && !this.isTowerFloor && !this.isEventLevel) {
+      randomEventStats = RandomEventManager.endSession();
+      RandomEventManager.onLevelComplete(finalScore);
+      
+      const eventScoreMultiplier = RandomEventManager.getScoreMultiplier();
+      finalScore = Math.floor(finalScore * eventScoreMultiplier);
+      
+      rewardMultiplier = RandomEventManager.getRewardMultiplier();
+      SaveManager.save();
+    }
 
     let chapterResult: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[]; researchRewards: { pointsGained: number; expGained: number }; achievementResult: AchievementUnlockResult; conservationInfo: { specimenId: number | null; healthLevel: ConservationHealthLevel | null; scoreMultiplier: number; researchMultiplier: number; finalScore: number; finalPoints: number } } | undefined;
     let eventResult: { newlyUnlockedLevelId: number | null; updatedTotalScore: number; achievementResult: AchievementUnlockResult } | undefined;
@@ -1160,6 +1411,21 @@ export class GameScene extends Phaser.Scene {
         })).filter(f => f.count > 0)
       };
     }
+    
+    if (rewardMultiplier !== 1 && !this.isEventLevel && !this.isTowerFloor) {
+      drops = {
+        ...drops,
+        fragments: drops.fragments.map(f => ({
+          ...f,
+          count: Math.max(0, Math.floor(f.count * rewardMultiplier))
+        })).filter(f => f.count > 0),
+        materials: drops.materials.map(m => ({
+          ...m,
+          count: Math.max(0, Math.floor(m.count * rewardMultiplier))
+        })).filter(m => m.count > 0)
+      };
+    }
+    
     SaveManager.addWorkshopDrops(drops);
 
     RepairLogManager.recordEntry({
@@ -1186,7 +1452,7 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.zoomTo(1.05, 400, 'Cubic.easeInOut', true);
     this.time.delayedCall(450, () => {
       this.cameras.main.zoomTo(1.0, 400, 'Cubic.easeInOut', true);
-      this.showVictory(finalScore, result.stars, this.elapsedTime, chapterResult, drops, eventResult, updatedQuests, achievementResult, conservationMultiplier);
+      this.showVictory(finalScore, result.stars, this.elapsedTime, chapterResult, drops, eventResult, updatedQuests, achievementResult, conservationMultiplier, randomEventStats);
     });
   }
 
@@ -1416,7 +1682,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private showVictory(score: number, stars: number, time: number, chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[]; achievementResult: AchievementUnlockResult; conservationInfo?: { specimenId: number | null; healthLevel: ConservationHealthLevel | null; scoreMultiplier: number; researchMultiplier: number; finalScore: number; finalPoints: number } }, drops?: { fragments: { id: number; count: number }[]; materials: { id: number; count: number }[] }, eventResult?: { newlyUnlockedLevelId: number | null; updatedTotalScore: number }, updatedQuests: DailyQuest[] = [], achievementResult: AchievementUnlockResult = { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 }, conservationMultiplier?: { scoreMultiplier: number; fragmentMultiplier: number; researchMultiplier: number } | null): void {
+  private showVictory(score: number, stars: number, time: number, chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[]; achievementResult: AchievementUnlockResult; conservationInfo?: { specimenId: number | null; healthLevel: ConservationHealthLevel | null; scoreMultiplier: number; researchMultiplier: number; finalScore: number; finalPoints: number } }, drops?: { fragments: { id: number; count: number }[]; materials: { id: number; count: number }[] }, eventResult?: { newlyUnlockedLevelId: number | null; updatedTotalScore: number }, updatedQuests: DailyQuest[] = [], achievementResult: AchievementUnlockResult = { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 }, conservationMultiplier?: { scoreMultiplier: number; fragmentMultiplier: number; researchMultiplier: number } | null, randomEventStats?: RandomEventSessionStats | null): void {
     const { overlay } = this.createModal('🎉 修复完成！', '#4caf50', 0x4caf50);
 
     this.drawStars(375, 480, stars, 50);
@@ -1516,6 +1782,52 @@ export class GameScene extends Phaser.Scene {
       });
 
       dropBannerY = dropBannerY + 28 + (drops.fragments.length + drops.materials.length) * 22 + 10;
+    }
+
+    if (randomEventStats && randomEventStats.eventsEncountered.length > 0) {
+      const eventBg = this.add.graphics();
+      const eventCount = randomEventStats.eventsEncountered.length;
+      const height = 50 + eventCount * 24;
+      eventBg.fillStyle(0x2a1a4a, 0.9);
+      eventBg.fillRoundedRect(130, dropBannerY, 490, height, 12);
+      eventBg.lineStyle(2, 0x9c27b0, 0.5);
+      eventBg.strokeRoundedRect(130, dropBannerY, 490, height, 12);
+
+      this.add.text(375, dropBannerY + 22, `🎲 本局随机事件 (${eventCount}个)`, {
+        font: 'bold 15px Arial',
+        color: '#ce93d8'
+      }).setOrigin(0.5);
+
+      let eventY = dropBannerY + 42;
+      randomEventStats.eventsEncountered.forEach(eventId => {
+        const eventData = getRandomEventById(eventId);
+        if (eventData) {
+          const color = eventData.direction === 'positive' ? '#4caf50' : '#f44336';
+          const icon = eventData.direction === 'positive' ? '↑' : '↓';
+          this.add.text(160, eventY, `${eventData.icon} ${eventData.name}`, {
+            font: '13px Arial',
+            color: color
+          }).setOrigin(0, 0.5);
+          this.add.text(590, eventY, `${icon} ${eventData.rarity}`, {
+            font: '12px Arial',
+            color: '#aaaaaa'
+          }).setOrigin(1, 0.5);
+          eventY += 24;
+        }
+      });
+
+      if (randomEventStats.totalTimeLost > 0 || randomEventStats.damagedPieces > 0 || randomEventStats.totalScoreModifier !== 0) {
+        const summaryY = eventY + 5;
+        this.add.text(375, summaryY,
+          `损失时间: ${randomEventStats.totalTimeLost}s  ·  损坏碎片: ${randomEventStats.damagedPieces}片`,
+          {
+            font: '12px Arial',
+            color: '#ff9800'
+          }
+        ).setOrigin(0.5);
+      }
+
+      dropBannerY += height + 10;
     }
 
     let bannerY = dropBannerY;

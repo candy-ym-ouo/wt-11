@@ -1241,6 +1241,67 @@ export interface DonationClaimResult {
   message?: string;
 }
 
+export type RandomEventType = 'fragment_damage' | 'time_compression' | 'hint_disabled' | 'score_boost' | 'piece_bonus' | 'double_reward';
+export type RandomEventRarity = 'common' | 'rare' | 'epic' | 'legendary';
+export type RandomEffectDirection = 'positive' | 'negative' | 'mixed';
+
+export interface RandomEventEffect {
+  type: 'score_multiplier' | 'time_penalty' | 'hint_disable' | 'piece_damage_count' | 'reward_multiplier' | 'combo_boost';
+  value: number;
+  duration?: number;
+}
+
+export interface RandomEventData {
+  id: string;
+  name: string;
+  description: string;
+  type: RandomEventType;
+  rarity: RandomEventRarity;
+  direction: RandomEffectDirection;
+  icon: string;
+  color: number;
+  effects: RandomEventEffect[];
+  weight: number;
+  minDifficulty?: 'easy' | 'medium' | 'hard';
+  maxDifficulty?: 'easy' | 'medium' | 'hard';
+  triggerCondition?: 'time_elapsed' | 'pieces_snapped' | 'random';
+  triggerValue?: number;
+}
+
+export interface ActiveRandomEvent {
+  eventId: string;
+  startTime: number;
+  duration: number;
+  remainingDuration: number;
+  effects: RandomEventEffect[];
+  isActive: boolean;
+  triggeredAt: number;
+}
+
+export interface RandomEventSessionStats {
+  eventsEncountered: string[];
+  positiveEventsCount: number;
+  negativeEventsCount: number;
+  totalScoreModifier: number;
+  totalTimeLost: number;
+  damagedPieces: number;
+  eventsByRarity: Record<RandomEventRarity, number>;
+}
+
+export interface RandomEventSaveData {
+  totalEventsEncountered: number;
+  positiveEventsTotal: number;
+  negativeEventsTotal: number;
+  eventsByType: Record<RandomEventType, number>;
+  eventsByRarity: Record<RandomEventRarity, number>;
+  highestScoreWithEvent: number;
+  totalTimeLostToEvents: number;
+  totalDamagedPieces: number;
+  eventStreak: number;
+  bestEventStreak: number;
+  rareEventsUnlocked: string[];
+}
+
 export interface SaveData {
   progress: Record<number, LevelProgress>;
   chapterProgress: Record<number, ChapterProgress>;
@@ -1266,4 +1327,5 @@ export interface SaveData {
   quiz: QuizSaveData;
   chapterMap: ChapterMapSaveData;
   donation: DonationSaveData;
+  randomEvent: RandomEventSaveData;
 }

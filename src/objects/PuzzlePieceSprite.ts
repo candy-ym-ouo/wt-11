@@ -322,6 +322,15 @@ export class PuzzlePieceSprite extends Phaser.GameObjects.Container {
     return this.isSnapped;
   }
 
+  setSnapped(snapped: boolean): void {
+    this.isSnapped = snapped;
+    if (snapped) {
+      this.disableInteractive();
+    } else {
+      this.setInteractive();
+    }
+  }
+
   getPieceId(): number {
     return this.pieceData.id;
   }

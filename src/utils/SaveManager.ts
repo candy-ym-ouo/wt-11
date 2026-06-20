@@ -52,6 +52,8 @@ import { RepairLogManager } from './RepairLogManager';
 import { NotificationManager } from './NotificationManager';
 import { QuizManager } from './QuizManager';
 import { DonationManager } from './DonationManager';
+import { RandomEventManager } from './RandomEventManager';
+import { RandomEventSaveData } from '../types/GameTypes';
 
 const STORAGE_KEY = 'plant_specimen_puzzle_save';
 
@@ -85,9 +87,11 @@ export class SaveManager {
     NotificationManager.init(this.data.notification);
     QuizManager.init(this.data.quiz);
     DonationManager.init(this.data.donation);
+    RandomEventManager.init(this.data.randomEvent);
     this.data.notification = NotificationManager.getSaveData();
     this.data.quiz = QuizManager.getSaveData();
     this.data.donation = DonationManager.getSaveData();
+    this.data.randomEvent = RandomEventManager.getSaveData();
     this.save();
   }
 
@@ -479,6 +483,23 @@ export class SaveManager {
       }
     }
 
+    if (!oldData.randomEvent) {
+      oldData.randomEvent = defaultData.randomEvent;
+    } else {
+      const re = oldData.randomEvent;
+      if (re.totalEventsEncountered === undefined) re.totalEventsEncountered = 0;
+      if (re.positiveEventsTotal === undefined) re.positiveEventsTotal = 0;
+      if (re.negativeEventsTotal === undefined) re.negativeEventsTotal = 0;
+      if (!re.eventsByType) re.eventsByType = defaultData.randomEvent.eventsByType;
+      if (!re.eventsByRarity) re.eventsByRarity = defaultData.randomEvent.eventsByRarity;
+      if (re.highestScoreWithEvent === undefined) re.highestScoreWithEvent = 0;
+      if (re.totalTimeLostToEvents === undefined) re.totalTimeLostToEvents = 0;
+      if (re.totalDamagedPieces === undefined) re.totalDamagedPieces = 0;
+      if (re.eventStreak === undefined) re.eventStreak = 0;
+      if (re.bestEventStreak === undefined) re.bestEventStreak = 0;
+      if (!re.rareEventsUnlocked) re.rareEventsUnlocked = [];
+    }
+
     return oldData as SaveData;
   }
 
@@ -524,6 +545,7 @@ export class SaveManager {
     const seasonPassData = this.createDefaultSeasonPassSave();
     const chapterMapData = this.createDefaultChapterMapSave();
     const donationData = DonationManager.createDefaultSave();
+    const randomEventData = RandomEventManager.createDefaultSave();
 
     return {
       progress,
@@ -553,7 +575,8 @@ export class SaveManager {
       notification: NotificationManager.createDefaultNotificationSave(),
       quiz: QuizManager.createDefaultQuizSave(),
       chapterMap: chapterMapData,
-      donation: donationData
+      donation: donationData,
+      randomEvent: randomEventData
     };
   }
 
@@ -2764,6 +2787,7 @@ export class SaveManager {
   static save(): void {
     this.data.quiz = QuizManager.getSaveData();
     this.data.donation = DonationManager.getSaveData();
+    this.data.randomEvent = RandomEventManager.getSaveData();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
   }
 
