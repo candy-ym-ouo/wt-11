@@ -1401,4 +1401,60 @@ export interface SaveData {
   donation: DonationSaveData;
   randomEvent: RandomEventSaveData;
   puzzleSaves: PuzzleSaves;
+  replay: ReplaySaveData;
+}
+
+export interface SnapRecord {
+  pieceId: number;
+  timestamp: number;
+  distance: number;
+  isPerfect: boolean;
+  isMirror: boolean;
+  startX: number;
+  startY: number;
+  targetX: number;
+  targetY: number;
+}
+
+export interface MistakeRecord {
+  pieceId: number;
+  timestamp: number;
+  type: 'missed_snap' | 'mirror_snap' | 'wrong_rotation';
+  x: number;
+  y: number;
+}
+
+export interface SpeedSample {
+  timestamp: number;
+  snappedCount: number;
+  piecesPerSecond: number;
+}
+
+export interface ReplayData {
+  replayId: string;
+  levelId: number;
+  specimenId: number;
+  levelName: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  totalTime: number;
+  score: number;
+  stars: number;
+  totalPieces: number;
+  rows: number;
+  cols: number;
+  snapRecords: SnapRecord[];
+  mistakeRecords: MistakeRecord[];
+  speedSamples: SpeedSample[];
+  targetTextureKey: string;
+  pieceTextureKeys: string[];
+  isEventLevel: boolean;
+  eventId: string | null;
+  isTowerFloor: boolean;
+  towerFloorId: number | null;
+  completedAt: number;
+}
+
+export interface ReplaySaveData {
+  replays: ReplayData[];
+  maxReplaysPerLevel: number;
 }

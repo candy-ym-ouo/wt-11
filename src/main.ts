@@ -31,6 +31,7 @@ import { ChapterMapScene } from './scenes/ChapterMapScene';
 import { EndingScene } from './scenes/EndingScene';
 import { DonationScene } from './scenes/DonationScene';
 import { ProfileScene } from './scenes/ProfileScene';
+import { ReplayScene } from './scenes/ReplayScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -73,7 +74,8 @@ const config: Phaser.Types.Core.GameConfig = {
     ChapterMapScene,
     EndingScene,
     DonationScene,
-    ProfileScene
+    ProfileScene,
+    ReplayScene
   ],
   physics: {
     default: 'arcade',

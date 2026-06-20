@@ -28,7 +28,9 @@ import {
   PuzzleSaveData,
   PuzzleSaves,
   PuzzlePieceSaveData,
-  LevelProgressResult
+  LevelProgressResult,
+  ReplayData,
+  ReplaySaveData
 } from '../types/GameTypes';
 import { TutorialManager } from './TutorialManager';
 import { ConservationManager } from './ConservationManager';
@@ -487,6 +489,10 @@ export class SaveManager {
       }
     }
 
+    if (!oldData.replay) {
+      oldData.replay = { replays: [], maxReplaysPerLevel: 3 };
+    }
+
     return oldData as SaveData;
   }
 
@@ -563,7 +569,8 @@ export class SaveManager {
       chapterMap: chapterMapData,
       donation: donationData,
       randomEvent: RandomEventManager.createDefaultSave(),
-      puzzleSaves: { saves: {}, maxSavesPerLevel: 3 }
+      puzzleSaves: { saves: {}, maxSavesPerLevel: 3 },
+      replay: { replays: [], maxReplaysPerLevel: 3 }
     };
   }
 
@@ -2978,5 +2985,56 @@ export class SaveManager {
     });
     this.save();
     return saves.length;
+  }
+
+  static saveReplay(replay: ReplayData): void {
+    const levelId = replay.levelId;
+    const replaysForLevel = this.getReplaysByLevel(levelId);
+    
+    const maxReplays = this.data.replay.maxReplaysPerLevel;
+    if (replaysForLevel.length >= maxReplays) {
+      const oldest = replaysForLevel[replaysForLevel.length - 1];
+      const idx = this.data.replay.replays.findIndex(r => r.replayId === oldest.replayId);
+      if (idx >= 0) {
+        this.data.replay.replays.splice(idx, 1);
+      }
+    }
+
+    this.data.replay.replays.unshift(replay);
+    this.save();
+  }
+
+  static getReplaysByLevel(levelId: number): ReplayData[] {
+    return this.data.replay.replays
+      .filter(r => r.levelId === levelId)
+      .sort((a, b) => b.completedAt - a.completedAt);
+  }
+
+  static getLatestReplay(levelId: number): ReplayData | undefined {
+    const replays = this.getReplaysByLevel(levelId);
+    return replays[0];
+  }
+
+  static getReplayById(replayId: string): ReplayData | undefined {
+    return this.data.replay.replays.find(r => r.replayId === replayId);
+  }
+
+  static getAllReplays(): ReplayData[] {
+    return [...this.data.replay.replays].sort((a, b) => b.completedAt - a.completedAt);
+  }
+
+  static deleteReplay(replayId: string): boolean {
+    const idx = this.data.replay.replays.findIndex(r => r.replayId === replayId);
+    if (idx >= 0) {
+      this.data.replay.replays.splice(idx, 1);
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  static clearAllReplays(): void {
+    this.data.replay.replays = [];
+    this.save();
   }
 }

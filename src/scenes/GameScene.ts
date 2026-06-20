@@ -4,7 +4,7 @@ import { getLevelRule } from '../data/LevelRules';
 import { getPlantSpecimen } from '../data/PlantSpecimens';
 import { SaveManager } from '../utils/SaveManager';
 import { calculateScore, formatTime, getDifficultyColor, getDifficultyText } from '../utils/GameUtils';
-import { LevelRule, PlantSpecimen, PuzzlePieceData, EventLevelRule, DailyQuest, TowerFloorData, TowerResultData, TowerScoringCondition, TowerRuleModifier, AchievementUnlockResult, TutorialStep, ConservationHealthLevel, PuzzleSaveData, PuzzlePieceSaveData, HintUsageStats } from '../types/GameTypes';
+import { LevelRule, PlantSpecimen, PuzzlePieceData, EventLevelRule, DailyQuest, TowerFloorData, TowerResultData, TowerScoringCondition, TowerRuleModifier, AchievementUnlockResult, TutorialStep, ConservationHealthLevel, PuzzleSaveData, PuzzlePieceSaveData, HintUsageStats, SnapRecord, MistakeRecord, SpeedSample, ReplayData } from '../types/GameTypes';
 import { getDropRule, getFragmentsBySpecimenId, Fragments, Materials } from '../data/WorkshopConfig';
 import { getEventLevelRule, isEventLevel } from '../data/EventLevelRules';
 import { getEventById } from '../data/Events';
@@ -72,6 +72,12 @@ export class GameScene extends Phaser.Scene {
   private fullPreviewActive: boolean = false;
   private fullPreviewStartAt: number | null = null;
 
+  private snapRecords: SnapRecord[] = [];
+  private mistakeRecords: MistakeRecord[] = [];
+  private speedSamples: SpeedSample[] = [];
+  private speedSampleTimer: Phaser.Time.TimerEvent | null = null;
+  private lastSampleSnappedCount: number = 0;
+
   private tutorialContainer!: Phaser.GameObjects.Container;
   private tutorialOverlay!: Phaser.GameObjects.Graphics;
   private tutorialBox!: Phaser.GameObjects.Graphics;
@@ -134,6 +140,11 @@ export class GameScene extends Phaser.Scene {
     this.fullPreviewTimer = null;
     this.fullPreviewActive = false;
     this.fullPreviewStartAt = null;
+    this.snapRecords = [];
+    this.mistakeRecords = [];
+    this.speedSamples = [];
+    this.speedSampleTimer = null;
+    this.lastSampleSnappedCount = 0;
 
     if (this.isTowerFloor && this.towerFloorId) {
       const towerFloor = getTowerFloor(this.towerFloorId);
@@ -1224,6 +1235,21 @@ export class GameScene extends Phaser.Scene {
       this.snapCount++;
       this.snapTimestamps.push(this.elapsedTime);
 
+      const piece = data.piece;
+      const targetX = piece.getData('liveTargetX') ?? piece.getTargetX();
+      const targetY = piece.getData('liveTargetY') ?? piece.getTargetY();
+      this.snapRecords.push({
+        pieceId: data.pieceId,
+        timestamp: this.elapsedTime,
+        distance: data.distance,
+        isPerfect: data.isPerfect,
+        isMirror: false,
+        startX: piece.x,
+        startY: piece.y,
+        targetX: targetX as number,
+        targetY: targetY as number
+      });
+
       if (this.isTowerFloor) {
         this.comboCount++;
         if (this.comboCount > this.maxCombo) {
@@ -1258,6 +1284,14 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.events.on('piece-missed', (data: { pieceId: number; piece: PuzzlePieceSprite }) => {
+      this.mistakeRecords.push({
+        pieceId: data.pieceId,
+        timestamp: this.elapsedTime,
+        type: data.piece.isMirror ? 'mirror_snap' : 'missed_snap',
+        x: data.piece.x,
+        y: data.piece.y
+      });
+
       if (this.isTowerFloor) {
         this.comboCount = 0;
         this.mistakeCount++;
@@ -1518,6 +1552,18 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handleMirrorSnap(mirrorPiece: PuzzlePieceSprite): void {
+    this.snapRecords.push({
+      pieceId: mirrorPiece.getPieceId(),
+      timestamp: this.elapsedTime,
+      distance: 0,
+      isPerfect: false,
+      isMirror: true,
+      startX: mirrorPiece.x,
+      startY: mirrorPiece.y,
+      targetX: mirrorPiece.getTargetX(),
+      targetY: mirrorPiece.getTargetY()
+    });
+
     this.comboCount = 0;
     this.mistakeCount++;
     this.comboBonusMultiplier = 1;
@@ -1622,8 +1668,10 @@ export class GameScene extends Phaser.Scene {
 
   private startTimer(): void {
     if (this.timerEvent) this.timerEvent.remove(false);
+    if (this.speedSampleTimer) this.speedSampleTimer.remove(false);
 
     this.startTime = this.time.now;
+    this.lastSampleSnappedCount = 0;
 
     this.timerEvent = this.time.addEvent({
       delay: 100,
@@ -1635,6 +1683,27 @@ export class GameScene extends Phaser.Scene {
         }
       }
     });
+
+    this.speedSampleTimer = this.time.addEvent({
+      delay: 2000,
+      loop: true,
+      callback: () => {
+        if (!this.isPaused && !this.isCompleted) {
+          this.recordSpeedSample();
+        }
+      }
+    });
+  }
+
+  private recordSpeedSample(): void {
+    const newSnapped = this.snappedCount - this.lastSampleSnappedCount;
+    const piecesPerSecond = newSnapped / 2;
+    this.speedSamples.push({
+      timestamp: this.elapsedTime,
+      snappedCount: this.snappedCount,
+      piecesPerSecond
+    });
+    this.lastSampleSnappedCount = this.snappedCount;
   }
 
   private updateTimerDisplay(): void {
@@ -1682,9 +1751,40 @@ export class GameScene extends Phaser.Scene {
     this.scoreText.setText(`得分: ${finalScore}`);
   }
 
+  private generateReplayData(score: number, stars: number): ReplayData {
+    const pieceTextureKeys = this.pieces
+      .filter(p => !p.isMirror)
+      .map(p => p.getData('textureKey') as string || `specimen-${this.specimen.id}-piece-${p.getPieceId()}`);
+
+    return {
+      replayId: `replay_${this.levelRule.id}_${Date.now()}`,
+      levelId: this.levelRule.id,
+      specimenId: this.specimen.id,
+      levelName: this.levelRule.name,
+      difficulty: this.levelRule.difficulty,
+      totalTime: this.elapsedTime,
+      score,
+      stars,
+      totalPieces: this.realPiecesCount,
+      rows: this.levelRule.rows,
+      cols: this.levelRule.cols,
+      snapRecords: [...this.snapRecords],
+      mistakeRecords: [...this.mistakeRecords],
+      speedSamples: [...this.speedSamples],
+      targetTextureKey: this.targetTextureKey,
+      pieceTextureKeys,
+      isEventLevel: this.isEventLevel,
+      eventId: this.eventId,
+      isTowerFloor: this.isTowerFloor,
+      towerFloorId: this.towerFloorId,
+      completedAt: Date.now()
+    };
+  }
+
   private onLevelComplete(): void {
     this.isCompleted = true;
     if (this.timerEvent) this.timerEvent.paused = true;
+    if (this.speedSampleTimer) this.speedSampleTimer.paused = true;
 
     if (this.fullPreviewActive) {
       this.stopFullPreview();
@@ -1877,6 +1977,9 @@ export class GameScene extends Phaser.Scene {
       mirrorBrokenCount: this.mirrorPieces.length,
     });
 
+    const replayData = this.generateReplayData(finalScore, result.stars);
+    SaveManager.saveReplay(replayData);
+
     this.cameras.main.zoomTo(1.05, 400, 'Cubic.easeInOut', true);
     this.time.delayedCall(450, () => {
       this.cameras.main.zoomTo(1.0, 400, 'Cubic.easeInOut', true);
@@ -1904,7 +2007,8 @@ export class GameScene extends Phaser.Scene {
           maxCombo: this.maxCombo,
           mistakeCount: this.mistakeCount
         },
-        levelProgressResult
+        levelProgressResult,
+        replayData
       );
     });
   }
@@ -2243,7 +2347,8 @@ export class GameScene extends Phaser.Scene {
       maxCombo: number;
       mistakeCount: number;
     },
-    progress?: { previousStars: number; previousBestScore: number; previousBestTime: number; isNewRecord: boolean; isNewBestTime: boolean; starsImproved: boolean } | null
+    progress?: { previousStars: number; previousBestScore: number; previousBestTime: number; isNewRecord: boolean; isNewBestTime: boolean; starsImproved: boolean } | null,
+    replayData?: ReplayData
   ): void {
     const { overlay } = this.createModal('🎉 修复完成！', '#4caf50', 0x4caf50);
 
@@ -2821,7 +2926,7 @@ export class GameScene extends Phaser.Scene {
       bannerY += 55;
     }
 
-    this.createResultButtons(overlay, true, chapterResult, eventResult, updatedQuests);
+    this.createResultButtons(overlay, true, chapterResult, eventResult, updatedQuests, replayData);
   }
 
   private showGameOver(score: number, snapped: number, total: number, failType?: string): void {
@@ -3350,7 +3455,8 @@ export class GameScene extends Phaser.Scene {
     isVictory: boolean,
     chapterResult?: { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[] },
     eventResult?: { newlyUnlockedLevelId: number | null; updatedTotalScore: number },
-    updatedQuests: DailyQuest[] = []
+    updatedQuests: DailyQuest[] = [],
+    replayData?: ReplayData
   ): void {
     const btnW = 230;
     const btnH = 68;
@@ -3360,7 +3466,7 @@ export class GameScene extends Phaser.Scene {
     } else {
       hasBanner = !!(chapterResult?.chapterCompleted || chapterResult?.newlyUnlockedChapterId || updatedQuests.length > 0);
     }
-    const btnY = hasBanner ? 865 : 780;
+    let btnY = hasBanner ? 865 : 780;
 
     if (!this.isEventLevel && chapterResult?.chapterCompleted && chapterResult.completedChapterId) {
       const chapterBtn = this.add.graphics();
@@ -3425,6 +3531,26 @@ export class GameScene extends Phaser.Scene {
         this.scene.start('LevelSelectScene');
       }
     });
+
+    if (replayData && isVictory) {
+      const replayBtnY = btnY + btnH + 16;
+      const replayBtn = this.add.graphics();
+      replayBtn.fillStyle(0x9c27b0, 1);
+      replayBtn.fillRoundedRect(135, replayBtnY, 480, 56, 16);
+      replayBtn.setInteractive(
+        new Phaser.Geom.Rectangle(135, replayBtnY, 480, 56),
+        Phaser.Geom.Rectangle.Contains
+      );
+
+      this.add.text(135 + 240, replayBtnY + 28, '📹 查看复盘', {
+        font: 'bold 20px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+
+      replayBtn.on('pointerup', () => {
+        this.scene.start('ReplayScene', { replayData });
+      });
+    }
   }
 
   private showPauseMenu(): void {
