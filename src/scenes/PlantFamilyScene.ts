@@ -380,11 +380,11 @@ export class PlantFamilyScene extends Phaser.Scene {
       const rewardBg = this.add.graphics();
       const bgColor = isClaimed ? 0x2e7d32 : (canClaim ? family.primaryColor : 0x333344);
       rewardBg.fillStyle(bgColor, isClaimed || canClaim ? 0.9 : 0.6);
-      rewardBg.fillRoundedRect(60, currentY, 630, 70, 12);
+      rewardBg.fillRoundedRect(60, currentY, 630, 90, 12);
 
       if (canClaim) {
         rewardBg.lineStyle(2, 0xffd700, 1);
-        rewardBg.strokeRoundedRect(60, currentY, 630, 70, 12);
+        rewardBg.strokeRoundedRect(60, currentY, 630, 90, 12);
       }
       c.add(rewardBg);
 
@@ -398,46 +398,118 @@ export class PlantFamilyScene extends Phaser.Scene {
 
       const rarityBadge = this.add.graphics();
       rarityBadge.fillStyle(rarityColor, 1);
-      rarityBadge.fillCircle(95, currentY + 35, 22);
+      rarityBadge.fillCircle(95, currentY + 45, 22);
       c.add(rarityBadge);
 
-      c.add(this.add.text(95, currentY + 35, reward.icon, {
+      c.add(this.add.text(95, currentY + 45, reward.icon, {
         font: '20px Arial'
       }).setOrigin(0.5));
 
-      c.add(this.add.text(135, currentY + 22, reward.name, {
+      c.add(this.add.text(135, currentY + 25, reward.name, {
         font: 'bold 16px Arial',
         color: isClaimed || canClaim ? '#ffffff' : '#888888'
       }).setOrigin(0, 0.5));
 
-      c.add(this.add.text(135, currentY + 48, reward.description, {
+      c.add(this.add.text(135, currentY + 52, reward.description, {
         font: '12px Arial',
         color: isClaimed || canClaim ? '#cccccc' : '#666666'
       }).setOrigin(0, 0.5));
 
-      c.add(this.add.text(620, currentY + 35, `进度: ${reward.requiredProgress}%`, {
+      c.add(this.add.text(620, currentY + 20, `进度: ${reward.requiredProgress}%`, {
         font: 'bold 12px Arial',
         color: '#aaaaaa'
       }).setOrigin(1, 0.5));
 
       if (isClaimed) {
-        c.add(this.add.text(620, currentY + 55, '✓ 已领取', {
-          font: 'bold 12px Arial',
-          color: '#4caf50'
-        }).setOrigin(1, 0.5));
+        const familyProgress = SaveManager.data.familyCollection.familyProgress[family.id];
+        
+        if (reward.type === 'border' && familyProgress) {
+          const isActive = familyProgress.activeBorderId === reward.id;
+          const btnText = isActive ? '卸下边框' : '装备边框';
+          const btnColor = isActive ? 0xf44336 : 0x4caf50;
+          
+          const equipBtn = this.add.graphics();
+          equipBtn.fillStyle(btnColor, 1);
+          equipBtn.fillRoundedRect(620 - 80, currentY + 40, 80, 32, 6);
+          c.add(equipBtn);
+
+          c.add(this.add.text(620 - 40, currentY + 56, btnText, {
+            font: 'bold 12px Arial',
+            color: '#ffffff'
+          }).setOrigin(0.5));
+
+          equipBtn.setInteractive(
+            new Phaser.Geom.Rectangle(620 - 80, currentY + 40, 80, 32),
+            Phaser.Geom.Rectangle.Contains
+          );
+          equipBtn.on('pointerup', () => {
+            if (isActive) {
+              SaveManager.clearActiveBorder();
+            } else {
+              SaveManager.setActiveBorder(family.id, reward.id);
+            }
+            container.destroy();
+            this.detailContainer = null;
+            this.showFamilyDetail(family);
+          });
+        } else if (reward.type === 'background' && familyProgress) {
+          const isActive = familyProgress.activeBackgroundId === reward.id;
+          const btnText = isActive ? '卸下背景' : '装备背景';
+          const btnColor = isActive ? 0xf44336 : 0x4caf50;
+          
+          const equipBtn = this.add.graphics();
+          equipBtn.fillStyle(btnColor, 1);
+          equipBtn.fillRoundedRect(620 - 80, currentY + 40, 80, 32, 6);
+          c.add(equipBtn);
+
+          c.add(this.add.text(620 - 40, currentY + 56, btnText, {
+            font: 'bold 12px Arial',
+            color: '#ffffff'
+          }).setOrigin(0.5));
+
+          equipBtn.setInteractive(
+            new Phaser.Geom.Rectangle(620 - 80, currentY + 40, 80, 32),
+            Phaser.Geom.Rectangle.Contains
+          );
+          equipBtn.on('pointerup', () => {
+            if (isActive) {
+              SaveManager.clearActiveBackground();
+            } else {
+              SaveManager.setActiveBackground(family.id, reward.id);
+            }
+            container.destroy();
+            this.detailContainer = null;
+            this.showFamilyDetail(family);
+          });
+        } else if (reward.type === 'time_extension' && familyProgress) {
+          c.add(this.add.text(620, currentY + 50, `剩余: ${familyProgress.timeExtensionsAvailable}个`, {
+            font: 'bold 13px Arial',
+            color: '#4caf50'
+          }).setOrigin(1, 0.5));
+          
+          c.add(this.add.text(620, currentY + 72, `每次+${reward.timeBonusSeconds}秒`, {
+            font: '11px Arial',
+            color: '#aaaaaa'
+          }).setOrigin(1, 0.5));
+        } else {
+          c.add(this.add.text(620, currentY + 50, '✓ 已领取', {
+            font: 'bold 12px Arial',
+            color: '#4caf50'
+          }).setOrigin(1, 0.5));
+        }
       } else if (canClaim) {
         const claimBtn = this.add.graphics();
         claimBtn.fillStyle(0xffd700, 1);
-        claimBtn.fillRoundedRect(620 - 60, currentY + 20, 60, 30, 6);
+        claimBtn.fillRoundedRect(620 - 60, currentY + 40, 60, 32, 6);
         c.add(claimBtn);
 
-        c.add(this.add.text(620 - 30, currentY + 35, '领取', {
+        c.add(this.add.text(620 - 30, currentY + 56, '领取', {
           font: 'bold 13px Arial',
           color: '#1a1a2e'
         }).setOrigin(0.5));
 
         claimBtn.setInteractive(
-          new Phaser.Geom.Rectangle(620 - 60, currentY + 20, 60, 30),
+          new Phaser.Geom.Rectangle(620 - 60, currentY + 40, 60, 32),
           Phaser.Geom.Rectangle.Contains
         );
 
@@ -446,7 +518,7 @@ export class PlantFamilyScene extends Phaser.Scene {
         });
       }
 
-      currentY += 80;
+      currentY += 100;
     });
 
     currentY += 20;

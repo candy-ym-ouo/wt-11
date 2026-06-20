@@ -266,8 +266,28 @@ export interface PlantSpecimen {
   shape: 'ginkgo' | 'rose' | 'sunflower' | 'lavender' | 'orchid' | 'succulent';
 }
 
+export interface FamilyBorderStyle {
+  borderColor: number;
+  borderWidth: number;
+  glowColor: number;
+  glowIntensity: number;
+  cornerRadius: number;
+  pattern?: string;
+  animation?: 'pulse' | 'shine' | 'none';
+}
+
+export interface FamilyBackgroundStyle {
+  gradientFrom: number;
+  gradientTo: number;
+  particleColor: number;
+  particleType: 'leaf' | 'petal' | 'sparkle' | 'snow' | 'none';
+  particleCount: number;
+  overlayOpacity: number;
+  headerColor: number;
+}
+
 export interface FamilyReward {
-  type: 'score' | 'badge' | 'title' | 'research_point' | 'material';
+  type: 'score' | 'badge' | 'title' | 'research_point' | 'material' | 'border' | 'background' | 'time_extension';
   id: number;
   name: string;
   description: string;
@@ -275,6 +295,9 @@ export interface FamilyReward {
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
   requiredProgress: number;
   value?: number;
+  borderStyle?: FamilyBorderStyle;
+  backgroundStyle?: FamilyBackgroundStyle;
+  timeBonusSeconds?: number;
 }
 
 export interface PlantFamily {
@@ -303,12 +326,19 @@ export interface FamilyProgress {
   totalStars: number;
   firstUnlockedAt?: number;
   completedAt?: number;
+  unlockedBorders: number[];
+  unlockedBackgrounds: number[];
+  timeExtensionsAvailable: number;
+  activeBorderId: number | null;
+  activeBackgroundId: number | null;
 }
 
 export interface FamilyCollectionSaveData {
   familyProgress: Record<string, FamilyProgress>;
   totalFamiliesCompleted: number;
   totalSpecimensByFamily: Record<string, number>;
+  activeBorderFamilyId: string | null;
+  activeBackgroundFamilyId: string | null;
 }
 
 export interface LevelData {

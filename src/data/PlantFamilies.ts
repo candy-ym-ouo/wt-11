@@ -31,6 +31,51 @@ export const PlantFamilies: PlantFamily[] = [
         icon: '🍂',
         rarity: 'rare',
         requiredProgress: 100
+      },
+      {
+        type: 'border',
+        id: 501,
+        name: '金秋金边',
+        description: '银杏科专属金色边框，关卡和图鉴中闪耀金色光辉',
+        icon: '🖼️',
+        rarity: 'rare',
+        requiredProgress: 50,
+        borderStyle: {
+          borderColor: 0xffd700,
+          borderWidth: 4,
+          glowColor: 0xffa500,
+          glowIntensity: 0.6,
+          cornerRadius: 16,
+          animation: 'shine'
+        }
+      },
+      {
+        type: 'background',
+        id: 601,
+        name: '银杏古道',
+        description: '秋日银杏叶飘落的专属背景，营造古寺庭院的宁静氛围',
+        icon: '🌅',
+        rarity: 'epic',
+        requiredProgress: 75,
+        backgroundStyle: {
+          gradientFrom: 0xffd700,
+          gradientTo: 0xff8c00,
+          particleColor: 0xffd700,
+          particleType: 'leaf',
+          particleCount: 20,
+          overlayOpacity: 0.15,
+          headerColor: 0xffa500
+        }
+      },
+      {
+        type: 'time_extension',
+        id: 701,
+        name: '时光凝固',
+        description: '每次关卡可使用的加时道具，额外获得60秒修复时间',
+        icon: '⏰',
+        rarity: 'legendary',
+        requiredProgress: 100,
+        timeBonusSeconds: 60
       }
     ],
     illustrationKey: 'family-illustration-ginkgo',
@@ -67,6 +112,51 @@ export const PlantFamilies: PlantFamily[] = [
         icon: '🌹',
         rarity: 'rare',
         requiredProgress: 100
+      },
+      {
+        type: 'border',
+        id: 502,
+        name: '玫瑰粉边',
+        description: '蔷薇科专属粉色边框，如玫瑰花瓣般柔美浪漫',
+        icon: '🖼️',
+        rarity: 'rare',
+        requiredProgress: 50,
+        borderStyle: {
+          borderColor: 0xe91e63,
+          borderWidth: 4,
+          glowColor: 0xff69b4,
+          glowIntensity: 0.6,
+          cornerRadius: 16,
+          animation: 'pulse'
+        }
+      },
+      {
+        type: 'background',
+        id: 602,
+        name: '玫瑰花园',
+        description: '粉色花瓣飘落的专属背景，仿佛置身浪漫玫瑰园',
+        icon: '🌅',
+        rarity: 'epic',
+        requiredProgress: 75,
+        backgroundStyle: {
+          gradientFrom: 0xe91e63,
+          gradientTo: 0xff80ab,
+          particleColor: 0xff69b4,
+          particleType: 'petal',
+          particleCount: 25,
+          overlayOpacity: 0.15,
+          headerColor: 0xe91e63
+        }
+      },
+      {
+        type: 'time_extension',
+        id: 702,
+        name: '浪漫时刻',
+        description: '每次关卡可使用的加时道具，额外获得60秒修复时间',
+        icon: '⏰',
+        rarity: 'legendary',
+        requiredProgress: 100,
+        timeBonusSeconds: 60
       }
     ],
     illustrationKey: 'family-illustration-rosa',
@@ -104,6 +194,51 @@ export const PlantFamilies: PlantFamily[] = [
         icon: '🌸',
         rarity: 'epic',
         requiredProgress: 100
+      },
+      {
+        type: 'border',
+        id: 503,
+        name: '樱花雪边',
+        description: '樱属专属粉白边框，如雪般樱花浪漫绽放',
+        icon: '🖼️',
+        rarity: 'epic',
+        requiredProgress: 50,
+        borderStyle: {
+          borderColor: 0xffb7c5,
+          borderWidth: 4,
+          glowColor: 0xf8bbd9,
+          glowIntensity: 0.7,
+          cornerRadius: 18,
+          animation: 'pulse'
+        }
+      },
+      {
+        type: 'background',
+        id: 603,
+        name: '樱花吹雪',
+        description: '樱花瓣如雪飘落的专属背景，春日限定梦幻氛围',
+        icon: '🌅',
+        rarity: 'legendary',
+        requiredProgress: 75,
+        backgroundStyle: {
+          gradientFrom: 0xffb7c5,
+          gradientTo: 0xfce4ec,
+          particleColor: 0xffb7c5,
+          particleType: 'petal',
+          particleCount: 30,
+          overlayOpacity: 0.2,
+          headerColor: 0xf8bbd9
+        }
+      },
+      {
+        type: 'time_extension',
+        id: 703,
+        name: '春日永驻',
+        description: '每次关卡可使用的加时道具，额外获得90秒修复时间',
+        icon: '⏰',
+        rarity: 'legendary',
+        requiredProgress: 100,
+        timeBonusSeconds: 90
       }
     ],
     illustrationKey: 'family-illustration-cerasus',
@@ -140,6 +275,51 @@ export const PlantFamilies: PlantFamily[] = [
         icon: '🌻',
         rarity: 'rare',
         requiredProgress: 100
+      },
+      {
+        type: 'border',
+        id: 504,
+        name: '阳光金边',
+        description: '向日葵属专属金色边框，如阳光般温暖闪耀',
+        icon: '🖼️',
+        rarity: 'rare',
+        requiredProgress: 50,
+        borderStyle: {
+          borderColor: 0xffc107,
+          borderWidth: 4,
+          glowColor: 0xffeb3b,
+          glowIntensity: 0.6,
+          cornerRadius: 16,
+          animation: 'shine'
+        }
+      },
+      {
+        type: 'background',
+        id: 604,
+        name: '金色花海',
+        description: '向日葵花瓣飘落的专属背景，如阳光普照的温暖花海',
+        icon: '🌅',
+        rarity: 'epic',
+        requiredProgress: 75,
+        backgroundStyle: {
+          gradientFrom: 0xffc107,
+          gradientTo: 0xff9800,
+          particleColor: 0xffeb3b,
+          particleType: 'sparkle',
+          particleCount: 25,
+          overlayOpacity: 0.15,
+          headerColor: 0xffc107
+        }
+      },
+      {
+        type: 'time_extension',
+        id: 704,
+        name: '阳光时刻',
+        description: '每次关卡可使用的加时道具，额外获得60秒修复时间',
+        icon: '⏰',
+        rarity: 'legendary',
+        requiredProgress: 100,
+        timeBonusSeconds: 60
       }
     ],
     illustrationKey: 'family-illustration-helianthus',
@@ -177,6 +357,51 @@ export const PlantFamilies: PlantFamily[] = [
         icon: '❄️',
         rarity: 'epic',
         requiredProgress: 100
+      },
+      {
+        type: 'border',
+        id: 505,
+        name: '冰雪银边',
+        description: '风毛菊属专属冰蓝边框，如高山雪莲般纯洁坚韧',
+        icon: '🖼️',
+        rarity: 'epic',
+        requiredProgress: 50,
+        borderStyle: {
+          borderColor: 0xe3f2fd,
+          borderWidth: 4,
+          glowColor: 0xbbdefb,
+          glowIntensity: 0.7,
+          cornerRadius: 16,
+          animation: 'pulse'
+        }
+      },
+      {
+        type: 'background',
+        id: 605,
+        name: '雪域风光',
+        description: '雪花飘落的专属背景，高山严寒中的纯净世界',
+        icon: '🌅',
+        rarity: 'legendary',
+        requiredProgress: 75,
+        backgroundStyle: {
+          gradientFrom: 0xe3f2fd,
+          gradientTo: 0x90caf9,
+          particleColor: 0xe3f2fd,
+          particleType: 'snow',
+          particleCount: 35,
+          overlayOpacity: 0.2,
+          headerColor: 0x607d8b
+        }
+      },
+      {
+        type: 'time_extension',
+        id: 705,
+        name: '冰封时刻',
+        description: '每次关卡可使用的加时道具，额外获得90秒修复时间',
+        icon: '⏰',
+        rarity: 'legendary',
+        requiredProgress: 100,
+        timeBonusSeconds: 90
       }
     ],
     illustrationKey: 'family-illustration-saussurea',
@@ -213,6 +438,51 @@ export const PlantFamilies: PlantFamily[] = [
         icon: '💜',
         rarity: 'rare',
         requiredProgress: 100
+      },
+      {
+        type: 'border',
+        id: 506,
+        name: '紫韵香边',
+        description: '薰衣草属专属紫色边框，如薰衣草花海般浪漫芬芳',
+        icon: '🖼️',
+        rarity: 'rare',
+        requiredProgress: 50,
+        borderStyle: {
+          borderColor: 0x9c27b0,
+          borderWidth: 4,
+          glowColor: 0xce93d8,
+          glowIntensity: 0.6,
+          cornerRadius: 16,
+          animation: 'none'
+        }
+      },
+      {
+        type: 'background',
+        id: 606,
+        name: '紫色花田',
+        description: '薰衣草花瓣飘落的专属背景，普罗旺斯的浪漫芬芳',
+        icon: '🌅',
+        rarity: 'epic',
+        requiredProgress: 75,
+        backgroundStyle: {
+          gradientFrom: 0x9c27b0,
+          gradientTo: 0xba68c8,
+          particleColor: 0xce93d8,
+          particleType: 'petal',
+          particleCount: 22,
+          overlayOpacity: 0.15,
+          headerColor: 0x9c27b0
+        }
+      },
+      {
+        type: 'time_extension',
+        id: 706,
+        name: '芳香时刻',
+        description: '每次关卡可使用的加时道具，额外获得60秒修复时间',
+        icon: '⏰',
+        rarity: 'legendary',
+        requiredProgress: 100,
+        timeBonusSeconds: 60
       }
     ],
     illustrationKey: 'family-illustration-lavandula',
@@ -249,6 +519,51 @@ export const PlantFamilies: PlantFamily[] = [
         icon: '🪻',
         rarity: 'rare',
         requiredProgress: 100
+      },
+      {
+        type: 'border',
+        id: 507,
+        name: '清雅青边',
+        description: '兰属专属青色边框，如幽谷兰花般高洁典雅',
+        icon: '🖼️',
+        rarity: 'rare',
+        requiredProgress: 50,
+        borderStyle: {
+          borderColor: 0x00bcd4,
+          borderWidth: 4,
+          glowColor: 0x80deea,
+          glowIntensity: 0.6,
+          cornerRadius: 16,
+          animation: 'none'
+        }
+      },
+      {
+        type: 'background',
+        id: 607,
+        name: '幽谷兰香',
+        description: '兰花幽香弥漫的专属背景，幽静山谷的清雅氛围',
+        icon: '🌅',
+        rarity: 'epic',
+        requiredProgress: 75,
+        backgroundStyle: {
+          gradientFrom: 0x00bcd4,
+          gradientTo: 0x26c6da,
+          particleColor: 0x80deea,
+          particleType: 'sparkle',
+          particleCount: 18,
+          overlayOpacity: 0.15,
+          headerColor: 0x00bcd4
+        }
+      },
+      {
+        type: 'time_extension',
+        id: 707,
+        name: '清雅时刻',
+        description: '每次关卡可使用的加时道具，额外获得60秒修复时间',
+        icon: '⏰',
+        rarity: 'legendary',
+        requiredProgress: 100,
+        timeBonusSeconds: 60
       }
     ],
     illustrationKey: 'family-illustration-cymbidium',
@@ -285,6 +600,51 @@ export const PlantFamilies: PlantFamily[] = [
         icon: '🌵',
         rarity: 'rare',
         requiredProgress: 100
+      },
+      {
+        type: 'border',
+        id: 508,
+        name: '翠绿肉边',
+        description: '景天属专属绿色边框，如多肉植物般饱满坚韧',
+        icon: '🖼️',
+        rarity: 'rare',
+        requiredProgress: 50,
+        borderStyle: {
+          borderColor: 0x66bb6a,
+          borderWidth: 4,
+          glowColor: 0xa5d6a7,
+          glowIntensity: 0.6,
+          cornerRadius: 16,
+          animation: 'none'
+        }
+      },
+      {
+        type: 'background',
+        id: 608,
+        name: '多肉花园',
+        description: '绿色叶片飘落的专属背景，沙漠精灵的生命乐园',
+        icon: '🌅',
+        rarity: 'epic',
+        requiredProgress: 75,
+        backgroundStyle: {
+          gradientFrom: 0x66bb6a,
+          gradientTo: 0x81c784,
+          particleColor: 0xa5d6a7,
+          particleType: 'leaf',
+          particleCount: 18,
+          overlayOpacity: 0.15,
+          headerColor: 0x66bb6a
+        }
+      },
+      {
+        type: 'time_extension',
+        id: 708,
+        name: '坚韧时刻',
+        description: '每次关卡可使用的加时道具，额外获得60秒修复时间',
+        icon: '⏰',
+        rarity: 'legendary',
+        requiredProgress: 100,
+        timeBonusSeconds: 60
       }
     ],
     illustrationKey: 'family-illustration-sedum',
@@ -322,6 +682,51 @@ export const PlantFamilies: PlantFamily[] = [
         icon: '🪷',
         rarity: 'epic',
         requiredProgress: 100
+      },
+      {
+        type: 'border',
+        id: 509,
+        name: '水韵紫边',
+        description: '睡莲属专属淡紫边框，如水波般温柔优雅',
+        icon: '🖼️',
+        rarity: 'epic',
+        requiredProgress: 50,
+        borderStyle: {
+          borderColor: 0xe1bee7,
+          borderWidth: 4,
+          glowColor: 0xce93d8,
+          glowIntensity: 0.7,
+          cornerRadius: 20,
+          animation: 'pulse'
+        }
+      },
+      {
+        type: 'background',
+        id: 609,
+        name: '荷塘月色',
+        description: '花瓣随水波荡漾的专属背景，月色荷塘的宁静氛围',
+        icon: '🌅',
+        rarity: 'legendary',
+        requiredProgress: 75,
+        backgroundStyle: {
+          gradientFrom: 0xe1bee7,
+          gradientTo: 0x9c27b0,
+          particleColor: 0xe1bee7,
+          particleType: 'petal',
+          particleCount: 28,
+          overlayOpacity: 0.2,
+          headerColor: 0xce93d8
+        }
+      },
+      {
+        type: 'time_extension',
+        id: 709,
+        name: '静谧时刻',
+        description: '每次关卡可使用的加时道具，额外获得90秒修复时间',
+        icon: '⏰',
+        rarity: 'legendary',
+        requiredProgress: 100,
+        timeBonusSeconds: 90
       }
     ],
     illustrationKey: 'family-illustration-nymphaea',
@@ -359,6 +764,51 @@ export const PlantFamilies: PlantFamily[] = [
         icon: '🌺',
         rarity: 'epic',
         requiredProgress: 100
+      },
+      {
+        type: 'border',
+        id: 510,
+        name: '彼岸红边',
+        description: '石蒜属专属赤红边框，如彼岸花般神秘凄美',
+        icon: '🖼️',
+        rarity: 'epic',
+        requiredProgress: 50,
+        borderStyle: {
+          borderColor: 0xff1744,
+          borderWidth: 4,
+          glowColor: 0xff5252,
+          glowIntensity: 0.7,
+          cornerRadius: 16,
+          animation: 'pulse'
+        }
+      },
+      {
+        type: 'background',
+        id: 610,
+        name: '彼岸花海',
+        description: '红色花瓣飘落的专属背景，彼岸花盛开的神秘世界',
+        icon: '🌅',
+        rarity: 'legendary',
+        requiredProgress: 75,
+        backgroundStyle: {
+          gradientFrom: 0xff1744,
+          gradientTo: 0xb71c1c,
+          particleColor: 0xff5252,
+          particleType: 'petal',
+          particleCount: 30,
+          overlayOpacity: 0.2,
+          headerColor: 0xff1744
+        }
+      },
+      {
+        type: 'time_extension',
+        id: 710,
+        name: '思念时刻',
+        description: '每次关卡可使用的加时道具，额外获得90秒修复时间',
+        icon: '⏰',
+        rarity: 'legendary',
+        requiredProgress: 100,
+        timeBonusSeconds: 90
       }
     ],
     illustrationKey: 'family-illustration-lycoris',
@@ -396,6 +846,51 @@ export const PlantFamilies: PlantFamily[] = [
         icon: '🌙',
         rarity: 'epic',
         requiredProgress: 100
+      },
+      {
+        type: 'border',
+        id: 511,
+        name: '月华银边',
+        description: '昙花属专属月白边框，如月光下的昙花般圣洁神秘',
+        icon: '🖼️',
+        rarity: 'epic',
+        requiredProgress: 50,
+        borderStyle: {
+          borderColor: 0xfafafa,
+          borderWidth: 4,
+          glowColor: 0xe0e0e0,
+          glowIntensity: 0.8,
+          cornerRadius: 18,
+          animation: 'shine'
+        }
+      },
+      {
+        type: 'background',
+        id: 611,
+        name: '月下昙花',
+        description: '星光闪烁的专属背景，月夜昙花绽放的宁静氛围',
+        icon: '🌅',
+        rarity: 'legendary',
+        requiredProgress: 75,
+        backgroundStyle: {
+          gradientFrom: 0xfafafa,
+          gradientTo: 0x9e9e9e,
+          particleColor: 0xfafafa,
+          particleType: 'sparkle',
+          particleCount: 35,
+          overlayOpacity: 0.2,
+          headerColor: 0x8bc34a
+        }
+      },
+      {
+        type: 'time_extension',
+        id: 711,
+        name: '永恒时刻',
+        description: '每次关卡可使用的加时道具，额外获得90秒修复时间',
+        icon: '⏰',
+        rarity: 'legendary',
+        requiredProgress: 100,
+        timeBonusSeconds: 90
       }
     ],
     illustrationKey: 'family-illustration-epiphyllum',

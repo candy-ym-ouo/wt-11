@@ -630,14 +630,36 @@ export class GalleryScene extends Phaser.Scene {
     const card = this.add.graphics();
     card.fillStyle(unlocked ? 0x0f3460 : 0x1a1a2e, 1);
     
+    let hasFamilyBorder = false;
+    let familyBorderStyle: any = null;
+    
+    if (unlocked && family) {
+      const familyProgress = SaveManager.data.familyCollection.familyProgress[family.id];
+      if (familyProgress && familyProgress.activeBorderId) {
+        const borderReward = family.rewards.find(r => r.id === familyProgress.activeBorderId && r.type === 'border');
+        if (borderReward && borderReward.borderStyle) {
+          hasFamilyBorder = true;
+          familyBorderStyle = borderReward.borderStyle;
+        }
+      }
+    }
+    
     const borderColor = isEvent 
       ? (unlocked ? 0xe91e63 : 0x662244) 
       : route
         ? (unlocked ? route.primaryColor : 0x555566)
         : (unlocked ? 0x4caf50 : 0x555566);
     
-    card.lineStyle(unlocked ? 2 : 1, borderColor, unlocked ? 1 : 0.5);
-    card.strokeRoundedRect(x - width / 2, y - height / 2, width, height, 12);
+    if (hasFamilyBorder && familyBorderStyle) {
+      card.lineStyle(familyBorderStyle.borderWidth + 2, familyBorderStyle.glowColor, familyBorderStyle.glowIntensity * 0.4);
+      card.strokeRoundedRect(x - width / 2 - 3, y - height / 2 - 3, width + 6, height + 6, familyBorderStyle.cornerRadius + 3);
+      
+      card.lineStyle(familyBorderStyle.borderWidth, familyBorderStyle.borderColor, 1);
+      card.strokeRoundedRect(x - width / 2, y - height / 2, width, height, familyBorderStyle.cornerRadius);
+    } else {
+      card.lineStyle(unlocked ? 2 : 1, borderColor, unlocked ? 1 : 0.5);
+      card.strokeRoundedRect(x - width / 2, y - height / 2, width, height, 12);
+    }
     card.fillRoundedRect(x - width / 2, y - height / 2, width, height, 12);
     container.add(card);
 
@@ -835,16 +857,34 @@ export class GalleryScene extends Phaser.Scene {
       card.on('pointerover', () => {
         card.clear();
         card.fillStyle(this.lighten(unlocked ? 0x0f3460 : 0x1a1a2e, 10), 1);
-        card.lineStyle(unlocked ? 3 : 1, this.lighten(borderColor, 20), 1);
-        card.strokeRoundedRect(x - width / 2, y - height / 2, width, height, 12);
+        
+        if (hasFamilyBorder && familyBorderStyle) {
+          card.lineStyle(familyBorderStyle.borderWidth + 3, familyBorderStyle.glowColor, familyBorderStyle.glowIntensity * 0.6);
+          card.strokeRoundedRect(x - width / 2 - 3, y - height / 2 - 3, width + 6, height + 6, familyBorderStyle.cornerRadius + 3);
+          
+          card.lineStyle(familyBorderStyle.borderWidth + 1, familyBorderStyle.borderColor, 1);
+          card.strokeRoundedRect(x - width / 2, y - height / 2, width, height, familyBorderStyle.cornerRadius);
+        } else {
+          card.lineStyle(unlocked ? 3 : 1, this.lighten(borderColor, 20), 1);
+          card.strokeRoundedRect(x - width / 2, y - height / 2, width, height, 12);
+        }
         card.fillRoundedRect(x - width / 2, y - height / 2, width, height, 12);
       });
 
       card.on('pointerout', () => {
         card.clear();
         card.fillStyle(unlocked ? 0x0f3460 : 0x1a1a2e, 1);
-        card.lineStyle(unlocked ? 2 : 1, borderColor, unlocked ? 1 : 0.5);
-        card.strokeRoundedRect(x - width / 2, y - height / 2, width, height, 12);
+        
+        if (hasFamilyBorder && familyBorderStyle) {
+          card.lineStyle(familyBorderStyle.borderWidth + 2, familyBorderStyle.glowColor, familyBorderStyle.glowIntensity * 0.4);
+          card.strokeRoundedRect(x - width / 2 - 3, y - height / 2 - 3, width + 6, height + 6, familyBorderStyle.cornerRadius + 3);
+          
+          card.lineStyle(familyBorderStyle.borderWidth, familyBorderStyle.borderColor, 1);
+          card.strokeRoundedRect(x - width / 2, y - height / 2, width, height, familyBorderStyle.cornerRadius);
+        } else {
+          card.lineStyle(unlocked ? 2 : 1, borderColor, unlocked ? 1 : 0.5);
+          card.strokeRoundedRect(x - width / 2, y - height / 2, width, height, 12);
+        }
         card.fillRoundedRect(x - width / 2, y - height / 2, width, height, 12);
       });
     }

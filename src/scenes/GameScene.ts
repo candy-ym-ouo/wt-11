@@ -19,7 +19,8 @@ import { RandomEventManager } from '../utils/RandomEventManager';
 import { RandomEventData, ActiveRandomEvent, RandomEventSessionStats } from '../types/GameTypes';
 import { getRandomEventById, getRarityColor } from '../data/RandomEvents';
 import { HintConfig, PieceLayoutConfig } from '../config/GameConfig';
-import { PieceGenerationConfig, InitialRotationMode, ScatterAreaMode, SliceMode, InitialRotationRule, ScatterAreaConfig } from '../types/GameTypes';
+import { PieceGenerationConfig, InitialRotationMode, ScatterAreaMode, SliceMode, InitialRotationRule, ScatterAreaConfig, FamilyBorderStyle, FamilyBackgroundStyle } from '../types/GameTypes';
+import { PlantFamilies } from '../data/PlantFamilies';
 
 export class GameScene extends Phaser.Scene {
   private levelRule!: LevelRule;
@@ -106,6 +107,9 @@ export class GameScene extends Phaser.Scene {
   private scoreSurgeMultiplier: number = 1;
   private scoreSurgeTimer: Phaser.Time.TimerEvent | null = null;
   private pieceDriftTimer: Phaser.Time.TimerEvent | null = null;
+  private familyParticles: Phaser.GameObjects.Particles.ParticleEmitter[] = [];
+  private familyBorderGraphics: Phaser.GameObjects.Graphics | null = null;
+  private usedTimeExtensions: number = 0;
 
   private static readonly TARGET_AREA_X = 375;
   private static readonly TARGET_AREA_Y = 420;
@@ -383,6 +387,173 @@ export class GameScene extends Phaser.Scene {
     if (bg?.backgroundImageKey) {
       this.add.image(375, 667, bg.backgroundImageKey).setAlpha(0.3).setDepth(0);
     }
+
+    this.applyFamilyBackground();
+    this.applyFamilyBorder();
+  }
+
+  private applyFamilyBackground(): void {
+    const activeBg = SaveManager.getActiveBackground();
+    if (!activeBg) return;
+
+    const family = PlantFamilies.find(f => f.id === activeBg.familyId);
+    if (!family) return;
+
+    const bgReward = family.rewards.find(r => r.id === activeBg.backgroundId && r.type === 'background');
+    if (!bgReward || !bgReward.backgroundStyle) return;
+
+    const style = bgReward.backgroundStyle;
+
+    const overlay = this.add.graphics();
+    overlay.setDepth(1);
+    if (style.gradientFrom !== style.gradientTo) {
+      const gradientH = 667;
+      for (let i = 0; i < gradientH; i++) {
+        const t = i / gradientH;
+        const r = Math.round(((style.gradientFrom >> 16) & 0xff) * (1 - t) + ((style.gradientTo >> 16) & 0xff) * t);
+        const g = Math.round(((style.gradientFrom >> 8) & 0xff) * (1 - t) + ((style.gradientTo >> 8) & 0xff) * t);
+        const b = Math.round((style.gradientFrom & 0xff) * (1 - t) + (style.gradientTo & 0xff) * t);
+        const color = (r << 16) | (g << 8) | b;
+        overlay.fillStyle(color, style.overlayOpacity);
+        overlay.fillRect(0, i * 2, 750, 2);
+      }
+    }
+
+    this.addFamilyParticles(style);
+  }
+
+  private addFamilyParticles(style: FamilyBackgroundStyle): void {
+    const particleColor = '#' + style.particleColor.toString(16).padStart(6, '0');
+
+    if (style.particleType === 'none' || style.particleCount <= 0) return;
+
+    const particleTexture = this.createParticleTexture(style.particleType, particleColor);
+    if (!particleTexture) return;
+
+    const emitter = this.add.particles(0, -20, particleTexture, {
+      x: { min: 0, max: 750 },
+      y: -20,
+      lifespan: 8000,
+      speedY: { min: 20, max: 50 },
+      speedX: { min: -10, max: 10 },
+      scale: { start: 0.5, end: 0.2 },
+      alpha: { start: 0.8, end: 0.1 },
+      quantity: Math.ceil(style.particleCount / 10),
+      frequency: 200,
+      gravityY: 5,
+      rotate: { min: 0, max: 360 },
+      rotationVelocity: { min: -30, max: 30 }
+    });
+    emitter.setDepth(2);
+    this.familyParticles.push(emitter);
+  }
+
+  private createParticleTexture(type: string, color: string): string | null {
+    const key = `family-particle-${type}-${color}`;
+    if (this.textures.exists(key)) return key;
+
+    const size = 16;
+    const canvas = this.textures.createCanvas(key, size, size);
+    if (!canvas) return null;
+    const ctx = canvas.getContext();
+
+    ctx.fillStyle = color;
+
+    switch (type) {
+      case 'leaf':
+        ctx.beginPath();
+        ctx.ellipse(size / 2, size / 2, size / 3, size / 2, Math.PI / 6, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      case 'petal':
+        ctx.beginPath();
+        ctx.ellipse(size / 2, size / 2, size / 3, size / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      case 'sparkle':
+        ctx.beginPath();
+        for (let i = 0; i < 5; i++) {
+          const angle = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+          const r = i % 2 === 0 ? size / 2 : size / 4;
+          const x = size / 2 + Math.cos(angle) * r;
+          const y = size / 2 + Math.sin(angle) * r;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.fill();
+        break;
+      case 'snow':
+        ctx.beginPath();
+        ctx.arc(size / 2, size / 2, size / 3, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      default:
+        ctx.fillRect(0, 0, size, size);
+    }
+
+    canvas.refresh();
+    return key;
+  }
+
+  private applyFamilyBorder(): void {
+    const activeBorder = SaveManager.getActiveBorder();
+    if (!activeBorder) return;
+
+    const family = PlantFamilies.find(f => f.id === activeBorder.familyId);
+    if (!family) return;
+
+    const borderReward = family.rewards.find(r => r.id === activeBorder.borderId && r.type === 'border');
+    if (!borderReward || !borderReward.borderStyle) return;
+
+    const style = borderReward.borderStyle;
+    this.familyBorderGraphics = this.add.graphics();
+    this.familyBorderGraphics.setDepth(100);
+
+    this.drawFamilyBorder(style);
+
+    if (style.animation === 'pulse' || style.animation === 'shine') {
+      this.time.addEvent({
+        delay: 50,
+        loop: true,
+        callback: () => {
+          if (!this.familyBorderGraphics || this.scene.isPaused()) return;
+          this.drawFamilyBorder(style);
+        }
+      });
+    }
+  }
+
+  private drawFamilyBorder(style: FamilyBorderStyle): void {
+    if (!this.familyBorderGraphics) return;
+    this.familyBorderGraphics.clear();
+
+    const padding = 8;
+    const w = 750 - padding * 2;
+    const h = 1334 - padding * 2;
+
+    let glowAlpha = style.glowIntensity;
+    let borderAlpha = 1;
+
+    if (style.animation === 'pulse') {
+      const t = (Date.now() / 500) % (Math.PI * 2);
+      glowAlpha = style.glowIntensity * (0.5 + 0.5 * Math.sin(t));
+    } else if (style.animation === 'shine') {
+      const t = (Date.now() / 800) % (Math.PI * 2);
+      borderAlpha = 0.7 + 0.3 * Math.sin(t);
+    }
+
+    this.familyBorderGraphics.lineStyle(style.borderWidth, style.glowColor, glowAlpha * 0.5);
+    this.familyBorderGraphics.strokeRoundedRect(
+      padding - 4,
+      padding - 4,
+      w + 8,
+      h + 8,
+      style.cornerRadius + 4
+    );
+
+    this.familyBorderGraphics.lineStyle(style.borderWidth, style.borderColor, borderAlpha);
+    this.familyBorderGraphics.strokeRoundedRect(padding, padding, w, h, style.cornerRadius);
   }
 
   private addHeader(): void {
@@ -1039,13 +1210,15 @@ export class GameScene extends Phaser.Scene {
 
   private addControlButtons(): void {
     const hasNoHintRestriction = this.hasTowerRule('no_hint_restriction');
+    const hasTimeExtensions = SaveManager.getTotalTimeExtensionsAvailable() > 0;
     const btnY = 845;
-    const btnW = 155;
+    const btnW = 132;
     const btnH = 52;
-    const spacing = 18;
+    const spacing = 14;
 
     let buttonCount = 5;
     if (hasNoHintRestriction) buttonCount = 2;
+    if (hasTimeExtensions && !this.isTowerFloor && !this.isEventLevel) buttonCount += 1;
 
     const totalW = btnW * buttonCount + spacing * (buttonCount - 1);
     const startX = (750 - totalW) / 2 + btnW / 2;
@@ -1119,6 +1292,24 @@ export class GameScene extends Phaser.Scene {
       currentIndex++;
     }
 
+    if (hasTimeExtensions && !this.isTowerFloor && !this.isEventLevel) {
+      const timeBtn = this.createControlButton(
+        startX + currentIndex * (btnW + spacing),
+        btnY,
+        btnW,
+        btnH,
+        '⏰ 加时',
+        0x4caf50,
+        () => this.useFamilyTimeExtension()
+      );
+      this.addHintCountBadge(
+        startX + currentIndex * (btnW + spacing) + btnW / 2 - 10,
+        btnY - btnH / 2 + 10,
+        () => SaveManager.getTotalTimeExtensionsAvailable()
+      );
+      currentIndex++;
+    }
+
     const resetBtn = this.createControlButton(
       startX + currentIndex * (btnW + spacing),
       btnY,
@@ -1138,6 +1329,9 @@ export class GameScene extends Phaser.Scene {
       this.input.keyboard?.on('keydown-2', () => this.usePieceHighlightHint());
       this.input.keyboard?.on('keydown-3', () => this.useFullPreviewHint());
     }
+    if (hasTimeExtensions && !this.isTowerFloor && !this.isEventLevel) {
+      this.input.keyboard?.on('keydown-T', () => this.useFamilyTimeExtension());
+    }
     this.input.keyboard?.on('keydown-ESC', () => {
       if (!this.isCompleted) this.showPauseMenu();
     });
@@ -1145,6 +1339,45 @@ export class GameScene extends Phaser.Scene {
     if (this.isTowerFloor) {
       this.addTowerStatusUI();
     }
+  }
+
+  private useFamilyTimeExtension(): void {
+    if (this.isPaused || this.isCompleted) return;
+    if (SaveManager.getTotalTimeExtensionsAvailable() <= 0) return;
+
+    const familyProgressData = SaveManager.data.familyCollection.familyProgress;
+    let bonusSeconds = 0;
+    for (const [familyId, progress] of Object.entries(familyProgressData)) {
+      if (progress.timeExtensionsAvailable > 0) {
+        bonusSeconds = SaveManager.useTimeExtension(familyId);
+        if (bonusSeconds > 0) break;
+      }
+    }
+
+    if (bonusSeconds <= 0) return;
+
+    this.startTime = this.time.now - (this.elapsedTime - bonusSeconds) * 1000;
+    this.usedTimeExtensions++;
+
+    this.cameras.main.flash(500, 76, 175, 80, false);
+
+    const flashText = this.add.text(375, 400, `⏰ +${bonusSeconds}秒！`, {
+      font: 'bold 48px Arial',
+      color: '#4caf50',
+      stroke: '#ffffff',
+      strokeThickness: 4
+    }).setOrigin(0.5).setDepth(200);
+
+    this.tweens.add({
+      targets: flashText,
+      y: 300,
+      alpha: 0,
+      duration: 1500,
+      ease: 'Cubic.easeOut',
+      onComplete: () => flashText.destroy()
+    });
+
+    this.updateTimerDisplay();
   }
 
   private addHintCountBadge(

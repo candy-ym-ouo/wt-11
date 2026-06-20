@@ -478,12 +478,29 @@ export class SaveManager {
     } else {
       if (!migrated.familyCollection.familyProgress) {
         migrated.familyCollection.familyProgress = defaultData.familyCollection.familyProgress;
+      } else {
+        PlantFamilies.forEach(family => {
+          const fp = migrated.familyCollection.familyProgress[family.id];
+          if (fp) {
+            if (!fp.unlockedBorders) fp.unlockedBorders = [];
+            if (!fp.unlockedBackgrounds) fp.unlockedBackgrounds = [];
+            if (fp.timeExtensionsAvailable === undefined) fp.timeExtensionsAvailable = 0;
+            if (fp.activeBorderId === undefined) fp.activeBorderId = null;
+            if (fp.activeBackgroundId === undefined) fp.activeBackgroundId = null;
+          }
+        });
       }
       if (migrated.familyCollection.totalFamiliesCompleted === undefined) {
         migrated.familyCollection.totalFamiliesCompleted = 0;
       }
       if (!migrated.familyCollection.totalSpecimensByFamily) {
         migrated.familyCollection.totalSpecimensByFamily = defaultData.familyCollection.totalSpecimensByFamily;
+      }
+      if (migrated.familyCollection.activeBorderFamilyId === undefined) {
+        migrated.familyCollection.activeBorderFamilyId = null;
+      }
+      if (migrated.familyCollection.activeBackgroundFamilyId === undefined) {
+        migrated.familyCollection.activeBackgroundFamilyId = null;
       }
     }
 
@@ -892,7 +909,12 @@ export class SaveManager {
         unlockedSpecimens: [],
         rewardsClaimed,
         illustrationUnlocked: false,
-        totalStars: 0
+        totalStars: 0,
+        unlockedBorders: [],
+        unlockedBackgrounds: [],
+        timeExtensionsAvailable: 0,
+        activeBorderId: null,
+        activeBackgroundId: null
       };
 
       totalSpecimensByFamily[family.id] = family.specimenIds.length;
@@ -901,7 +923,9 @@ export class SaveManager {
     return {
       familyProgress,
       totalFamiliesCompleted: 0,
-      totalSpecimensByFamily
+      totalSpecimensByFamily,
+      activeBorderFamilyId: null,
+      activeBackgroundFamilyId: null
     };
   }
 
@@ -2241,6 +2265,19 @@ export class SaveManager {
           this.grantResearchPoints(reward.value);
         }
         break;
+      case 'border':
+        if (!familyProgress.unlockedBorders.includes(rewardId)) {
+          familyProgress.unlockedBorders.push(rewardId);
+        }
+        break;
+      case 'background':
+        if (!familyProgress.unlockedBackgrounds.includes(rewardId)) {
+          familyProgress.unlockedBackgrounds.push(rewardId);
+        }
+        break;
+      case 'time_extension':
+        familyProgress.timeExtensionsAvailable += 1;
+        break;
     }
 
     this.save();
@@ -2337,6 +2374,89 @@ export class SaveManager {
       const fp = this.data.familyCollection.familyProgress[family.id];
       return fp && fp.completedAt !== undefined;
     }).length;
+  }
+
+  static setActiveBorder(familyId: string, borderId: number): boolean {
+    const familyProgress = this.data.familyCollection.familyProgress[familyId];
+    if (!familyProgress || !familyProgress.unlockedBorders.includes(borderId)) {
+      return false;
+    }
+    familyProgress.activeBorderId = borderId;
+    this.data.familyCollection.activeBorderFamilyId = familyId;
+    this.save();
+    return true;
+  }
+
+  static clearActiveBorder(): void {
+    if (this.data.familyCollection.activeBorderFamilyId) {
+      const familyProgress = this.data.familyCollection.familyProgress[this.data.familyCollection.activeBorderFamilyId];
+      if (familyProgress) {
+        familyProgress.activeBorderId = null;
+      }
+    }
+    this.data.familyCollection.activeBorderFamilyId = null;
+    this.save();
+  }
+
+  static getActiveBorder(): { familyId: string; borderId: number } | null {
+    const familyId = this.data.familyCollection.activeBorderFamilyId;
+    if (!familyId) return null;
+    const familyProgress = this.data.familyCollection.familyProgress[familyId];
+    if (!familyProgress || familyProgress.activeBorderId === null) return null;
+    return { familyId, borderId: familyProgress.activeBorderId };
+  }
+
+  static setActiveBackground(familyId: string, backgroundId: number): boolean {
+    const familyProgress = this.data.familyCollection.familyProgress[familyId];
+    if (!familyProgress || !familyProgress.unlockedBackgrounds.includes(backgroundId)) {
+      return false;
+    }
+    familyProgress.activeBackgroundId = backgroundId;
+    this.data.familyCollection.activeBackgroundFamilyId = familyId;
+    this.save();
+    return true;
+  }
+
+  static clearActiveBackground(): void {
+    if (this.data.familyCollection.activeBackgroundFamilyId) {
+      const familyProgress = this.data.familyCollection.familyProgress[this.data.familyCollection.activeBackgroundFamilyId];
+      if (familyProgress) {
+        familyProgress.activeBackgroundId = null;
+      }
+    }
+    this.data.familyCollection.activeBackgroundFamilyId = null;
+    this.save();
+  }
+
+  static getActiveBackground(): { familyId: string; backgroundId: number } | null {
+    const familyId = this.data.familyCollection.activeBackgroundFamilyId;
+    if (!familyId) return null;
+    const familyProgress = this.data.familyCollection.familyProgress[familyId];
+    if (!familyProgress || familyProgress.activeBackgroundId === null) return null;
+    return { familyId, backgroundId: familyProgress.activeBackgroundId };
+  }
+
+  static useTimeExtension(familyId: string): number {
+    const familyProgress = this.data.familyCollection.familyProgress[familyId];
+    if (!familyProgress || familyProgress.timeExtensionsAvailable <= 0) {
+      return 0;
+    }
+    const family = PlantFamilies.find(f => f.id === familyId);
+    if (!family) return 0;
+    const timeReward = family.rewards.find(r => r.type === 'time_extension');
+    if (!timeReward || !timeReward.timeBonusSeconds) return 0;
+    
+    familyProgress.timeExtensionsAvailable -= 1;
+    this.save();
+    return timeReward.timeBonusSeconds;
+  }
+
+  static getTotalTimeExtensionsAvailable(): number {
+    let total = 0;
+    Object.values(this.data.familyCollection.familyProgress).forEach(fp => {
+      total += fp.timeExtensionsAvailable;
+    });
+    return total;
   }
 
   static hasEventBadge(badgeId: number): boolean {
