@@ -23,7 +23,12 @@ import {
   MapNodeData,
   EndingData,
   DonationSaveData,
-  DonationProgress
+  DonationProgress,
+  RandomEventSaveData,
+  PuzzleSaveData,
+  PuzzleSaves,
+  PuzzlePieceSaveData,
+  LevelProgressResult
 } from '../types/GameTypes';
 import { TutorialManager } from './TutorialManager';
 import { ConservationManager } from './ConservationManager';
@@ -52,6 +57,7 @@ import { RepairLogManager } from './RepairLogManager';
 import { NotificationManager } from './NotificationManager';
 import { QuizManager } from './QuizManager';
 import { DonationManager } from './DonationManager';
+import { RandomEventManager } from './RandomEventManager';
 
 const STORAGE_KEY = 'plant_specimen_puzzle_save';
 
@@ -85,9 +91,11 @@ export class SaveManager {
     NotificationManager.init(this.data.notification);
     QuizManager.init(this.data.quiz);
     DonationManager.init(this.data.donation);
+    RandomEventManager.init(this.data.randomEvent);
     this.data.notification = NotificationManager.getSaveData();
     this.data.quiz = QuizManager.getSaveData();
     this.data.donation = DonationManager.getSaveData();
+    this.data.randomEvent = RandomEventManager.getSaveData();
     this.save();
   }
 
@@ -553,7 +561,9 @@ export class SaveManager {
       notification: NotificationManager.createDefaultNotificationSave(),
       quiz: QuizManager.createDefaultQuizSave(),
       chapterMap: chapterMapData,
-      donation: donationData
+      donation: donationData,
+      randomEvent: RandomEventManager.createDefaultSave(),
+      puzzleSaves: { saves: {}, maxSavesPerLevel: 3 }
     };
   }
 
@@ -875,9 +885,70 @@ export class SaveManager {
     return this.data.badges[badgeId] ?? false;
   }
 
-  static completeLevel(levelId: number, score: number, time: number, stars: number): { chapterCompleted: boolean; completedChapterId: number | null; newlyUnlockedChapterId: number | null; updatedQuests: DailyQuest[]; researchRewards: { pointsGained: number; expGained: number }; achievementResult: AchievementUnlockResult; conservationInfo: { specimenId: number | null; healthLevel: ConservationHealthLevel | null; scoreMultiplier: number; researchMultiplier: number; finalScore: number; finalPoints: number }; familyProgressResult: { familyCompleted: boolean; familyId: string | null; newlyUnlockedRewardIds: number[]; illustrationUnlocked: boolean } } {
+  static completeLevel(
+    levelId: number,
+    score: number,
+    time: number,
+    stars: number,
+    stats?: { accuracy?: number; combo?: number; perfectSnaps?: number; rotations?: number; hintTime?: number }
+  ): {
+    chapterCompleted: boolean;
+    completedChapterId: number | null;
+    newlyUnlockedChapterId: number | null;
+    updatedQuests: DailyQuest[];
+    researchRewards: { pointsGained: number; expGained: number };
+    achievementResult: AchievementUnlockResult;
+    conservationInfo: {
+      specimenId: number | null;
+      healthLevel: ConservationHealthLevel | null;
+      scoreMultiplier: number;
+      researchMultiplier: number;
+      finalScore: number;
+      finalPoints: number;
+    };
+    familyProgressResult: {
+      familyCompleted: boolean;
+      familyId: string | null;
+      newlyUnlockedRewardIds: number[];
+      illustrationUnlocked: boolean;
+    };
+    levelProgress: LevelProgressResult;
+  } {
     const progress = this.data.progress[levelId];
-    if (!progress) return { chapterCompleted: false, completedChapterId: null, newlyUnlockedChapterId: null, updatedQuests: [], researchRewards: { pointsGained: 0, expGained: 0 }, achievementResult: { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 }, conservationInfo: { specimenId: null, healthLevel: null, scoreMultiplier: 1, researchMultiplier: 1, finalScore: 0, finalPoints: 0 }, familyProgressResult: { familyCompleted: false, familyId: null, newlyUnlockedRewardIds: [], illustrationUnlocked: false } };
+    if (!progress) return {
+      chapterCompleted: false,
+      completedChapterId: null,
+      newlyUnlockedChapterId: null,
+      updatedQuests: [],
+      researchRewards: { pointsGained: 0, expGained: 0 },
+      achievementResult: { newlyUnlocked: [], newlyUnlockedTitles: [], scoreGained: 0 },
+      conservationInfo: {
+        specimenId: null,
+        healthLevel: null,
+        scoreMultiplier: 1,
+        researchMultiplier: 1,
+        finalScore: 0,
+        finalPoints: 0
+      },
+      familyProgressResult: {
+        familyCompleted: false,
+        familyId: null,
+        newlyUnlockedRewardIds: [],
+        illustrationUnlocked: false
+      },
+      levelProgress: {
+        previousStars: 0,
+        previousBestScore: 0,
+        previousBestTime: 0,
+        isNewRecord: false,
+        isNewBestTime: false,
+        starsImproved: false
+      }
+    };
+
+    const previousStars = progress.stars;
+    const previousBestScore = progress.bestScore;
+    const previousBestTime = progress.bestTime;
 
     const isFirstCompletion = !progress.completed;
     const starsImproved = stars > progress.stars;
@@ -1058,7 +1129,15 @@ export class SaveManager {
         finalScore,
         finalPoints: actualPoints
       },
-      familyProgressResult
+      familyProgressResult,
+      levelProgress: {
+        previousStars,
+        previousBestScore,
+        previousBestTime,
+        isNewRecord: score > previousBestScore,
+        isNewBestTime: previousBestTime === 0 || time < previousBestTime,
+        starsImproved
+      }
     };
   }
 
@@ -2814,5 +2893,90 @@ export class SaveManager {
 
   static getRepairLogSpecimenStats(specimenId: number) {
     return RepairLogManager.getSpecimenStats(specimenId);
+  }
+
+  static getPuzzleSave(
+    levelId: number,
+    isEventLevel?: boolean,
+    eventId?: string | null,
+    isTowerFloor?: boolean,
+    towerFloorId?: number | null
+  ): PuzzleSaveData | undefined {
+    const saves = this.getAllPuzzleSaves(levelId);
+    const filtered = saves.filter(s => {
+      if (isEventLevel !== undefined && s.isEventLevel !== isEventLevel) return false;
+      if (eventId !== undefined && s.eventId !== eventId) return false;
+      if (isTowerFloor !== undefined && s.isTowerFloor !== isTowerFloor) return false;
+      if (towerFloorId !== undefined && s.towerFloorId !== towerFloorId) return false;
+      return true;
+    });
+    return filtered[0];
+  }
+
+  static getAllPuzzleSaves(levelId?: number): PuzzleSaveData[] {
+    const saves = Object.values(this.data.puzzleSaves.saves);
+    if (levelId !== undefined) {
+      return saves.filter(s => s.levelId === levelId).sort((a, b) => b.savedAt - a.savedAt);
+    }
+    return saves.sort((a, b) => b.savedAt - a.savedAt);
+  }
+
+  static savePuzzleProgress(puzzleSave: Omit<PuzzleSaveData, 'saveId' | 'savedAt'>): PuzzleSaveData {
+    const levelId = puzzleSave.levelId;
+    const savesForLevel = this.getAllPuzzleSaves(levelId);
+    const saveId = `level_${levelId}_${Date.now()}`;
+
+    const newSave: PuzzleSaveData = {
+      saveId,
+      savedAt: Date.now(),
+      ...puzzleSave
+    };
+
+    const maxSaves = this.data.puzzleSaves.maxSavesPerLevel;
+    if (savesForLevel.length >= maxSaves) {
+      const oldestSave = savesForLevel[savesForLevel.length - 1];
+      delete this.data.puzzleSaves.saves[oldestSave.saveId];
+    }
+
+    this.data.puzzleSaves.saves[saveId] = newSave;
+    this.save();
+
+    return newSave;
+  }
+
+  static clearPuzzleSave(
+    levelId: number,
+    isEventLevel?: boolean,
+    eventId?: string | null,
+    isTowerFloor?: boolean,
+    towerFloorId?: number | null
+  ): boolean {
+    const saves = this.getAllPuzzleSaves(levelId);
+    const filtered = saves.filter(s => {
+      if (isEventLevel !== undefined && s.isEventLevel !== isEventLevel) return false;
+      if (eventId !== undefined && s.eventId !== eventId) return false;
+      if (isTowerFloor !== undefined && s.isTowerFloor !== isTowerFloor) return false;
+      if (towerFloorId !== undefined && s.towerFloorId !== towerFloorId) return false;
+      return true;
+    });
+
+    let deleted = false;
+    filtered.forEach(save => {
+      delete this.data.puzzleSaves.saves[save.saveId];
+      deleted = true;
+    });
+    if (deleted) {
+      this.save();
+    }
+    return deleted;
+  }
+
+  static clearLevelPuzzleSaves(levelId: number): number {
+    const saves = this.getAllPuzzleSaves(levelId);
+    saves.forEach(save => {
+      delete this.data.puzzleSaves.saves[save.saveId];
+    });
+    this.save();
+    return saves.length;
   }
 }

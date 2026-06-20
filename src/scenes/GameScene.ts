@@ -269,6 +269,7 @@ export class GameScene extends Phaser.Scene {
     const pieceSaves: PuzzlePieceSaveData[] = this.pieces
       .filter(p => !p.isMirror)
       .map(piece => ({
+        id: piece.getPieceId(),
         pieceId: piece.getPieceId(),
         x: piece.x,
         y: piece.y,
@@ -278,6 +279,13 @@ export class GameScene extends Phaser.Scene {
       }));
 
     const remainingTime = Math.max(0, this.levelRule.timeLimit - this.elapsedTime);
+    const scoreResult = calculateScore(
+      this.elapsedTime,
+      this.levelRule.timeLimit,
+      this.pieces.length,
+      this.snappedCount,
+      this.getHintUsageStats()
+    );
 
     SaveManager.savePuzzleProgress({
       levelId: this.levelRule.id,
@@ -286,13 +294,17 @@ export class GameScene extends Phaser.Scene {
       isTowerFloor: this.isTowerFloor,
       towerFloorId: this.towerFloorId,
       remainingTime,
+      elapsedTime: this.elapsedTime,
       hintsUsed: this.hintsUsed,
+      hintViewTime: this.hintViewTime,
       snappedCount: this.snappedCount,
       pieces: pieceSaves,
       comboCount: this.comboCount,
       maxCombo: this.maxCombo,
       mistakeCount: this.mistakeCount,
-      perfectSnaps: this.perfectSnaps
+      mistakes: this.mistakeCount,
+      perfectSnaps: this.perfectSnaps,
+      score: scoreResult.score
     });
   }
 

@@ -11,6 +11,112 @@ export interface PuzzlePieceData {
   sourceY: number;
 }
 
+export type RandomEventType = 'fragment_damage' | 'time_compression' | 'hint_disabled' | 'score_boost' | 'piece_bonus' | 'double_reward';
+export type RandomEventRarity = 'common' | 'rare' | 'epic' | 'legendary';
+
+export interface RandomEventEffect {
+  type: string;
+  value: number;
+  duration?: number;
+}
+
+export interface RandomEventData {
+  id: string;
+  name: string;
+  description: string;
+  type: RandomEventType;
+  rarity: RandomEventRarity;
+  direction: 'positive' | 'negative' | 'mixed';
+  icon: string;
+  color: number;
+  effects: RandomEventEffect[];
+  weight: number;
+  triggerCondition: 'random' | 'time_elapsed' | 'pieces_snapped';
+  triggerValue?: number;
+  minDifficulty?: 'easy' | 'medium' | 'hard';
+  maxDifficulty?: 'easy' | 'medium' | 'hard';
+}
+
+export interface ActiveRandomEvent {
+  eventId: string;
+  startTime: number;
+  duration: number;
+  remainingDuration: number;
+  effects: RandomEventEffect[];
+  isActive: boolean;
+  triggeredAt: number;
+}
+
+export interface RandomEventSaveData {
+  totalEventsEncountered: number;
+  positiveEventsTotal: number;
+  negativeEventsTotal: number;
+  eventsByType: Record<string, number>;
+  eventsByRarity: Record<string, number>;
+  highestScoreWithEvent: number;
+  totalTimeLostToEvents: number;
+  totalDamagedPieces: number;
+  eventStreak: number;
+  bestEventStreak: number;
+  rareEventsUnlocked: string[];
+}
+
+export interface RandomEventSessionStats {
+  eventsEncountered: string[];
+  positiveEventsCount: number;
+  negativeEventsCount: number;
+  totalScoreModifier: number;
+  totalTimeLost: number;
+  damagedPieces: number;
+  eventsByRarity: Record<string, number>;
+}
+
+export interface PuzzlePieceSaveData {
+  id: number;
+  pieceId: number;
+  x: number;
+  y: number;
+  rotation: number;
+  isSnapped: boolean;
+  isMirror: boolean;
+}
+
+export interface PuzzleSaveData {
+  saveId: string;
+  levelId: number;
+  savedAt: number;
+  elapsedTime: number;
+  remainingTime: number;
+  snappedCount: number;
+  mistakes: number;
+  mistakeCount: number;
+  hintViewTime: number;
+  hintsUsed: number;
+  pieces: PuzzlePieceSaveData[];
+  score: number;
+  comboCount: number;
+  maxCombo: number;
+  perfectSnaps: number;
+  isEventLevel?: boolean;
+  eventId?: string | null;
+  isTowerFloor?: boolean;
+  towerFloorId?: number | null;
+}
+
+export interface PuzzleSaves {
+  saves: Record<string, PuzzleSaveData>;
+  maxSavesPerLevel: number;
+}
+
+export interface LevelProgressResult {
+  previousStars: number;
+  previousBestScore: number;
+  previousBestTime: number;
+  isNewRecord: boolean;
+  isNewBestTime: boolean;
+  starsImproved: boolean;
+}
+
 export interface LevelRule {
   id: number;
   name: string;
@@ -530,12 +636,22 @@ export interface TowerResultData {
   maxCombo: number;
   mistakes: number;
   hintsUsed: number;
+  hintViewTime: number;
   perfectSnaps: number;
   scoringBreakdown: { condition: string; score: number; maxScore: number }[];
   isNewRecord: boolean;
   isNewBestTime: boolean;
   unlockedNextFloor: boolean;
   rewards: TowerReward[];
+  snapTimestamps: number[];
+  starsImproved: boolean;
+  previousStars: number;
+  previousBestScore: number;
+  previousBestTime: number;
+  snapCount: number;
+  totalSnapDistance: number;
+  realPiecesCount: number;
+  rotationAdjustCount: number;
 }
 
 export type ExhibitionThemeType = 'color' | 'family' | 'shape' | 'season' | 'rarity';
@@ -1283,4 +1399,6 @@ export interface SaveData {
   quiz: QuizSaveData;
   chapterMap: ChapterMapSaveData;
   donation: DonationSaveData;
+  randomEvent: RandomEventSaveData;
+  puzzleSaves: PuzzleSaves;
 }
