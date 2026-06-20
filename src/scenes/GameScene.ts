@@ -3719,87 +3719,87 @@ export class GameScene extends Phaser.Scene {
   }
 
   private showObjectiveModal(parentOverlay: Phaser.GameObjects.Graphics, cleanupCallback: () => void): void {
-    const objOverlay = this.add.graphics();
+    const modalObjects: Phaser.GameObjects.GameObject[] = [];
+    const track = <T extends Phaser.GameObjects.GameObject>(obj: T, depth: number): T => {
+      (obj as any).setDepth(depth);
+      modalObjects.push(obj);
+      return obj;
+    };
+
+    const objOverlay = track(this.add.graphics(), 1000);
     objOverlay.fillStyle(0x000000, 0.6);
     objOverlay.fillRect(0, 0, 750, 1334);
     objOverlay.setInteractive();
-    objOverlay.setDepth(1000);
 
-    const objModal = this.add.graphics();
-    objModal.setDepth(1001);
+    const objModal = track(this.add.graphics(), 1001);
     objModal.fillStyle(0x16213e, 1);
     objModal.fillRoundedRect(70, 280, 610, 780, 24);
     objModal.lineStyle(3, 0x00bcd4, 1);
     objModal.strokeRoundedRect(70, 280, 610, 780, 24);
 
-    this.add.text(375, 330, '🎯 关卡目标', {
+    track(this.add.text(375, 330, '🎯 关卡目标', {
       font: 'bold 32px Arial',
       color: '#00bcd4'
-    }).setOrigin(0.5).setDepth(1002);
+    }).setOrigin(0.5), 1002);
 
     let contentY = 385;
 
-    const targetImg = this.add.image(375, contentY + 80, this.targetTextureKey);
+    const targetImg = track(this.add.image(375, contentY + 80, this.targetTextureKey), 1002);
     targetImg.setDisplaySize(280, 220);
     targetImg.setAlpha(0.9);
-    targetImg.setDepth(1002);
 
-    const imgFrame = this.add.graphics();
-    imgFrame.setDepth(1001);
+    const imgFrame = track(this.add.graphics(), 1001);
     imgFrame.lineStyle(3, 0x00bcd4, 0.6);
     imgFrame.strokeRoundedRect(235, contentY - 5, 280, 220, 12);
 
     contentY += 240;
 
-    const nameBg = this.add.graphics();
-    nameBg.setDepth(1001);
+    const nameBg = track(this.add.graphics(), 1001);
     nameBg.fillStyle(0x0f3460, 0.8);
     nameBg.fillRoundedRect(100, contentY, 550, 58, 12);
 
-    this.add.text(375, contentY + 18, `🌿 ${this.specimen.name}`, {
+    track(this.add.text(375, contentY + 18, `🌿 ${this.specimen.name}`, {
       font: 'bold 22px Arial',
       color: '#ffffff'
-    }).setOrigin(0.5).setDepth(1002);
+    }).setOrigin(0.5), 1002);
 
-    this.add.text(375, contentY + 42, `${this.specimen.family} · ${this.specimen.genus}`, {
+    track(this.add.text(375, contentY + 42, `${this.specimen.family} · ${this.specimen.genus}`, {
       font: '13px Arial',
       color: '#888888'
-    }).setOrigin(0.5).setDepth(1002);
+    }).setOrigin(0.5), 1002);
 
     contentY += 78;
 
-    const descBg = this.add.graphics();
-    descBg.setDepth(1001);
+    const descBg = track(this.add.graphics(), 1001);
     descBg.fillStyle(0x1a2a4a, 0.9);
     descBg.fillRoundedRect(100, contentY, 550, 90, 12);
     descBg.lineStyle(1, 0x00bcd4, 0.2);
     descBg.strokeRoundedRect(100, contentY, 550, 90, 12);
 
-    this.add.text(375, contentY + 18, '📖 标本简介', {
+    track(this.add.text(375, contentY + 18, '📖 标本简介', {
       font: 'bold 15px Arial',
       color: '#00bcd4'
-    }).setOrigin(0.5).setDepth(1002);
+    }).setOrigin(0.5), 1002);
 
-    this.add.text(375, contentY + 50, this.specimen.description, {
+    track(this.add.text(375, contentY + 50, this.specimen.description, {
       font: '13px Arial',
       color: '#cccccc',
       wordWrap: { width: 510, useAdvancedWrap: true },
       align: 'center'
-    }).setOrigin(0.5, 0).setDepth(1002);
+    }).setOrigin(0.5, 0), 1002);
 
     contentY += 110;
 
-    const goalBg = this.add.graphics();
-    goalBg.setDepth(1001);
+    const goalBg = track(this.add.graphics(), 1001);
     goalBg.fillStyle(0x1a4a2a, 0.9);
     goalBg.fillRoundedRect(100, contentY, 550, 115, 12);
     goalBg.lineStyle(1, 0x4caf50, 0.3);
     goalBg.strokeRoundedRect(100, contentY, 550, 115, 12);
 
-    this.add.text(375, contentY + 18, '🏆 修复目标', {
+    track(this.add.text(375, contentY + 18, '🏆 修复目标', {
       font: 'bold 15px Arial',
       color: '#4caf50'
-    }).setOrigin(0.5).setDepth(1002);
+    }).setOrigin(0.5), 1002);
 
     const remaining = Math.max(0, this.levelRule.timeLimit - this.elapsedTime);
     const goalItems = [
@@ -3808,44 +3808,43 @@ export class GameScene extends Phaser.Scene {
       { icon: '📊', label: '当前进度', value: `${this.snappedCount}/${this.realPiecesCount} (剩 ${formatTime(remaining)})`, color: '#4caf50' }
     ];
 
-    goalItems.forEach((item, idx) => {
-      const gx = 130 + idx * 170;
-      this.add.text(gx, contentY + 48, item.icon, {
+    goalItems.forEach((item) => {
+      const gx = 130 + goalItems.indexOf(item) * 170;
+      track(this.add.text(gx, contentY + 48, item.icon, {
         font: '18px Arial'
-      }).setOrigin(0.5).setDepth(1002);
-      this.add.text(gx, contentY + 68, item.label, {
+      }).setOrigin(0.5), 1002);
+      track(this.add.text(gx, contentY + 68, item.label, {
         font: '11px Arial',
         color: '#888888'
-      }).setOrigin(0.5).setDepth(1002);
-      this.add.text(gx, contentY + 88, item.value, {
+      }).setOrigin(0.5), 1002);
+      track(this.add.text(gx, contentY + 88, item.value, {
         font: 'bold 12px Arial',
         color: item.color
-      }).setOrigin(0.5).setDepth(1002);
+      }).setOrigin(0.5), 1002);
     });
 
     contentY += 135;
 
     if (this.isTowerFloor && this.towerFloorData && this.towerFloorData.rules.length > 0) {
-      const ruleBg = this.add.graphics();
-      ruleBg.setDepth(1001);
+      const ruleBg = track(this.add.graphics(), 1001);
       ruleBg.fillStyle(0x4a1a4a, 0.9);
       ruleBg.fillRoundedRect(100, contentY, 550, 50 + Math.ceil(this.towerFloorData.rules.length / 2) * 28, 12);
       ruleBg.lineStyle(1, 0x9c27b0, 0.3);
       ruleBg.strokeRoundedRect(100, contentY, 550, 50 + Math.ceil(this.towerFloorData.rules.length / 2) * 28, 12);
 
-      this.add.text(375, contentY + 18, '⚔️ 塔楼特殊规则', {
+      track(this.add.text(375, contentY + 18, '⚔️ 塔楼特殊规则', {
         font: 'bold 15px Arial',
         color: '#ce93d8'
-      }).setOrigin(0.5).setDepth(1002);
+      }).setOrigin(0.5), 1002);
 
       this.towerFloorData.rules.forEach((rule, idx) => {
         const rx = 130 + (idx % 2) * 260;
         const ry = contentY + 42 + Math.floor(idx / 2) * 28;
-        this.add.text(rx, ry, `• ${rule.name}: ${rule.description}`, {
+        track(this.add.text(rx, ry, `• ${rule.name}: ${rule.description}`, {
           font: '12px Arial',
           color: '#e1bee7',
           wordWrap: { width: 240 }
-        }).setOrigin(0, 0.5).setDepth(1002);
+        }).setOrigin(0, 0.5), 1002);
       });
 
       contentY += 60 + Math.ceil(this.towerFloorData.rules.length / 2) * 28;
@@ -3856,8 +3855,7 @@ export class GameScene extends Phaser.Scene {
     const closeBtnX = (750 - closeBtnW) / 2;
     const closeBtnY = contentY + 10;
 
-    const closeBtn = this.add.graphics();
-    closeBtn.setDepth(1001);
+    const closeBtn = track(this.add.graphics(), 1001);
     closeBtn.fillStyle(0x00bcd4, 1);
     closeBtn.fillRoundedRect(closeBtnX, closeBtnY, closeBtnW, closeBtnH, 14);
     closeBtn.setInteractive(
@@ -3865,10 +3863,10 @@ export class GameScene extends Phaser.Scene {
       Phaser.Geom.Rectangle.Contains
     );
 
-    this.add.text(closeBtnX + closeBtnW / 2, closeBtnY + closeBtnH / 2, '关闭，返回暂停菜单', {
+    track(this.add.text(closeBtnX + closeBtnW / 2, closeBtnY + closeBtnH / 2, '关闭，返回暂停菜单', {
       font: 'bold 19px Arial',
       color: '#ffffff'
-    }).setOrigin(0.5).setDepth(1002);
+    }).setOrigin(0.5), 1002);
 
     closeBtn.on('pointerover', () => {
       closeBtn.clear();
@@ -3883,45 +3881,38 @@ export class GameScene extends Phaser.Scene {
     });
 
     closeBtn.on('pointerup', () => {
-      objOverlay.destroy();
-      objModal.destroy();
-      targetImg.destroy();
-      imgFrame.destroy();
-      nameBg.destroy();
-      descBg.destroy();
-      goalBg.destroy();
-      closeBtn.destroy();
-      this.children.each(child => {
-        const go = child as any;
-        if (go.depth === 1001 || go.depth === 1002) {
-          if (go.destroy) go.destroy();
-        }
+      modalObjects.forEach(obj => {
+        if (obj && obj.destroy) obj.destroy();
       });
       cleanupCallback();
     });
   }
 
   private showAbandonConfirm(parentOverlay: Phaser.GameObjects.Graphics, cleanupCallback: () => void): void {
-    const confirmOverlay = this.add.graphics();
+    const confirmObjects: Phaser.GameObjects.GameObject[] = [];
+    const track = <T extends Phaser.GameObjects.GameObject>(obj: T, depth: number): T => {
+      (obj as any).setDepth(depth);
+      confirmObjects.push(obj);
+      return obj;
+    };
+
+    const confirmOverlay = track(this.add.graphics(), 1000);
     confirmOverlay.fillStyle(0x000000, 0.7);
     confirmOverlay.fillRect(0, 0, 750, 1334);
     confirmOverlay.setInteractive();
-    confirmOverlay.setDepth(1000);
 
-    const confirmModal = this.add.graphics();
-    confirmModal.setDepth(1001);
+    const confirmModal = track(this.add.graphics(), 1001);
     confirmModal.fillStyle(0x16213e, 1);
     confirmModal.fillRoundedRect(100, 480, 550, 360, 24);
     confirmModal.lineStyle(3, 0xf44336, 1);
     confirmModal.strokeRoundedRect(100, 480, 550, 360, 24);
 
-    this.add.text(375, 540, '⚠️ 确认放弃？', {
+    track(this.add.text(375, 540, '⚠️ 确认放弃？', {
       font: 'bold 30px Arial',
       color: '#f44336'
-    }).setOrigin(0.5).setDepth(1002);
+    }).setOrigin(0.5), 1002);
 
-    const warnBg = this.add.graphics();
-    warnBg.setDepth(1001);
+    const warnBg = track(this.add.graphics(), 1001);
     warnBg.fillStyle(0x4a1a1a, 0.8);
     warnBg.fillRoundedRect(140, 580, 470, 120, 12);
 
@@ -3932,11 +3923,11 @@ export class GameScene extends Phaser.Scene {
     ];
 
     warnItems.forEach((item, idx) => {
-      this.add.text(375, 610 + idx * 28, item, {
+      track(this.add.text(375, 610 + idx * 28, item, {
         font: '14px Arial',
         color: '#ffcdd2',
         align: 'center'
-      }).setOrigin(0.5).setDepth(1002);
+      }).setOrigin(0.5), 1002);
     });
 
     const btnW = 220;
@@ -3945,43 +3936,33 @@ export class GameScene extends Phaser.Scene {
     const gap = 30;
     const startX = (750 - btnW * 2 - gap) / 2;
 
-    const cancelBtn = this.add.graphics();
-    cancelBtn.setDepth(1001);
+    const cancelBtn = track(this.add.graphics(), 1001);
     cancelBtn.fillStyle(0x757575, 1);
     cancelBtn.fillRoundedRect(startX, btnY, btnW, btnH, 14);
     cancelBtn.setInteractive(
       new Phaser.Geom.Rectangle(startX, btnY, btnW, btnH),
       Phaser.Geom.Rectangle.Contains
     );
-    this.add.text(startX + btnW / 2, btnY + btnH / 2, '再想想', {
+    track(this.add.text(startX + btnW / 2, btnY + btnH / 2, '再想想', {
       font: 'bold 20px Arial',
       color: '#ffffff'
-    }).setOrigin(0.5).setDepth(1002);
+    }).setOrigin(0.5), 1002);
 
-    const abandonBtn = this.add.graphics();
-    abandonBtn.setDepth(1001);
+    const abandonBtn = track(this.add.graphics(), 1001);
     abandonBtn.fillStyle(0xf44336, 1);
     abandonBtn.fillRoundedRect(startX + btnW + gap, btnY, btnW, btnH, 14);
     abandonBtn.setInteractive(
       new Phaser.Geom.Rectangle(startX + btnW + gap, btnY, btnW, btnH),
       Phaser.Geom.Rectangle.Contains
     );
-    this.add.text(startX + btnW + gap + btnW / 2, btnY + btnH / 2, '确认放弃', {
+    track(this.add.text(startX + btnW + gap + btnW / 2, btnY + btnH / 2, '确认放弃', {
       font: 'bold 20px Arial',
       color: '#ffffff'
-    }).setOrigin(0.5).setDepth(1002);
+    }).setOrigin(0.5), 1002);
 
     const destroyConfirm = () => {
-      confirmOverlay.destroy();
-      confirmModal.destroy();
-      warnBg.destroy();
-      cancelBtn.destroy();
-      abandonBtn.destroy();
-      this.children.each(child => {
-        const go = child as any;
-        if (go.depth === 1001 || go.depth === 1002) {
-          if (go.destroy) go.destroy();
-        }
+      confirmObjects.forEach(obj => {
+        if (obj && obj.destroy) obj.destroy();
       });
     };
 
@@ -4031,35 +4012,42 @@ export class GameScene extends Phaser.Scene {
     if (this.isCompleted) return;
     this.pauseGameState();
 
-    const overlay = this.add.graphics();
+    const pauseMenuObjects: Phaser.GameObjects.GameObject[] = [];
+
+    const track = <T extends Phaser.GameObjects.GameObject>(obj: T): T => {
+      pauseMenuObjects.push(obj);
+      return obj;
+    };
+
+    const overlay = track(this.add.graphics());
     overlay.fillStyle(0x000000, 0.78);
     overlay.fillRect(0, 0, 750, 1334);
     overlay.setInteractive();
 
-    const modal = this.add.graphics();
+    const modal = track(this.add.graphics());
     modal.fillStyle(0x16213e, 1);
     modal.fillRoundedRect(90, 300, 570, 730, 24);
     modal.lineStyle(3, 0xe94560, 1);
     modal.strokeRoundedRect(90, 300, 570, 730, 24);
 
-    this.add.text(375, 360, '⏸ 游戏暂停', {
+    track(this.add.text(375, 360, '⏸ 游戏暂停', {
       font: 'bold 36px Arial',
       color: '#ffffff'
-    }).setOrigin(0.5);
+    }).setOrigin(0.5));
 
-    const infoBg = this.add.graphics();
+    const infoBg = track(this.add.graphics());
     infoBg.fillStyle(0x0f3460, 0.5);
     infoBg.fillRoundedRect(130, 400, 490, 78, 12);
 
     const remaining = Math.max(0, this.levelRule.timeLimit - this.elapsedTime);
-    this.add.text(375, 428, `🌿 ${this.specimen.name}`, {
+    track(this.add.text(375, 428, `🌿 ${this.specimen.name}`, {
       font: 'bold 17px Arial',
       color: '#4caf50'
-    }).setOrigin(0.5);
-    this.add.text(375, 455, `剩余时间 ${formatTime(remaining)}  ·  进度 ${this.snappedCount}/${this.realPiecesCount}`, {
+    }).setOrigin(0.5));
+    track(this.add.text(375, 455, `剩余时间 ${formatTime(remaining)}  ·  进度 ${this.snappedCount}/${this.realPiecesCount}`, {
       font: '17px Arial',
       color: '#eaeaea'
-    }).setOrigin(0.5);
+    }).setOrigin(0.5));
 
     const btnW = 245;
     const btnH = 62;
@@ -4076,7 +4064,7 @@ export class GameScene extends Phaser.Scene {
       color: number,
       onClick: () => void
     ): Phaser.GameObjects.Graphics => {
-      const btn = this.add.graphics();
+      const btn = track(this.add.graphics());
       btn.fillStyle(color, 1);
       btn.fillRoundedRect(x, y, btnW, btnH, 14);
       btn.setInteractive(
@@ -4085,19 +4073,19 @@ export class GameScene extends Phaser.Scene {
       );
 
       if (subLabel) {
-        this.add.text(x + btnW / 2, y + btnH / 2 - 9, label, {
+        track(this.add.text(x + btnW / 2, y + btnH / 2 - 9, label, {
           font: 'bold 17px Arial',
           color: '#ffffff'
-        }).setOrigin(0.5);
-        this.add.text(x + btnW / 2, y + btnH / 2 + 13, subLabel, {
+        }).setOrigin(0.5));
+        track(this.add.text(x + btnW / 2, y + btnH / 2 + 13, subLabel, {
           font: '11px Arial',
           color: 'rgba(255,255,255,0.7)'
-        }).setOrigin(0.5);
+        }).setOrigin(0.5));
       } else {
-        this.add.text(x + btnW / 2, y + btnH / 2, label, {
+        track(this.add.text(x + btnW / 2, y + btnH / 2, label, {
           font: 'bold 19px Arial',
           color: '#ffffff'
-        }).setOrigin(0.5);
+        }).setOrigin(0.5));
       }
 
       btn.on('pointerover', () => {
@@ -4129,28 +4117,16 @@ export class GameScene extends Phaser.Scene {
     };
 
     const destroyPauseMenu = () => {
-      overlay.destroy();
-      modal.destroy();
-      infoBg.destroy();
-      this.children.each(child => {
-        const go = child as Phaser.GameObjects.GameObject;
-        if (go.name === 'pauseMenuText' || go.type === 'Text') {
-          const text = go as Phaser.GameObjects.Text;
-          if (text.y >= 340 && text.y <= 1020) {
-            go.destroy();
-          }
-        }
+      pauseMenuObjects.forEach(obj => {
+        if (obj && obj.active && !obj.scene) return;
+        if (obj && obj.destroy) obj.destroy();
       });
-      if (saveNotification) saveNotification.destroy();
-      buttons.forEach(b => b && b.destroy());
     };
 
     const cleanupAfterModal = () => {
     };
 
-    const buttons: (Phaser.GameObjects.Graphics | null)[] = [];
-
-    const resumeBtn = createPauseButton(
+    createPauseButton(
       startX, btnY,
       '▶️ 继续游戏', '继续修复',
       0x4caf50,
@@ -4159,9 +4135,8 @@ export class GameScene extends Phaser.Scene {
         this.resumeGameState();
       }
     );
-    buttons.push(resumeBtn);
 
-    const objectiveBtn = createPauseButton(
+    createPauseButton(
       startX + btnW + gapX, btnY,
       '🎯 查看目标', '标本&规则',
       0x00bcd4,
@@ -4169,11 +4144,15 @@ export class GameScene extends Phaser.Scene {
         this.showObjectiveModal(overlay, cleanupAfterModal);
       }
     );
-    buttons.push(objectiveBtn);
 
     btnY += btnH + gapY;
 
-    const saveBtn = createPauseButton(
+    const saveNotification = track(this.add.text(375, 488, '', {
+      font: 'bold 15px Arial',
+      color: '#4caf50'
+    }).setOrigin(0.5).setAlpha(0)) as Phaser.GameObjects.Text;
+
+    createPauseButton(
       startX, btnY,
       '💾 保存进度', '下次可继续',
       0x2196f3,
@@ -4189,9 +4168,8 @@ export class GameScene extends Phaser.Scene {
         });
       }
     );
-    buttons.push(saveBtn);
 
-    const restartBtn = createPauseButton(
+    createPauseButton(
       startX + btnW + gapX, btnY,
       '🔄 重新开始', '重置本关',
       0xff9800,
@@ -4213,11 +4191,10 @@ export class GameScene extends Phaser.Scene {
         });
       }
     );
-    buttons.push(restartBtn);
 
     btnY += btnH + gapY;
 
-    const abandonBtn = createPauseButton(
+    createPauseButton(
       startX, btnY,
       '🗑️ 放弃本局', '不保存退出',
       0xf44336,
@@ -4225,9 +4202,8 @@ export class GameScene extends Phaser.Scene {
         this.showAbandonConfirm(overlay, cleanupAfterModal);
       }
     );
-    buttons.push(abandonBtn);
 
-    const quickBackBtn = createPauseButton(
+    createPauseButton(
       startX + btnW + gapX, btnY,
       '🏠 快捷返回', '保存并退出',
       0x9c27b0,
@@ -4237,27 +4213,21 @@ export class GameScene extends Phaser.Scene {
         this.navigateToPreviousScene();
       }
     );
-    buttons.push(quickBackBtn);
 
     btnY += btnH + gapY + 5;
 
-    const tipBg = this.add.graphics();
+    const tipBg = track(this.add.graphics());
     tipBg.fillStyle(0x1a2a4a, 0.8);
     tipBg.fillRoundedRect(130, btnY, 490, 48, 10);
     tipBg.lineStyle(1, 0x4caf50, 0.3);
     tipBg.strokeRoundedRect(130, btnY, 490, 48, 10);
 
     const sceneLabel = this.isTowerFloor ? '塔楼挑战' : this.isEventLevel ? '活动关卡' : '主线关卡';
-    this.add.text(375, btnY + 24, `💡 按 ESC 键快速暂停/继续  ·  当前: ${sceneLabel}`, {
+    track(this.add.text(375, btnY + 24, `💡 按 ESC 键快速暂停/继续  ·  当前: ${sceneLabel}`, {
       font: '13px Arial',
       color: '#888888',
       align: 'center'
-    }).setOrigin(0.5);
-
-    const saveNotification = this.add.text(375, 488, '', {
-      font: 'bold 15px Arial',
-      color: '#4caf50'
-    }).setOrigin(0.5).setAlpha(0);
+    }).setOrigin(0.5));
   }
 
   private setupLevelTutorialUI(): void {
