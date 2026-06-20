@@ -11,9 +11,10 @@ import { ConservationManager } from '../utils/ConservationManager';
 import { getPlantSpecimen } from '../data/PlantSpecimens';
 import { PlantFamilies } from '../data/PlantFamilies';
 import { SeasonPassManager } from '../utils/SeasonPassManager';
-import { getChapterQuiz, canAttemptQuiz } from '../data/ChapterQuizzes';
+import { ChapterQuiz, canAttemptQuiz } from '../data/ChapterQuizzes';
 import { QuizManager } from '../utils/QuizManager';
 import { BranchRoutesList } from '../data/BranchRoutes';
+import { DonationTiers } from '../data/DonationConfig';
 
 export class ChapterSelectScene extends Phaser.Scene {
   constructor() {
@@ -1289,10 +1290,10 @@ export class ChapterSelectScene extends Phaser.Scene {
 
   private addBottomButtons(): void {
     const btnY = 1230;
-    const btnW = 83;
+    const btnW = 74;
     const btnH = 60;
-    const spacing = 5;
-    const totalW = btnW * 8 + spacing * 7;
+    const spacing = 4;
+    const totalW = btnW * 9 + spacing * 8;
     const startX = 375 - totalW / 2 + btnW / 2;
 
     const labBtn = this.createBottomButton(
@@ -1335,8 +1336,18 @@ export class ChapterSelectScene extends Phaser.Scene {
       () => this.scene.start('GalleryScene')
     );
 
-    const seasonBtn = this.createBottomButton(
+    const donationBtn = this.createBottomButton(
       startX + 4 * (btnW + spacing),
+      btnY,
+      btnW,
+      btnH,
+      '🎁 捐赠',
+      0xffb74d,
+      () => this.scene.start('DonationScene')
+    );
+
+    const seasonBtn = this.createBottomButton(
+      startX + 5 * (btnW + spacing),
       btnY,
       btnW,
       btnH,
@@ -1346,7 +1357,7 @@ export class ChapterSelectScene extends Phaser.Scene {
     );
 
     const familyBtn = this.createBottomButton(
-      startX + 5 * (btnW + spacing),
+      startX + 6 * (btnW + spacing),
       btnY,
       btnW,
       btnH,
@@ -1356,7 +1367,7 @@ export class ChapterSelectScene extends Phaser.Scene {
     );
 
     const levelsBtn = this.createBottomButton(
-      startX + 6 * (btnW + spacing),
+      startX + 7 * (btnW + spacing),
       btnY,
       btnW,
       btnH,
@@ -1366,7 +1377,7 @@ export class ChapterSelectScene extends Phaser.Scene {
     );
 
     const logBtn = this.createBottomButton(
-      startX + 7 * (btnW + spacing),
+      startX + 8 * (btnW + spacing),
       btnY,
       btnW,
       btnH,
@@ -1385,8 +1396,8 @@ export class ChapterSelectScene extends Phaser.Scene {
     if (hasClaimableRewards) {
       const badge = this.add.graphics();
       badge.fillStyle(0xffeb3b, 1);
-      badge.fillCircle(startX + 5 * (btnW + spacing) + btnW / 2 - 15, btnY - btnH / 2 + 10, 12);
-      this.add.text(startX + 5 * (btnW + spacing) + btnW / 2 - 15, btnY - btnH / 2 + 10, '!', {
+      badge.fillCircle(startX + 6 * (btnW + spacing) + btnW / 2 - 15, btnY - btnH / 2 + 10, 12);
+      this.add.text(startX + 6 * (btnW + spacing) + btnW / 2 - 15, btnY - btnH / 2 + 10, '!', {
         font: 'bold 12px Arial',
         color: '#1a1a2e'
       }).setOrigin(0.5);
@@ -1395,6 +1406,24 @@ export class ChapterSelectScene extends Phaser.Scene {
     if (SeasonPassManager.hasClaimableRewards()) {
       const badge = this.add.graphics();
       badge.fillStyle(0xff1744, 1);
+      badge.fillCircle(startX + 5 * (btnW + spacing) + btnW / 2 - 10, btnY - btnH / 2 + 10, 12);
+      this.add.text(startX + 5 * (btnW + spacing) + btnW / 2 - 10, btnY - btnH / 2 + 10, '!', {
+        font: 'bold 12px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+    }
+
+    const hasDonatable = SaveManager.getRestoredSpecimenIds().some(id => SaveManager.canDonateSpecimen(id).canDonate);
+    const hasDonationRewards = DonationTiers.some(tier =>
+      tier.rewards.some(r =>
+        SaveManager.getTotalDonations() >= tier.requiredDonations &&
+        r.id !== undefined &&
+        !SaveManager.isDonationRewardClaimed(r.id)
+      )
+    );
+    if (hasDonatable || hasDonationRewards) {
+      const badge = this.add.graphics();
+      badge.fillStyle(hasDonationRewards ? 0xff9800 : 0x4caf50, 1);
       badge.fillCircle(startX + 4 * (btnW + spacing) + btnW / 2 - 10, btnY - btnH / 2 + 10, 12);
       this.add.text(startX + 4 * (btnW + spacing) + btnW / 2 - 10, btnY - btnH / 2 + 10, '!', {
         font: 'bold 12px Arial',

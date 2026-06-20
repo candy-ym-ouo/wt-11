@@ -21,7 +21,9 @@ import {
   BranchRouteProgress,
   BranchRouteType,
   MapNodeData,
-  EndingData
+  EndingData,
+  DonationSaveData,
+  DonationProgress
 } from '../types/GameTypes';
 import { TutorialManager } from './TutorialManager';
 import { ConservationManager } from './ConservationManager';
@@ -49,6 +51,7 @@ import { SeasonPassSaveData, NotificationSaveData } from '../types/GameTypes';
 import { RepairLogManager } from './RepairLogManager';
 import { NotificationManager } from './NotificationManager';
 import { QuizManager } from './QuizManager';
+import { DonationManager } from './DonationManager';
 
 const STORAGE_KEY = 'plant_specimen_puzzle_save';
 
@@ -81,8 +84,10 @@ export class SaveManager {
     RepairLogManager.init(this.data.repairLog);
     NotificationManager.init(this.data.notification);
     QuizManager.init(this.data.quiz);
+    DonationManager.init(this.data.donation);
     this.data.notification = NotificationManager.getSaveData();
     this.data.quiz = QuizManager.getSaveData();
+    this.data.donation = DonationManager.getSaveData();
     this.save();
   }
 
@@ -449,6 +454,31 @@ export class SaveManager {
       }
     }
 
+    if (!oldData.donation) {
+      oldData.donation = defaultData.donation;
+    } else {
+      if (!oldData.donation.progress) {
+        oldData.donation.progress = defaultData.donation.progress;
+      } else {
+        const p = oldData.donation.progress;
+        if (p.totalDonations === undefined) p.totalDonations = 0;
+        if (p.totalResearchCoin === undefined) p.totalResearchCoin = 0;
+        if (p.totalResearchCoinEarned === undefined) p.totalResearchCoinEarned = 0;
+        if (!p.donationsBySpecimen) p.donationsBySpecimen = {};
+        if (!p.donations) p.donations = [];
+        if (!p.rewardsClaimed) p.rewardsClaimed = {};
+        if (p.tierProgress === undefined) p.tierProgress = 0;
+
+        const defaultRewards = defaultData.donation.progress.rewardsClaimed;
+        Object.keys(defaultRewards).forEach(key => {
+          const id = parseInt(key);
+          if (p.rewardsClaimed[id] === undefined) {
+            p.rewardsClaimed[id] = false;
+          }
+        });
+      }
+    }
+
     return oldData as SaveData;
   }
 
@@ -493,6 +523,7 @@ export class SaveManager {
     const familyCollectionData = this.createDefaultFamilyCollectionSave();
     const seasonPassData = this.createDefaultSeasonPassSave();
     const chapterMapData = this.createDefaultChapterMapSave();
+    const donationData = DonationManager.createDefaultSave();
 
     return {
       progress,
@@ -521,7 +552,8 @@ export class SaveManager {
       repairLog: RepairLogManager.createDefaultSave(),
       notification: NotificationManager.createDefaultNotificationSave(),
       quiz: QuizManager.createDefaultQuizSave(),
-      chapterMap: chapterMapData
+      chapterMap: chapterMapData,
+      donation: donationData
     };
   }
 
@@ -1423,6 +1455,38 @@ export class SaveManager {
 
   static getRestoredSpecimens(): number[] {
     return [...this.data.workshop.restoredSpecimens];
+  }
+
+  static getRestoredSpecimenIds(): number[] {
+    return [...this.data.workshop.restoredSpecimens];
+  }
+
+  static getSpecimenCount(specimenId: number): number {
+    let count = 0;
+    if (this.isGalleryUnlocked(specimenId)) {
+      count = 1;
+    }
+    const recipe = getRecipeBySpecimenId(specimenId);
+    if (recipe) {
+      let minCopiesFromFragments = Infinity;
+      for (const req of recipe.requiredFragments) {
+        const fragCount = this.getFragmentCount(req.fragmentId);
+        const copies = Math.floor(fragCount / req.count);
+        minCopiesFromFragments = Math.min(minCopiesFromFragments, copies);
+      }
+      if (minCopiesFromFragments !== Infinity) {
+        count += minCopiesFromFragments;
+      }
+    }
+    return Math.max(0, count);
+  }
+
+  static addResearchPoints(value: number): number {
+    return this.grantResearchPoints(value);
+  }
+
+  static getAllBadges(): Record<number, boolean> {
+    return this.data.badges;
   }
 
   static canRestoreSpecimen(specimenId: number): boolean {
@@ -2645,8 +2709,61 @@ export class SaveManager {
     };
   }
 
+  static getDonationSaveData(): DonationSaveData {
+    return {
+      ...this.data.donation,
+      progress: {
+        ...this.data.donation.progress,
+        donationsBySpecimen: { ...this.data.donation.progress.donationsBySpecimen },
+        rewardsClaimed: { ...this.data.donation.progress.rewardsClaimed },
+        donations: [...this.data.donation.progress.donations]
+      }
+    };
+  }
+
+  static getDonationProgress(): DonationProgress {
+    return DonationManager.getProgress();
+  }
+
+  static getTotalDonations(): number {
+    return DonationManager.getTotalDonations();
+  }
+
+  static getDonationsBySpecimen(specimenId: number): number {
+    return DonationManager.getDonationsBySpecimen(specimenId);
+  }
+
+  static isDonationRewardClaimed(rewardId: number): boolean {
+    return DonationManager.isRewardClaimed(rewardId);
+  }
+
+  static canDonateSpecimen(specimenId: number): { canDonate: boolean; reason?: string; availableCount?: number } {
+    return DonationManager.canDonateSpecimen(specimenId);
+  }
+
+  static donateSpecimen(specimenId: number) {
+    const result = DonationManager.donateSpecimen(specimenId);
+    if (result.success) {
+      this.syncDonationData();
+    }
+    return result;
+  }
+
+  static claimDonationReward(rewardId: number) {
+    const result = DonationManager.claimReward(rewardId);
+    if (result.success) {
+      this.syncDonationData();
+    }
+    return result;
+  }
+
+  private static syncDonationData(): void {
+    this.data.donation = DonationManager.getSaveData();
+  }
+
   static save(): void {
     this.data.quiz = QuizManager.getSaveData();
+    this.data.donation = DonationManager.getSaveData();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
   }
 

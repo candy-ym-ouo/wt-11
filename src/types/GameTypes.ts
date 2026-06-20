@@ -1174,6 +1174,73 @@ export interface QuizSaveData {
   bestStreak: number;
 }
 
+export interface DonationTier {
+  id: number;
+  name: string;
+  description: string;
+  icon: string;
+  requiredDonations: number;
+  rewards: DonationReward[];
+  primaryColor: number;
+}
+
+export interface DonationReward {
+  id: number;
+  type: 'research_point' | 'score' | 'fragment' | 'material' | 'badge';
+  name: string;
+  description: string;
+  icon: string;
+  rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  value?: number;
+  fragmentId?: number;
+  materialId?: number;
+  badgeId?: number;
+}
+
+export interface DonationEntry {
+  id: string;
+  specimenId: number;
+  specimenName: string;
+  stars: number;
+  researchCoin: number;
+  donatedAt: number;
+  isFromWorkshop: boolean;
+  isFirstDonation?: boolean;
+}
+
+export interface DonationProgress {
+  totalDonations: number;
+  totalResearchCoin: number;
+  totalResearchCoinEarned: number;
+  donationsBySpecimen: Record<number, number>;
+  donations: DonationEntry[];
+  rewardsClaimed: Record<number, boolean>;
+  tierProgress: number;
+}
+
+export interface DonationSaveData {
+  progress: DonationProgress;
+}
+
+export interface DonationResult {
+  success: boolean;
+  specimenId: number;
+  researchCoin: number;
+  message: string;
+  newTierUnlocked: DonationTier | null;
+  newRewards: DonationReward[];
+  achievementResult?: AchievementUnlockResult;
+  totalDonationsAfter?: number;
+  isFirstDonationOfSpecimen?: boolean;
+}
+
+export interface DonationClaimResult {
+  success: boolean;
+  reward: DonationReward | null;
+  rewards?: DonationReward[];
+  message?: string;
+}
+
 export interface SaveData {
   progress: Record<number, LevelProgress>;
   chapterProgress: Record<number, ChapterProgress>;
@@ -1198,4 +1265,5 @@ export interface SaveData {
   notification: NotificationSaveData;
   quiz: QuizSaveData;
   chapterMap: ChapterMapSaveData;
+  donation: DonationSaveData;
 }
