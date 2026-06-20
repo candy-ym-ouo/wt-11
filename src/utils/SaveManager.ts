@@ -30,7 +30,9 @@ import {
   PuzzlePieceSaveData,
   LevelProgressResult,
   ReplayData,
-  ReplaySaveData
+  ReplaySaveData,
+  SaveMetadata,
+  SaveMigrationLogEntry
 } from '../types/GameTypes';
 import { TutorialManager } from './TutorialManager';
 import { ConservationManager } from './ConservationManager';
@@ -62,21 +64,142 @@ import { DonationManager } from './DonationManager';
 import { RandomEventManager } from './RandomEventManager';
 
 const STORAGE_KEY = 'plant_specimen_puzzle_save';
+const BACKUP_STORAGE_KEY = 'plant_specimen_puzzle_save_backup';
+const CURRENT_SCHEMA_VERSION = 1;
+const MAX_BACKUPS = 3;
+const MAX_MIGRATION_LOGS = 50;
 
 export class SaveManager {
   private static data: SaveData;
 
+  private static isObject(value: any): value is Record<string, any> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  private static deepMerge<T extends Record<string, any>>(target: Partial<T>, source: T): T {
+    const result: Record<string, any> = { ...target };
+    for (const key of Object.keys(source)) {
+      const sourceValue = source[key];
+      const targetValue = (target as any)[key];
+      if (this.isObject(sourceValue)) {
+        if (this.isObject(targetValue)) {
+          result[key] = this.deepMerge(targetValue, sourceValue);
+        } else {
+          result[key] = this.deepMerge({}, sourceValue);
+        }
+      } else if (Array.isArray(sourceValue)) {
+        result[key] = Array.isArray(targetValue) ? [...targetValue] : [...sourceValue];
+      } else {
+        result[key] = targetValue !== undefined ? targetValue : sourceValue;
+      }
+    }
+    return result as T;
+  }
+
+  private static computeChecksum(data: any): string {
+    const str = JSON.stringify(data);
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return hash.toString(36);
+  }
+
+  private static createDefaultMetadata(): SaveMetadata {
+    const now = Date.now();
+    return {
+      createdAt: now,
+      updatedAt: now,
+      saveCount: 0,
+      migrationLog: []
+    };
+  }
+
+  private static writeBackup(data: SaveData): void {
+    try {
+      const existingBackups = this.readBackups();
+      existingBackups.unshift({ version: data.schemaVersion, timestamp: Date.now(), data });
+      const trimmed = existingBackups.slice(0, MAX_BACKUPS);
+      localStorage.setItem(BACKUP_STORAGE_KEY, JSON.stringify(trimmed));
+    } catch (e) {
+      console.warn('[SaveManager] Failed to write backup:', e);
+    }
+  }
+
+  private static readBackups(): Array<{ version: number; timestamp: number; data: SaveData }> {
+    try {
+      const raw = localStorage.getItem(BACKUP_STORAGE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private static restoreFromBackup(): SaveData | null {
+    const backups = this.readBackups();
+    for (const backup of backups) {
+      try {
+        const migrated = this.migrateSaveData(backup.data);
+        if (migrated) {
+          console.info(`[SaveManager] Restored from backup (version ${backup.version}, saved at ${new Date(backup.timestamp).toISOString()}`);
+          return migrated;
+        }
+      } catch (e) {
+        console.warn('[SaveManager] Backup restore failed, trying next:', e);
+      }
+    }
+    return null;
+  }
+
+  private static logMigration(fromVersion: number, toVersion: number, success: boolean, errorMessage?: string): void {
+    if (!this.data) return;
+    const entry: SaveMigrationLogEntry = {
+      fromVersion,
+      toVersion,
+      migratedAt: Date.now(),
+      success,
+      errorMessage
+    };
+    this.data.metadata.migrationLog.unshift(entry);
+    if (this.data.metadata.migrationLog.length > MAX_MIGRATION_LOGS) {
+      this.data.metadata.migrationLog = this.data.metadata.migrationLog.slice(0, MAX_MIGRATION_LOGS);
+    }
+    this.data.metadata.lastMigrationAt = entry.migratedAt;
+  }
+
   static init(): void {
     const saved = localStorage.getItem(STORAGE_KEY);
+    let loadedSuccessfully = false;
+
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         this.data = this.migrateSaveData(parsed);
-      } catch {
+        loadedSuccessfully = true;
+      } catch (e) {
+          console.warn('[SaveManager] Failed to parse save data, attempting backup restore:', e);
+        }
+    }
+
+    if (!loadedSuccessfully) {
+      const restored = this.restoreFromBackup();
+      if (restored) {
+        this.data = restored;
+        loadedSuccessfully = true;
+      } else {
         this.data = this.createDefaultSave();
       }
-    } else {
-      this.data = this.createDefaultSave();
+    }
+
+    if (!this.data.schemaVersion) {
+      this.data.schemaVersion = CURRENT_SCHEMA_VERSION;
+    }
+    if (!this.data.metadata) {
+      this.data.metadata = this.createDefaultMetadata();
     }
 
     this.recalculateTotalScore();
@@ -101,195 +224,200 @@ export class SaveManager {
     this.save();
   }
 
-  private static migrateSaveData(oldData: any): SaveData {
+  private static readonly migrationFunctions: Record<number, (data: any) => any> = {
+    0: (data: any) => this.migrateV0ToV1(data),
+  };
+
+  private static migrateV0ToV1(data: any): any {
     const defaultData = this.createDefaultSave();
+    const migrated: any = { ...data };
 
-    if (!oldData.chapterProgress) {
-      oldData.chapterProgress = defaultData.chapterProgress;
+    if (!migrated.chapterProgress) {
+      migrated.chapterProgress = defaultData.chapterProgress;
     }
-    if (!oldData.badges) {
-      oldData.badges = defaultData.badges;
+    if (!migrated.badges) {
+      migrated.badges = defaultData.badges;
     }
-    if (!oldData.unlockedChapters) {
-      oldData.unlockedChapters = [1];
+    if (!migrated.unlockedChapters) {
+      migrated.unlockedChapters = [1];
     }
-    if (!oldData.galleryUnlocked) {
-      oldData.galleryUnlocked = [];
+    if (!migrated.galleryUnlocked) {
+      migrated.galleryUnlocked = [];
     }
-    if (!oldData.workshop) {
-      oldData.workshop = defaultData.workshop;
+    if (!migrated.workshop) {
+      migrated.workshop = defaultData.workshop;
     }
-    if (!oldData.event) {
-      oldData.event = defaultData.event;
+    if (!migrated.event) {
+      migrated.event = defaultData.event;
     } else {
-      if (!oldData.event.eventProgress) {
-        oldData.event.eventProgress = defaultData.event.eventProgress;
+      if (!migrated.event.eventProgress) {
+        migrated.event.eventProgress = defaultData.event.eventProgress;
       }
-      if (!oldData.event.eventBadges) {
-        oldData.event.eventBadges = defaultData.event.eventBadges;
+      if (!migrated.event.eventBadges) {
+        migrated.event.eventBadges = defaultData.event.eventBadges;
       }
-      if (!oldData.event.eventGalleryUnlocked) {
-        oldData.event.eventGalleryUnlocked = defaultData.event.eventGalleryUnlocked;
+      if (!migrated.event.eventGalleryUnlocked) {
+        migrated.event.eventGalleryUnlocked = defaultData.event.eventGalleryUnlocked;
       }
-      if (!oldData.event.rankingCache) {
-        oldData.event.rankingCache = defaultData.event.rankingCache;
+      if (!migrated.event.rankingCache) {
+        migrated.event.rankingCache = defaultData.event.rankingCache;
       }
     }
-    if (!oldData.dailyQuest) {
-      oldData.dailyQuest = defaultData.dailyQuest;
+    if (!migrated.dailyQuest) {
+      migrated.dailyQuest = defaultData.dailyQuest;
     } else {
-      if (!oldData.dailyQuest.quests) {
-        oldData.dailyQuest.quests = defaultData.dailyQuest.quests;
+      if (!migrated.dailyQuest.quests) {
+        migrated.dailyQuest.quests = defaultData.dailyQuest.quests;
       }
-      if (!oldData.dailyQuest.progress) {
-        oldData.dailyQuest.progress = defaultData.dailyQuest.progress;
+      if (!migrated.dailyQuest.progress) {
+        migrated.dailyQuest.progress = defaultData.dailyQuest.progress;
       }
-      if (!oldData.dailyQuest.claimedQuestIds) {
-        oldData.dailyQuest.claimedQuestIds = defaultData.dailyQuest.claimedQuestIds;
+      if (!migrated.dailyQuest.claimedQuestIds) {
+        migrated.dailyQuest.claimedQuestIds = defaultData.dailyQuest.claimedQuestIds;
       }
-      if (oldData.dailyQuest.lastRefreshDate === undefined) {
-        oldData.dailyQuest.lastRefreshDate = defaultData.dailyQuest.lastRefreshDate;
+      if (migrated.dailyQuest.lastRefreshDate === undefined) {
+        migrated.dailyQuest.lastRefreshDate = defaultData.dailyQuest.lastRefreshDate;
       }
-      if (oldData.dailyQuest.refreshCount === undefined) {
-        oldData.dailyQuest.refreshCount = defaultData.dailyQuest.refreshCount;
+      if (migrated.dailyQuest.refreshCount === undefined) {
+        migrated.dailyQuest.refreshCount = defaultData.dailyQuest.refreshCount;
       }
-      if (oldData.dailyQuest.totalCompleted === undefined) {
-        oldData.dailyQuest.totalCompleted = defaultData.dailyQuest.totalCompleted;
+      if (migrated.dailyQuest.totalCompleted === undefined) {
+        migrated.dailyQuest.totalCompleted = defaultData.dailyQuest.totalCompleted;
       }
-      if (oldData.dailyQuest.totalClaimed === undefined) {
-        oldData.dailyQuest.totalClaimed = defaultData.dailyQuest.totalClaimed;
+      if (migrated.dailyQuest.totalClaimed === undefined) {
+        migrated.dailyQuest.totalClaimed = defaultData.dailyQuest.totalClaimed;
       }
     }
 
-    if (oldData.workshop?.restoredSpecimens) {
-      oldData.workshop.restoredSpecimens.forEach((specimenId: number) => {
-        if (!oldData.galleryUnlocked.includes(specimenId)) {
-          oldData.galleryUnlocked.push(specimenId);
+    if (migrated.workshop?.restoredSpecimens) {
+      migrated.workshop.restoredSpecimens.forEach((specimenId: number) => {
+        if (!migrated.galleryUnlocked.includes(specimenId)) {
+          migrated.galleryUnlocked.push(specimenId);
         }
       });
     }
 
-    if (!oldData.researchLab) {
-      oldData.researchLab = defaultData.researchLab;
+    if (!migrated.researchLab) {
+      migrated.researchLab = defaultData.researchLab;
     } else {
-      if (!oldData.researchLab.specimens) {
-        oldData.researchLab.specimens = defaultData.researchLab.specimens;
+      if (!migrated.researchLab.specimens) {
+        migrated.researchLab.specimens = defaultData.researchLab.specimens;
       }
-      if (oldData.researchLab.totalExp === undefined) {
-        oldData.researchLab.totalExp = 0;
+      if (migrated.researchLab.totalExp === undefined) {
+        migrated.researchLab.totalExp = 0;
       }
-      if (oldData.researchLab.researcherLevel === undefined) {
-        oldData.researchLab.researcherLevel = 1;
+      if (migrated.researchLab.researcherLevel === undefined) {
+        migrated.researchLab.researcherLevel = 1;
       }
-      if (oldData.researchLab.researchPoints === undefined) {
-        oldData.researchLab.researchPoints = 0;
+      if (migrated.researchLab.researchPoints === undefined) {
+        migrated.researchLab.researchPoints = 0;
       }
-      if (oldData.researchLab.totalStudies === undefined) {
-        oldData.researchLab.totalStudies = 0;
+      if (migrated.researchLab.totalStudies === undefined) {
+        migrated.researchLab.totalStudies = 0;
       }
     }
 
-    if (!oldData.tower) {
-      oldData.tower = defaultData.tower;
+    if (!migrated.tower) {
+      migrated.tower = defaultData.tower;
     } else {
-      if (!oldData.tower.floorProgress) {
-        oldData.tower.floorProgress = defaultData.tower.floorProgress;
+      if (!migrated.tower.floorProgress) {
+        migrated.tower.floorProgress = defaultData.tower.floorProgress;
       }
-      if (!oldData.tower.badges) {
-        oldData.tower.badges = defaultData.tower.badges;
+      if (!migrated.tower.badges) {
+        migrated.tower.badges = defaultData.tower.badges;
       }
-      if (oldData.tower.highestFloor === undefined) {
-        oldData.tower.highestFloor = 0;
+      if (migrated.tower.highestFloor === undefined) {
+        migrated.tower.highestFloor = 0;
       }
-      if (oldData.tower.totalStars === undefined) {
-        oldData.tower.totalStars = 0;
+      if (migrated.tower.totalStars === undefined) {
+        migrated.tower.totalStars = 0;
       }
-      if (oldData.tower.totalScore === undefined) {
-        oldData.tower.totalScore = 0;
+      if (migrated.tower.totalScore === undefined) {
+        migrated.tower.totalScore = 0;
       }
-      if (oldData.tower.currentStreak === undefined) {
-        oldData.tower.currentStreak = 0;
+      if (migrated.tower.currentStreak === undefined) {
+        migrated.tower.currentStreak = 0;
       }
-      if (oldData.tower.bestStreak === undefined) {
-        oldData.tower.bestStreak = 0;
+      if (migrated.tower.bestStreak === undefined) {
+        migrated.tower.bestStreak = 0;
       }
-      if (oldData.tower.totalAttempts === undefined) {
-        oldData.tower.totalAttempts = 0;
+      if (migrated.tower.totalAttempts === undefined) {
+        migrated.tower.totalAttempts = 0;
       }
-      if (oldData.tower.totalCompletions === undefined) {
-        oldData.tower.totalCompletions = 0;
+      if (migrated.tower.totalCompletions === undefined) {
+        migrated.tower.totalCompletions = 0;
       }
     }
 
-    if (!oldData.exhibition) {
-      oldData.exhibition = defaultData.exhibition;
+    if (!migrated.exhibition) {
+      migrated.exhibition = defaultData.exhibition;
     } else {
-      if (!oldData.exhibition.themeProgress) {
-        oldData.exhibition.themeProgress = defaultData.exhibition.themeProgress;
+      if (!migrated.exhibition.themeProgress) {
+        migrated.exhibition.themeProgress = defaultData.exhibition.themeProgress;
       }
-      if (!oldData.exhibition.badges) {
-        oldData.exhibition.badges = defaultData.exhibition.badges;
+      if (!migrated.exhibition.badges) {
+        migrated.exhibition.badges = defaultData.exhibition.badges;
       }
-      if (oldData.exhibition.totalExhibitionScore === undefined) {
-        oldData.exhibition.totalExhibitionScore = 0;
+      if (migrated.exhibition.totalExhibitionScore === undefined) {
+        migrated.exhibition.totalExhibitionScore = 0;
       }
-      if (oldData.exhibition.totalParticipations === undefined) {
-        oldData.exhibition.totalParticipations = 0;
+      if (migrated.exhibition.totalParticipations === undefined) {
+        migrated.exhibition.totalParticipations = 0;
       }
     }
 
-    if (!oldData.achievement) {
-      oldData.achievement = defaultData.achievement;
+    if (!migrated.achievement) {
+      migrated.achievement = defaultData.achievement;
     } else {
-      if (!oldData.achievement.unlockedAchievements) {
-        oldData.achievement.unlockedAchievements = defaultData.achievement.unlockedAchievements;
+      if (!migrated.achievement.unlockedAchievements) {
+        migrated.achievement.unlockedAchievements = defaultData.achievement.unlockedAchievements;
       }
-      if (!oldData.achievement.unlockedTitles) {
-        oldData.achievement.unlockedTitles = defaultData.achievement.unlockedTitles;
+      if (!migrated.achievement.unlockedTitles) {
+        migrated.achievement.unlockedTitles = defaultData.achievement.unlockedTitles;
       }
-      if (oldData.achievement.currentTitleId === undefined) {
-        oldData.achievement.currentTitleId = null;
+      if (migrated.achievement.currentTitleId === undefined) {
+        migrated.achievement.currentTitleId = null;
       }
-      if (!oldData.achievement.achievementProgress) {
-        oldData.achievement.achievementProgress = defaultData.achievement.achievementProgress;
+      if (!migrated.achievement.achievementProgress) {
+        migrated.achievement.achievementProgress = defaultData.achievement.achievementProgress;
       }
-      if (oldData.achievement.loginStreak === undefined) {
-        oldData.achievement.loginStreak = 0;
+      if (migrated.achievement.loginStreak === undefined) {
+        migrated.achievement.loginStreak = 0;
       }
-      if (oldData.achievement.lastLoginDate === undefined) {
-        oldData.achievement.lastLoginDate = '';
+      if (migrated.achievement.lastLoginDate === undefined) {
+        migrated.achievement.lastLoginDate = '';
       }
-      if (oldData.achievement.totalLogins === undefined) {
-        oldData.achievement.totalLogins = 0;
+      if (migrated.achievement.totalLogins === undefined) {
+        migrated.achievement.totalLogins = 0;
       }
-      if (!oldData.achievement.fastestCompletion) {
-        oldData.achievement.fastestCompletion = defaultData.achievement.fastestCompletion;
+      if (!migrated.achievement.fastestCompletion) {
+        migrated.achievement.fastestCompletion = defaultData.achievement.fastestCompletion;
       }
-      if (!oldData.achievement.perfectLevels) {
-        oldData.achievement.perfectLevels = [];
+      if (!migrated.achievement.perfectLevels) {
+        migrated.achievement.perfectLevels = [];
       }
-      if (oldData.achievement.totalAchievementScore === undefined) {
-        oldData.achievement.totalAchievementScore = 0;
+      if (migrated.achievement.totalAchievementScore === undefined) {
+        migrated.achievement.totalAchievementScore = 0;
       }
     }
 
-    if (!oldData.tutorial) {
-      oldData.tutorial = defaultData.tutorial;
+    if (!migrated.tutorial) {
+      migrated.tutorial = defaultData.tutorial;
     } else {
-      if (!oldData.tutorial.completedTutorials) {
-        oldData.tutorial.completedTutorials = defaultData.tutorial.completedTutorials;
+      if (!migrated.tutorial.completedTutorials) {
+        migrated.tutorial.completedTutorials = defaultData.tutorial.completedTutorials;
       }
-      if (!oldData.tutorial.skippedTutorials) {
-        oldData.tutorial.skippedTutorials = defaultData.tutorial.skippedTutorials;
+      if (!migrated.tutorial.skippedTutorials) {
+        migrated.tutorial.skippedTutorials = defaultData.tutorial.skippedTutorials;
       }
-      if (oldData.tutorial.currentTutorialId === undefined) {
-        oldData.tutorial.currentTutorialId = defaultData.tutorial.currentTutorialId;
+      if (migrated.tutorial.currentTutorialId === undefined) {
+        migrated.tutorial.currentTutorialId = defaultData.tutorial.currentTutorialId;
       }
-      if (!oldData.tutorial.progress) {
-        oldData.tutorial.progress = defaultData.tutorial.progress;
+      if (!migrated.tutorial.progress) {
+        migrated.tutorial.progress = defaultData.tutorial.progress;
       } else {
-        Object.keys(oldData.tutorial.progress).forEach(key => {
-          const p = oldData.tutorial.progress[key];
+        Object.keys(migrated.tutorial.progress).forEach(key => {
+          const p = migrated.tutorial.progress[key];
           if (p.skipped === undefined) {
             p.skipped = false;
           }
@@ -301,176 +429,176 @@ export class SaveManager {
           }
         });
       }
-      if (oldData.tutorial.teachingLevelCompleted === undefined) {
-        oldData.tutorial.teachingLevelCompleted = defaultData.tutorial.teachingLevelCompleted;
+      if (migrated.tutorial.teachingLevelCompleted === undefined) {
+        migrated.tutorial.teachingLevelCompleted = defaultData.tutorial.teachingLevelCompleted;
       }
-      if (oldData.tutorial.teachingLevelSkipped === undefined) {
-        oldData.tutorial.teachingLevelSkipped = defaultData.tutorial.teachingLevelSkipped;
+      if (migrated.tutorial.teachingLevelSkipped === undefined) {
+        migrated.tutorial.teachingLevelSkipped = defaultData.tutorial.teachingLevelSkipped;
       }
-      if (oldData.tutorial.firstTimePlayer === undefined) {
-        oldData.tutorial.firstTimePlayer = defaultData.tutorial.firstTimePlayer;
+      if (migrated.tutorial.firstTimePlayer === undefined) {
+        migrated.tutorial.firstTimePlayer = defaultData.tutorial.firstTimePlayer;
       }
-      if (!oldData.tutorial.rewardsClaimed) {
-        oldData.tutorial.rewardsClaimed = defaultData.tutorial.rewardsClaimed;
+      if (!migrated.tutorial.rewardsClaimed) {
+        migrated.tutorial.rewardsClaimed = defaultData.tutorial.rewardsClaimed;
       }
     }
 
-    if (!oldData.conservation) {
-      oldData.conservation = defaultData.conservation;
+    if (!migrated.conservation) {
+      migrated.conservation = defaultData.conservation;
     } else {
-      if (!oldData.conservation.specimens) {
-        oldData.conservation.specimens = defaultData.conservation.specimens;
+      if (!migrated.conservation.specimens) {
+        migrated.conservation.specimens = defaultData.conservation.specimens;
       }
-      if (oldData.conservation.totalCares === undefined) {
-        oldData.conservation.totalCares = 0;
+      if (migrated.conservation.totalCares === undefined) {
+        migrated.conservation.totalCares = 0;
       }
-      if (oldData.conservation.decayAccumulator === undefined) {
-        oldData.conservation.decayAccumulator = 0;
+      if (migrated.conservation.decayAccumulator === undefined) {
+        migrated.conservation.decayAccumulator = 0;
       }
-      if (oldData.conservation.lastDecayProcessTime === undefined) {
-        oldData.conservation.lastDecayProcessTime = Date.now();
+      if (migrated.conservation.lastDecayProcessTime === undefined) {
+        migrated.conservation.lastDecayProcessTime = Date.now();
       }
-      if (!oldData.conservation.dismissedReminders) {
-        oldData.conservation.dismissedReminders = [];
+      if (!migrated.conservation.dismissedReminders) {
+        migrated.conservation.dismissedReminders = [];
       }
     }
 
-    if (!oldData.familyCollection) {
-      oldData.familyCollection = defaultData.familyCollection;
+    if (!migrated.familyCollection) {
+      migrated.familyCollection = defaultData.familyCollection;
     } else {
-      if (!oldData.familyCollection.familyProgress) {
-        oldData.familyCollection.familyProgress = defaultData.familyCollection.familyProgress;
+      if (!migrated.familyCollection.familyProgress) {
+        migrated.familyCollection.familyProgress = defaultData.familyCollection.familyProgress;
       }
-      if (oldData.familyCollection.totalFamiliesCompleted === undefined) {
-        oldData.familyCollection.totalFamiliesCompleted = 0;
+      if (migrated.familyCollection.totalFamiliesCompleted === undefined) {
+        migrated.familyCollection.totalFamiliesCompleted = 0;
       }
-      if (!oldData.familyCollection.totalSpecimensByFamily) {
-        oldData.familyCollection.totalSpecimensByFamily = defaultData.familyCollection.totalSpecimensByFamily;
+      if (!migrated.familyCollection.totalSpecimensByFamily) {
+        migrated.familyCollection.totalSpecimensByFamily = defaultData.familyCollection.totalSpecimensByFamily;
       }
     }
 
-    if (!oldData.seasonPass) {
-      oldData.seasonPass = defaultData.seasonPass;
+    if (!migrated.seasonPass) {
+      migrated.seasonPass = defaultData.seasonPass;
     } else {
-      if (!oldData.seasonPass.trackProgress) {
-        oldData.seasonPass.trackProgress = defaultData.seasonPass.trackProgress;
+      if (!migrated.seasonPass.trackProgress) {
+        migrated.seasonPass.trackProgress = defaultData.seasonPass.trackProgress;
       }
-      if (!oldData.seasonPass.rewardsClaimed) {
-        oldData.seasonPass.rewardsClaimed = defaultData.seasonPass.rewardsClaimed;
+      if (!migrated.seasonPass.rewardsClaimed) {
+        migrated.seasonPass.rewardsClaimed = defaultData.seasonPass.rewardsClaimed;
       }
-      if (!oldData.seasonPass.quests) {
-        oldData.seasonPass.quests = defaultData.seasonPass.quests;
+      if (!migrated.seasonPass.quests) {
+        migrated.seasonPass.quests = defaultData.seasonPass.quests;
       }
-      if (oldData.seasonPass.lastRefreshDate === undefined) {
-        oldData.seasonPass.lastRefreshDate = '';
+      if (migrated.seasonPass.lastRefreshDate === undefined) {
+        migrated.seasonPass.lastRefreshDate = '';
       }
-      if (oldData.seasonPass.refreshCount === undefined) {
-        oldData.seasonPass.refreshCount = 0;
+      if (migrated.seasonPass.refreshCount === undefined) {
+        migrated.seasonPass.refreshCount = 0;
       }
-      if (oldData.seasonPass.totalRestores === undefined) {
-        oldData.seasonPass.totalRestores = 0;
+      if (migrated.seasonPass.totalRestores === undefined) {
+        migrated.seasonPass.totalRestores = 0;
       }
-      if (oldData.seasonPass.totalScoreGain === undefined) {
-        oldData.seasonPass.totalScoreGain = 0;
+      if (migrated.seasonPass.totalScoreGain === undefined) {
+        migrated.seasonPass.totalScoreGain = 0;
       }
-      if (oldData.seasonPass.totalGalleryUnlocks === undefined) {
-        oldData.seasonPass.totalGalleryUnlocks = 0;
+      if (migrated.seasonPass.totalGalleryUnlocks === undefined) {
+        migrated.seasonPass.totalGalleryUnlocks = 0;
       }
-      if (oldData.seasonPass.completedQuests === undefined) {
-        oldData.seasonPass.completedQuests = 0;
+      if (migrated.seasonPass.completedQuests === undefined) {
+        migrated.seasonPass.completedQuests = 0;
       }
-      if (oldData.seasonPass.claimedQuests === undefined) {
-        oldData.seasonPass.claimedQuests = 0;
+      if (migrated.seasonPass.claimedQuests === undefined) {
+        migrated.seasonPass.claimedQuests = 0;
       }
-      if (!oldData.seasonPass.pendingRewards) {
-        oldData.seasonPass.pendingRewards = [];
+      if (!migrated.seasonPass.pendingRewards) {
+        migrated.seasonPass.pendingRewards = [];
       }
-      if (oldData.seasonPass.isPremium === undefined) {
-        oldData.seasonPass.isPremium = false;
+      if (migrated.seasonPass.isPremium === undefined) {
+        migrated.seasonPass.isPremium = false;
       }
     }
 
-    if (!oldData.customPuzzle) {
-      oldData.customPuzzle = { records: {}, totalPlays: 0, totalScore: 0 };
+    if (!migrated.customPuzzle) {
+      migrated.customPuzzle = { records: {}, totalPlays: 0, totalScore: 0 };
     }
 
-    if (!oldData.repairLog) {
-      oldData.repairLog = { entries: [], totalEntries: 0 };
+    if (!migrated.repairLog) {
+      migrated.repairLog = { entries: [], totalEntries: 0 };
     }
 
-    if (!oldData.notification) {
-      oldData.notification = NotificationManager.createDefaultNotificationSave();
+    if (!migrated.notification) {
+      migrated.notification = NotificationManager.createDefaultNotificationSave();
     } else {
-      if (!oldData.notification.notifications) {
-        oldData.notification.notifications = [];
+      if (!migrated.notification.notifications) {
+        migrated.notification.notifications = [];
       }
-      if (oldData.notification.lastCheckTime === undefined) {
-        oldData.notification.lastCheckTime = Date.now();
+      if (migrated.notification.lastCheckTime === undefined) {
+        migrated.notification.lastCheckTime = Date.now();
       }
-      if (oldData.notification.lastStreakCheckDate === undefined) {
-        oldData.notification.lastStreakCheckDate = '';
+      if (migrated.notification.lastStreakCheckDate === undefined) {
+        migrated.notification.lastStreakCheckDate = '';
       }
-      if (!oldData.notification.dismissedNotificationIds) {
-        oldData.notification.dismissedNotificationIds = [];
+      if (!migrated.notification.dismissedNotificationIds) {
+        migrated.notification.dismissedNotificationIds = [];
       }
-      if (oldData.notification.maxStored === undefined) {
-        oldData.notification.maxStored = 100;
-      }
-    }
-
-    if (!oldData.quiz) {
-      oldData.quiz = QuizManager.createDefaultQuizSave();
-    } else {
-      if (!oldData.quiz.quizProgress) {
-        oldData.quiz.quizProgress = QuizManager.createDefaultQuizSave().quizProgress;
-      }
-      if (oldData.quiz.totalQuizScore === undefined) {
-        oldData.quiz.totalQuizScore = 0;
-      }
-      if (oldData.quiz.totalQuizzesCompleted === undefined) {
-        oldData.quiz.totalQuizzesCompleted = 0;
-      }
-      if (oldData.quiz.totalCorrectAnswers === undefined) {
-        oldData.quiz.totalCorrectAnswers = 0;
-      }
-      if (oldData.quiz.totalQuestionsAnswered === undefined) {
-        oldData.quiz.totalQuestionsAnswered = 0;
-      }
-      if (oldData.quiz.currentStreak === undefined) {
-        oldData.quiz.currentStreak = 0;
-      }
-      if (oldData.quiz.bestStreak === undefined) {
-        oldData.quiz.bestStreak = 0;
+      if (migrated.notification.maxStored === undefined) {
+        migrated.notification.maxStored = 100;
       }
     }
 
-    if (!oldData.chapterMap) {
-      oldData.chapterMap = defaultData.chapterMap;
+    if (!migrated.quiz) {
+      migrated.quiz = QuizManager.createDefaultQuizSave();
     } else {
-      if (!oldData.chapterMap.routeProgress) {
-        oldData.chapterMap.routeProgress = defaultData.chapterMap.routeProgress;
+      if (!migrated.quiz.quizProgress) {
+        migrated.quiz.quizProgress = QuizManager.createDefaultQuizSave().quizProgress;
       }
-      if (oldData.chapterMap.totalRoutesCompleted === undefined) {
-        oldData.chapterMap.totalRoutesCompleted = 0;
+      if (migrated.quiz.totalQuizScore === undefined) {
+        migrated.quiz.totalQuizScore = 0;
       }
-      if (!oldData.chapterMap.activeRouteId) {
-        oldData.chapterMap.activeRouteId = 'flower';
+      if (migrated.quiz.totalQuizzesCompleted === undefined) {
+        migrated.quiz.totalQuizzesCompleted = 0;
       }
-      if (!oldData.chapterMap.unlockedRoutes) {
-        oldData.chapterMap.unlockedRoutes = ['flower'];
+      if (migrated.quiz.totalCorrectAnswers === undefined) {
+        migrated.quiz.totalCorrectAnswers = 0;
       }
-      if (!oldData.chapterMap.endingsViewed) {
-        oldData.chapterMap.endingsViewed = [];
+      if (migrated.quiz.totalQuestionsAnswered === undefined) {
+        migrated.quiz.totalQuestionsAnswered = 0;
+      }
+      if (migrated.quiz.currentStreak === undefined) {
+        migrated.quiz.currentStreak = 0;
+      }
+      if (migrated.quiz.bestStreak === undefined) {
+        migrated.quiz.bestStreak = 0;
       }
     }
 
-    if (!oldData.donation) {
-      oldData.donation = defaultData.donation;
+    if (!migrated.chapterMap) {
+      migrated.chapterMap = defaultData.chapterMap;
     } else {
-      if (!oldData.donation.progress) {
-        oldData.donation.progress = defaultData.donation.progress;
+      if (!migrated.chapterMap.routeProgress) {
+        migrated.chapterMap.routeProgress = defaultData.chapterMap.routeProgress;
+      }
+      if (migrated.chapterMap.totalRoutesCompleted === undefined) {
+        migrated.chapterMap.totalRoutesCompleted = 0;
+      }
+      if (!migrated.chapterMap.activeRouteId) {
+        migrated.chapterMap.activeRouteId = 'flower';
+      }
+      if (!migrated.chapterMap.unlockedRoutes) {
+        migrated.chapterMap.unlockedRoutes = ['flower'];
+      }
+      if (!migrated.chapterMap.endingsViewed) {
+        migrated.chapterMap.endingsViewed = [];
+      }
+    }
+
+    if (!migrated.donation) {
+      migrated.donation = defaultData.donation;
+    } else {
+      if (!migrated.donation.progress) {
+        migrated.donation.progress = defaultData.donation.progress;
       } else {
-        const p = oldData.donation.progress;
+        const p = migrated.donation.progress;
         if (p.totalDonations === undefined) p.totalDonations = 0;
         if (p.totalResearchCoin === undefined) p.totalResearchCoin = 0;
         if (p.totalResearchCoinEarned === undefined) p.totalResearchCoinEarned = 0;
@@ -489,11 +617,52 @@ export class SaveManager {
       }
     }
 
-    if (!oldData.replay) {
-      oldData.replay = { replays: [], maxReplaysPerLevel: 3 };
+    if (!migrated.replay) {
+      migrated.replay = { replays: [], maxReplaysPerLevel: 3 };
     }
 
-    return oldData as SaveData;
+    if (!migrated.randomEvent) {
+      migrated.randomEvent = defaultData.randomEvent;
+    }
+
+    if (!migrated.puzzleSaves) {
+      migrated.puzzleSaves = defaultData.puzzleSaves;
+    }
+
+    return migrated;
+  }
+
+  private static migrateSaveData(oldData: any): SaveData {
+    const fromVersion: number = typeof oldData?.schemaVersion === 'number' ? oldData.schemaVersion : 0;
+    let data = { ...oldData };
+    let currentVersion: number = fromVersion;
+
+    try {
+      while (currentVersion < CURRENT_SCHEMA_VERSION) {
+        const migrationFn = this.migrationFunctions[currentVersion];
+        if (migrationFn) {
+          data = migrationFn(data);
+        }
+        currentVersion += 1;
+      }
+
+      const defaultData = this.createDefaultSave();
+      const merged = this.deepMerge(data, defaultData);
+
+      merged.schemaVersion = CURRENT_SCHEMA_VERSION;
+      if (!merged.metadata) {
+        merged.metadata = this.createDefaultMetadata();
+      }
+
+      this.logMigration(fromVersion, CURRENT_SCHEMA_VERSION, true);
+
+      return merged as SaveData;
+    } catch (error: any) {
+      console.error(`[SaveManager] Migration failed from v${fromVersion}:`, error);
+      this.logMigration(fromVersion, CURRENT_SCHEMA_VERSION, false, error?.message);
+      const fallback = this.createDefaultSave();
+      return this.deepMerge(data, fallback) as SaveData;
+    }
   }
 
   private static createDefaultSave(): SaveData {
@@ -540,6 +709,8 @@ export class SaveManager {
     const donationData = DonationManager.createDefaultSave();
 
     return {
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      metadata: this.createDefaultMetadata(),
       progress,
       chapterProgress,
       badges,
@@ -2848,14 +3019,51 @@ export class SaveManager {
   }
 
   static save(): void {
+    if (!this.data) return;
+
     this.data.quiz = QuizManager.getSaveData();
     this.data.donation = DonationManager.getSaveData();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
+    this.data.randomEvent = RandomEventManager.getSaveData();
+
+    this.data.metadata.updatedAt = Date.now();
+    this.data.metadata.saveCount += 1;
+
+    try {
+      this.writeBackup(this.data);
+    } catch (e) {
+      console.warn('[SaveManager] Backup write failed during save:', e);
+    }
+
+    try {
+      const serialized = JSON.stringify(this.data);
+      localStorage.setItem(STORAGE_KEY, serialized);
+    } catch (e) {
+      console.error('[SaveManager] Failed to persist save data:', e);
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch {}
+    }
   }
 
   static reset(): void {
     this.data = this.createDefaultSave();
     this.save();
+  }
+
+  static getSchemaVersion(): number {
+    return this.data?.schemaVersion ?? 0;
+  }
+
+  static getSaveMetadata(): SaveMetadata | null {
+    return this.data?.metadata ?? null;
+  }
+
+  static getMigrationHistory(): SaveMigrationLogEntry[] {
+    return this.data?.metadata?.migrationLog ?? [];
+  }
+
+  static getAvailableBackups(): Array<{ version: number; timestamp: number }> {
+    return this.readBackups().map(b => ({ version: b.version, timestamp: b.timestamp }));
   }
 
   static saveCustomPuzzleRecord(key: string, record: CustomPuzzleRecord): void {

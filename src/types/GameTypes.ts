@@ -1374,7 +1374,26 @@ export interface HintPenaltyConfig {
   fullPreviewTimePenaltyPerSecond: number;
 }
 
+export interface SaveMigrationLogEntry {
+  fromVersion: number;
+  toVersion: number;
+  migratedAt: number;
+  success: boolean;
+  errorMessage?: string;
+}
+
+export interface SaveMetadata {
+  createdAt: number;
+  updatedAt: number;
+  saveCount: number;
+  lastMigrationAt?: number;
+  migrationLog: SaveMigrationLogEntry[];
+}
+
 export interface SaveData {
+  schemaVersion: number;
+  metadata: SaveMetadata;
+  checksum?: string;
   progress: Record<number, LevelProgress>;
   chapterProgress: Record<number, ChapterProgress>;
   badges: Record<number, boolean>;
