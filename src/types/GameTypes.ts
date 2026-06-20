@@ -106,14 +106,6 @@ export interface LevelProgress {
   bestTime: number;
   stars: number;
   completed: boolean;
-  attempts: number;
-  bestAccuracy: number;
-  bestCombo: number;
-  bestPerfectSnaps: number;
-  leastRotations: number;
-  leastHintTime: number;
-  playCount: number;
-  lastPlayedAt?: number;
 }
 
 export interface GalleryItem {
@@ -544,16 +536,6 @@ export interface TowerResultData {
   isNewBestTime: boolean;
   unlockedNextFloor: boolean;
   rewards: TowerReward[];
-  snapTimestamps: number[];
-  totalSnapDistance: number;
-  snapCount: number;
-  realPiecesCount: number;
-  rotationAdjustCount: number;
-  hintViewTime: number;
-  previousStars: number;
-  previousBestScore: number;
-  previousBestTime: number;
-  starsImproved: boolean;
 }
 
 export type ExhibitionThemeType = 'color' | 'family' | 'shape' | 'season' | 'rarity';
@@ -1259,95 +1241,21 @@ export interface DonationClaimResult {
   message?: string;
 }
 
-export type RandomEventType = 'fragment_damage' | 'time_compression' | 'hint_disabled' | 'score_boost' | 'piece_bonus' | 'double_reward';
-export type RandomEventRarity = 'common' | 'rare' | 'epic' | 'legendary';
-export type RandomEffectDirection = 'positive' | 'negative' | 'mixed';
+export type HintType = 'outline_flash' | 'piece_highlight' | 'full_preview';
 
-export interface RandomEventEffect {
-  type: 'score_multiplier' | 'time_penalty' | 'hint_disable' | 'piece_damage_count' | 'reward_multiplier' | 'combo_boost';
-  value: number;
-  duration?: number;
+export interface HintUsageStats {
+  outlineFlashCount: number;
+  pieceHighlightCount: number;
+  fullPreviewCount: number;
+  fullPreviewViewTime: number;
+  totalHintsUsed: number;
 }
 
-export interface RandomEventData {
-  id: string;
-  name: string;
-  description: string;
-  type: RandomEventType;
-  rarity: RandomEventRarity;
-  direction: RandomEffectDirection;
-  icon: string;
-  color: number;
-  effects: RandomEventEffect[];
-  weight: number;
-  minDifficulty?: 'easy' | 'medium' | 'hard';
-  maxDifficulty?: 'easy' | 'medium' | 'hard';
-  triggerCondition?: 'time_elapsed' | 'pieces_snapped' | 'random';
-  triggerValue?: number;
-}
-
-export interface ActiveRandomEvent {
-  eventId: string;
-  startTime: number;
-  duration: number;
-  remainingDuration: number;
-  effects: RandomEventEffect[];
-  isActive: boolean;
-  triggeredAt: number;
-}
-
-export interface RandomEventSessionStats {
-  eventsEncountered: string[];
-  positiveEventsCount: number;
-  negativeEventsCount: number;
-  totalScoreModifier: number;
-  totalTimeLost: number;
-  damagedPieces: number;
-  eventsByRarity: Record<RandomEventRarity, number>;
-}
-
-export interface RandomEventSaveData {
-  totalEventsEncountered: number;
-  positiveEventsTotal: number;
-  negativeEventsTotal: number;
-  eventsByType: Record<RandomEventType, number>;
-  eventsByRarity: Record<RandomEventRarity, number>;
-  highestScoreWithEvent: number;
-  totalTimeLostToEvents: number;
-  totalDamagedPieces: number;
-  eventStreak: number;
-  bestEventStreak: number;
-  rareEventsUnlocked: string[];
-}
-
-export interface PuzzlePieceSaveData {
-  pieceId: number;
-  x: number;
-  y: number;
-  rotation: number;
-  isSnapped: boolean;
-  isMirror: boolean;
-}
-
-export interface PuzzleSaveData {
-  levelId: number;
-  isEventLevel: boolean;
-  eventId: string | null;
-  isTowerFloor: boolean;
-  towerFloorId: number | null;
-  remainingTime: number;
-  hintsUsed: number;
-  snappedCount: number;
-  pieces: PuzzlePieceSaveData[];
-  savedAt: number;
-  comboCount: number;
-  maxCombo: number;
-  mistakeCount: number;
-  perfectSnaps: number;
-}
-
-export interface PuzzleSaves {
-  saves: Record<string, PuzzleSaveData>;
+export interface HintPenaltyConfig {
+  outlineFlashPenalty: number;
+  pieceHighlightPenalty: number;
+  fullPreviewPenalty: number;
+  fullPreviewTimePenaltyPerSecond: number;
 }
 
 export interface SaveData {
@@ -1375,6 +1283,4 @@ export interface SaveData {
   quiz: QuizSaveData;
   chapterMap: ChapterMapSaveData;
   donation: DonationSaveData;
-  randomEvent: RandomEventSaveData;
-  puzzleSaves: PuzzleSaves;
 }

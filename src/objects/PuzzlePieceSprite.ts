@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { PuzzlePieceData } from '../types/GameTypes';
+import { HintConfig } from '../config/GameConfig';
 
 export class PuzzlePieceSprite extends Phaser.GameObjects.Container {
   private pieceData: PuzzlePieceData;
@@ -21,6 +22,11 @@ export class PuzzlePieceSprite extends Phaser.GameObjects.Container {
   private selectedGlow!: Phaser.GameObjects.Graphics;
   private snapThreshold: { position: number; rotation: number };
   private _isMirror: boolean = false;
+  private outlineFlashTween: Phaser.Tweens.Tween | null = null;
+  private highlightTween: Phaser.Tweens.Tween | null = null;
+  private targetIndicatorGraphics: Phaser.GameObjects.Graphics | null = null;
+  private targetIndicatorTween: Phaser.Tweens.Tween | null = null;
+  private pieceHighlightGraphics: Phaser.GameObjects.Graphics | null = null;
 
   private static selectedPiece: PuzzlePieceSprite | null = null;
 
@@ -374,5 +380,196 @@ export class PuzzlePieceSprite extends Phaser.GameObjects.Container {
 
   getSnapThreshold(): { position: number; rotation: number } {
     return this.snapThreshold;
+  }
+
+  startOutlineFlash(duration: number = HintConfig.outlineFlashDuration, flashCount: number = HintConfig.outlineFlashCount): void {
+    this.stopOutlineFlash();
+
+    const totalDuration = duration;
+    const halfCycle = totalDuration / (flashCount * 2);
+
+    this.outlineFlashTween = this.scene.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: halfCycle,
+      yoyo: true,
+      repeat: flashCount * 2 - 1,
+      ease: 'Sine.easeInOut',
+      onUpdate: (tween) => {
+        const value = tween.getValue() ?? 0;
+        this.highlightBorder.lineStyle(5, 0xffeb3b, value);
+        this.drawRoundedRect(
+          this.highlightBorder,
+          -this.pieceData.width / 2 - 4,
+          -this.pieceData.height / 2 - 4,
+          this.pieceData.width + 8,
+          this.pieceData.height + 8,
+          10
+        );
+        this.highlightBorder.strokePath();
+      },
+      onComplete: () => {
+        this.highlightBorder.lineStyle(3, 0x4caf50, 0);
+        this.drawRoundedRect(
+          this.highlightBorder,
+          -this.pieceData.width / 2 - 2,
+          -this.pieceData.height / 2 - 2,
+          this.pieceData.width + 4,
+          this.pieceData.height + 4,
+          8
+        );
+        this.highlightBorder.strokePath();
+        this.outlineFlashTween = null;
+      }
+    });
+  }
+
+  stopOutlineFlash(): void {
+    if (this.outlineFlashTween) {
+      this.outlineFlashTween.stop();
+      this.outlineFlashTween = null;
+      this.highlightBorder.lineStyle(3, 0x4caf50, 0);
+      this.drawRoundedRect(
+        this.highlightBorder,
+        -this.pieceData.width / 2 - 2,
+        -this.pieceData.height / 2 - 2,
+        this.pieceData.width + 4,
+        this.pieceData.height + 4,
+        8
+      );
+      this.highlightBorder.strokePath();
+    }
+  }
+
+  startPieceHighlight(duration: number = HintConfig.pieceHighlightDuration): void {
+    this.stopPieceHighlight();
+
+    if (!this.pieceHighlightGraphics) {
+      this.pieceHighlightGraphics = this.scene.add.graphics();
+      this.addAt(this.pieceHighlightGraphics, this.list.length);
+    }
+
+    const totalDuration = duration;
+    const pulseDuration = 600;
+    const repeatCount = Math.floor(totalDuration / pulseDuration) - 1;
+
+    this.pieceHighlightGraphics!.clear();
+    this.highlightTween = this.scene.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: pulseDuration / 2,
+      yoyo: true,
+      repeat: repeatCount * 2,
+      ease: 'Sine.easeInOut',
+      onUpdate: (tween) => {
+        const value = tween.getValue() ?? 0;
+        if (this.pieceHighlightGraphics) {
+          this.pieceHighlightGraphics.clear();
+          this.pieceHighlightGraphics.lineStyle(6, 0x00e5ff, 0.85 * value);
+          this.drawRoundedRect(
+            this.pieceHighlightGraphics,
+            -this.pieceData.width / 2 - 10,
+            -this.pieceData.height / 2 - 10,
+            this.pieceData.width + 20,
+            this.pieceData.height + 20,
+            16
+          );
+          this.pieceHighlightGraphics.strokePath();
+
+          this.pieceHighlightGraphics.fillStyle(0x00e5ff, 0.22 * value);
+          this.drawRoundedRect(
+            this.pieceHighlightGraphics,
+            -this.pieceData.width / 2 - 10,
+            -this.pieceData.height / 2 - 10,
+            this.pieceData.width + 20,
+            this.pieceData.height + 20,
+            16
+          );
+          this.pieceHighlightGraphics.fillPath();
+        }
+      },
+      onComplete: () => {
+        this.stopPieceHighlight();
+      }
+    });
+  }
+
+  stopPieceHighlight(): void {
+    if (this.highlightTween) {
+      this.highlightTween.stop();
+      this.highlightTween = null;
+    }
+    if (this.pieceHighlightGraphics) {
+      this.pieceHighlightGraphics.clear();
+      this.pieceHighlightGraphics.destroy();
+      this.pieceHighlightGraphics = null;
+    }
+  }
+
+  showTargetIndicator(duration: number = 3000): void {
+    this.hideTargetIndicator();
+
+    const [tx, ty] = this.getEffectiveTarget();
+
+    this.targetIndicatorGraphics = this.scene.add.graphics();
+    this.targetIndicatorGraphics.setDepth(this.depth + 5);
+
+    const drawIndicator = (progress: number) => {
+      if (!this.targetIndicatorGraphics) return;
+      this.targetIndicatorGraphics.clear();
+
+      const pulseSize = 1 + Math.sin(progress * Math.PI * 4) * 0.1;
+      const alpha = 0.7 * (1 - Math.abs(progress - 0.5) * 2);
+
+      this.targetIndicatorGraphics.lineStyle(4, 0x76ff03, alpha);
+      const w = (this.pieceData.width + 16) * pulseSize;
+      const h = (this.pieceData.height + 16) * pulseSize;
+      this.drawRoundedRect(
+        this.targetIndicatorGraphics,
+        tx - w / 2,
+        ty - h / 2,
+        w,
+        h,
+        12
+      );
+      this.targetIndicatorGraphics.strokePath();
+
+      this.targetIndicatorGraphics.lineStyle(2, 0xb2ff59, alpha * 0.6);
+      this.targetIndicatorGraphics.beginPath();
+      this.targetIndicatorGraphics.moveTo(this.x, this.y);
+      this.targetIndicatorGraphics.lineTo(tx, ty);
+      this.targetIndicatorGraphics.strokePath();
+    };
+
+    this.targetIndicatorTween = this.scene.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: duration,
+      ease: 'Linear',
+      onUpdate: (tween) => {
+        drawIndicator(tween.getValue() ?? 0);
+      },
+      onComplete: () => {
+        this.hideTargetIndicator();
+      }
+    });
+  }
+
+  hideTargetIndicator(): void {
+    if (this.targetIndicatorTween) {
+      this.targetIndicatorTween.stop();
+      this.targetIndicatorTween = null;
+    }
+    if (this.targetIndicatorGraphics) {
+      this.targetIndicatorGraphics.clear();
+      this.targetIndicatorGraphics.destroy();
+      this.targetIndicatorGraphics = null;
+    }
+  }
+
+  clearAllHints(): void {
+    this.stopOutlineFlash();
+    this.stopPieceHighlight();
+    this.hideTargetIndicator();
   }
 }

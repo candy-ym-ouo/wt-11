@@ -4,7 +4,7 @@ import { getLevelRule } from '../data/LevelRules';
 import { getPlantSpecimen } from '../data/PlantSpecimens';
 import { SaveManager } from '../utils/SaveManager';
 import { calculateScore, formatTime, getDifficultyColor, getDifficultyText } from '../utils/GameUtils';
-import { LevelRule, PlantSpecimen, PuzzlePieceData, EventLevelRule, DailyQuest, TowerFloorData, TowerResultData, TowerScoringCondition, TowerRuleModifier, AchievementUnlockResult, TutorialStep, ConservationHealthLevel, PuzzleSaveData, PuzzlePieceSaveData } from '../types/GameTypes';
+import { LevelRule, PlantSpecimen, PuzzlePieceData, EventLevelRule, DailyQuest, TowerFloorData, TowerResultData, TowerScoringCondition, TowerRuleModifier, AchievementUnlockResult, TutorialStep, ConservationHealthLevel, PuzzleSaveData, PuzzlePieceSaveData, HintUsageStats } from '../types/GameTypes';
 import { getDropRule, getFragmentsBySpecimenId, Fragments, Materials } from '../data/WorkshopConfig';
 import { getEventLevelRule, isEventLevel } from '../data/EventLevelRules';
 import { getEventById } from '../data/Events';
@@ -18,6 +18,7 @@ import { RepairLogManager } from '../utils/RepairLogManager';
 import { RandomEventManager } from '../utils/RandomEventManager';
 import { RandomEventData, ActiveRandomEvent, RandomEventSessionStats } from '../types/GameTypes';
 import { getRandomEventById, getRarityColor } from '../data/RandomEvents';
+import { HintConfig } from '../config/GameConfig';
 
 export class GameScene extends Phaser.Scene {
   private levelRule!: LevelRule;
@@ -64,6 +65,12 @@ export class GameScene extends Phaser.Scene {
   private rotationAdjustCount: number = 0;
   private hintViewTime: number = 0;
   private hintLastEnabledAt: number | null = null;
+  private outlineFlashCount: number = 0;
+  private pieceHighlightCount: number = 0;
+  private fullPreviewCount: number = 0;
+  private fullPreviewTimer: Phaser.Time.TimerEvent | null = null;
+  private fullPreviewActive: boolean = false;
+  private fullPreviewStartAt: number | null = null;
 
   private tutorialContainer!: Phaser.GameObjects.Container;
   private tutorialOverlay!: Phaser.GameObjects.Graphics;
@@ -121,6 +128,12 @@ export class GameScene extends Phaser.Scene {
     this.rotationAdjustCount = 0;
     this.hintViewTime = 0;
     this.hintLastEnabledAt = null;
+    this.outlineFlashCount = 0;
+    this.pieceHighlightCount = 0;
+    this.fullPreviewCount = 0;
+    this.fullPreviewTimer = null;
+    this.fullPreviewActive = false;
+    this.fullPreviewStartAt = null;
 
     if (this.isTowerFloor && this.towerFloorId) {
       const towerFloor = getTowerFloor(this.towerFloorId);
@@ -723,11 +736,11 @@ export class GameScene extends Phaser.Scene {
   private addControlButtons(): void {
     const hasNoHintRestriction = this.hasTowerRule('no_hint_restriction');
     const btnY = 845;
-    const btnW = 130;
-    const btnH = 58;
-    const spacing = 40;
+    const btnW = 155;
+    const btnH = 52;
+    const spacing = 18;
 
-    let buttonCount = 3;
+    let buttonCount = 5;
     if (hasNoHintRestriction) buttonCount = 2;
 
     const totalW = btnW * buttonCount + spacing * (buttonCount - 1);
@@ -740,7 +753,7 @@ export class GameScene extends Phaser.Scene {
       btnY,
       btnW,
       btnH,
-      '旋转',
+      '🔄 旋转',
       0x2196f3,
       () => this.rotateSelectedPiece()
     );
@@ -752,14 +765,52 @@ export class GameScene extends Phaser.Scene {
     currentIndex++;
 
     if (!hasNoHintRestriction) {
-      const hintBtn = this.createControlButton(
+      const flashBtn = this.createControlButton(
         startX + currentIndex * (btnW + spacing),
         btnY,
         btnW,
         btnH,
-        '提示',
-        0xff9800,
-        () => this.toggleHint()
+        '⚡ 轮廓闪烁',
+        0xffc107,
+        () => this.useOutlineFlashHint()
+      );
+      this.addHintCountBadge(
+        startX + currentIndex * (btnW + spacing) + btnW / 2 - 10,
+        btnY - btnH / 2 + 10,
+        () => this.outlineFlashCount
+      );
+      currentIndex++;
+
+      const highlightBtn = this.createControlButton(
+        startX + currentIndex * (btnW + spacing),
+        btnY,
+        btnW,
+        btnH,
+        '🎯 单块高亮',
+        0x00bcd4,
+        () => this.usePieceHighlightHint()
+      );
+      this.addHintCountBadge(
+        startX + currentIndex * (btnW + spacing) + btnW / 2 - 10,
+        btnY - btnH / 2 + 10,
+        () => this.pieceHighlightCount
+      );
+      currentIndex++;
+
+      const previewBtn = this.createControlButton(
+        startX + currentIndex * (btnW + spacing),
+        btnY,
+        btnW,
+        btnH,
+        '👁️ 完整预览',
+        0x9c27b0,
+        () => this.useFullPreviewHint()
+      );
+      this.addHintCountBadge(
+        startX + currentIndex * (btnW + spacing) + btnW / 2 - 10,
+        btnY - btnH / 2 + 10,
+        () => `${this.fullPreviewCount}/${HintConfig.maxFullPreviewCount}`,
+        true
       );
       currentIndex++;
     }
@@ -769,7 +820,7 @@ export class GameScene extends Phaser.Scene {
       btnY,
       btnW,
       btnH,
-      '重置',
+      '🔁 重置',
       0xf44336,
       () => {
         this.cameras.main.flash(100, 244, 67, 54, false);
@@ -779,7 +830,9 @@ export class GameScene extends Phaser.Scene {
 
     this.input.keyboard?.on('keydown-R', () => this.rotateSelectedPiece());
     if (!hasNoHintRestriction) {
-      this.input.keyboard?.on('keydown-H', () => this.toggleHint());
+      this.input.keyboard?.on('keydown-1', () => this.useOutlineFlashHint());
+      this.input.keyboard?.on('keydown-2', () => this.usePieceHighlightHint());
+      this.input.keyboard?.on('keydown-3', () => this.useFullPreviewHint());
     }
     this.input.keyboard?.on('keydown-ESC', () => {
       if (!this.isCompleted) this.showPauseMenu();
@@ -788,6 +841,36 @@ export class GameScene extends Phaser.Scene {
     if (this.isTowerFloor) {
       this.addTowerStatusUI();
     }
+  }
+
+  private addHintCountBadge(
+    x: number,
+    y: number,
+    getValue: () => number | string,
+    showMax: boolean = false
+  ): void {
+    const bg = this.add.graphics();
+    const updateBadge = () => {
+      const value = getValue();
+      bg.clear();
+      bg.fillStyle(0x000000, 0.7);
+      bg.fillCircle(x, y, 14);
+      bg.lineStyle(2, 0xffffff, 0.8);
+      bg.strokeCircle(x, y, 14);
+
+      this.add.text(x, y, String(value), {
+        font: showMax ? 'bold 10px Arial' : 'bold 12px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5).setName('badgeText');
+    };
+    updateBadge();
+
+    this.events.on('hints-updated', () => {
+      const text = this.children.getByName('badgeText') as Phaser.GameObjects.Text;
+      if (text) {
+        text.setText(String(getValue()));
+      }
+    });
   }
 
   private addTowerStatusUI(): void {
@@ -932,31 +1015,138 @@ export class GameScene extends Phaser.Scene {
   }
 
   private toggleHint(): void {
+    this.useFullPreviewHint();
+  }
+
+  private useOutlineFlashHint(): void {
     if (this.hasTowerRule('no_hint_restriction')) return;
+    if (this.isPaused || this.isCompleted) return;
 
     if (this.randomEventsEnabled && !this.isTowerFloor && !this.isEventLevel && RandomEventManager.isHintDisabled()) {
       this.cameras.main.flash(100, 255, 100, 100, false);
       return;
     }
 
-    this.showHint = !this.showHint;
-    if (this.showHint && this.isTowerFloor) {
-      this.hintsUsed++;
+    const unsnappedRealPieces = this.pieces.filter(p => !p.isPieceSnapped() && !p.isMirror);
+    if (unsnappedRealPieces.length === 0) return;
+
+    unsnappedRealPieces.forEach(piece => {
+      piece.startOutlineFlash();
+    });
+
+    this.outlineFlashCount++;
+    this.hintsUsed++;
+    this.events.emit('hints-updated');
+
+    this.cameras.main.flash(80, 255, 235, 59, false);
+    this.updateUI();
+  }
+
+  private usePieceHighlightHint(): void {
+    if (this.hasTowerRule('no_hint_restriction')) return;
+    if (this.isPaused || this.isCompleted) return;
+
+    if (this.randomEventsEnabled && !this.isTowerFloor && !this.isEventLevel && RandomEventManager.isHintDisabled()) {
+      this.cameras.main.flash(100, 255, 100, 100, false);
+      return;
     }
 
-    if (this.showHint) {
-      this.hintLastEnabledAt = this.elapsedTime;
-    } else if (this.hintLastEnabledAt !== null) {
-      this.hintViewTime += this.elapsedTime - this.hintLastEnabledAt;
-      this.hintLastEnabledAt = null;
+    const unsnappedRealPieces = this.pieces.filter(p => !p.isPieceSnapped() && !p.isMirror);
+    if (unsnappedRealPieces.length === 0) return;
+
+    const targetPiece = unsnappedRealPieces[Math.floor(Math.random() * unsnappedRealPieces.length)];
+
+    targetPiece.startPieceHighlight();
+    targetPiece.showTargetIndicator();
+
+    this.pieceHighlightCount++;
+    this.hintsUsed++;
+    this.events.emit('hints-updated');
+
+    this.cameras.main.flash(80, 0, 229, 255, false);
+    this.updateUI();
+  }
+
+  private useFullPreviewHint(): void {
+    if (this.hasTowerRule('no_hint_restriction')) return;
+    if (this.isPaused || this.isCompleted) return;
+
+    if (this.randomEventsEnabled && !this.isTowerFloor && !this.isEventLevel && RandomEventManager.isHintDisabled()) {
+      this.cameras.main.flash(100, 255, 100, 100, false);
+      return;
+    }
+
+    if (this.fullPreviewActive) {
+      this.stopFullPreview();
+      return;
+    }
+
+    if (this.fullPreviewCount >= HintConfig.maxFullPreviewCount) {
+      const flashText = this.add.text(375, 300, '完整预览已用完!', {
+        font: 'bold 24px Arial',
+        color: '#f44336'
+      }).setOrigin(0.5).setDepth(100);
+      this.tweens.add({
+        targets: flashText,
+        y: 260,
+        alpha: 0,
+        duration: 1200,
+        ease: 'Cubic.easeOut',
+        onComplete: () => flashText.destroy()
+      });
+      return;
+    }
+
+    this.fullPreviewActive = true;
+    this.fullPreviewCount++;
+    this.hintsUsed++;
+    this.fullPreviewStartAt = this.elapsedTime;
+    this.showHint = true;
+
+    this.tweens.add({
+      targets: this.hintImage,
+      alpha: HintConfig.fullPreviewAlpha,
+      duration: 300,
+      ease: 'Cubic.easeOut'
+    });
+
+    const previewText = this.add.text(375, 220, `完整预览 ${this.fullPreviewCount}/${HintConfig.maxFullPreviewCount}`, {
+      font: 'bold 20px Arial',
+      color: '#e1bee7'
+    }).setOrigin(0.5).setDepth(100);
+
+    this.fullPreviewTimer = this.time.delayedCall(HintConfig.fullPreviewDuration, () => {
+      previewText.destroy();
+      this.stopFullPreview();
+    });
+
+    this.events.emit('hints-updated');
+    this.cameras.main.flash(80, 156, 39, 176, false);
+    this.updateUI();
+  }
+
+  private stopFullPreview(): void {
+    if (!this.fullPreviewActive) return;
+
+    this.fullPreviewActive = false;
+    this.showHint = false;
+
+    if (this.fullPreviewStartAt !== null) {
+      this.hintViewTime += this.elapsedTime - this.fullPreviewStartAt;
+      this.fullPreviewStartAt = null;
     }
 
     this.tweens.add({
       targets: this.hintImage,
-      alpha: this.showHint ? 0.28 : 0,
-      duration: 250,
+      alpha: 0,
+      duration: 300,
       ease: 'Cubic.easeOut'
     });
+
+    if (this.fullPreviewTimer) {
+      this.fullPreviewTimer.remove(false);
+      this.fullPreviewTimer = null;
+    }
   }
 
   private resetLevel(): void {
@@ -977,6 +1167,14 @@ export class GameScene extends Phaser.Scene {
     this.rotationAdjustCount = 0;
     this.hintViewTime = 0;
     this.hintLastEnabledAt = null;
+    this.outlineFlashCount = 0;
+    this.pieceHighlightCount = 0;
+    this.fullPreviewCount = 0;
+    this.fullPreviewTimer = null;
+    this.fullPreviewActive = false;
+    this.fullPreviewStartAt = null;
+
+    this.pieces.forEach(piece => piece.clearAllHints());
 
     PuzzlePieceSprite.clearSelection();
 
@@ -1380,6 +1578,12 @@ export class GameScene extends Phaser.Scene {
     this.isCompleted = true;
     if (this.timerEvent) this.timerEvent.paused = true;
 
+    if (this.fullPreviewActive) {
+      this.stopFullPreview();
+    }
+
+    this.pieces.forEach(piece => piece.clearAllHints());
+
     if (this.targetTween) {
       this.targetTween.stop();
     }
@@ -1438,12 +1642,23 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private getHintUsageStats(): HintUsageStats {
+    return {
+      outlineFlashCount: this.outlineFlashCount,
+      pieceHighlightCount: this.pieceHighlightCount,
+      fullPreviewCount: this.fullPreviewCount,
+      fullPreviewViewTime: this.hintViewTime,
+      totalHintsUsed: this.outlineFlashCount + this.pieceHighlightCount + this.fullPreviewCount
+    };
+  }
+
   private updateUI(): void {
     const result = calculateScore(
       this.elapsedTime,
       this.levelRule.timeLimit,
       this.pieces.length,
-      this.snappedCount
+      this.snappedCount,
+      this.getHintUsageStats()
     );
     let finalMultiplier = this.scoreMultiplier;
     
@@ -1459,10 +1674,16 @@ export class GameScene extends Phaser.Scene {
     this.isCompleted = true;
     if (this.timerEvent) this.timerEvent.paused = true;
 
+    if (this.fullPreviewActive) {
+      this.stopFullPreview();
+    }
+
     if (this.hintLastEnabledAt !== null) {
       this.hintViewTime += this.elapsedTime - this.hintLastEnabledAt;
       this.hintLastEnabledAt = null;
     }
+
+    this.pieces.forEach(piece => piece.clearAllHints());
 
     if (this.targetTween) {
       this.targetTween.stop();
@@ -1519,7 +1740,8 @@ export class GameScene extends Phaser.Scene {
       this.elapsedTime,
       this.levelRule.timeLimit,
       this.pieces.length,
-      this.snappedCount
+      this.snappedCount,
+      this.getHintUsageStats()
     );
     let finalScore = Math.floor(result.score * this.scoreMultiplier);
     
@@ -1743,8 +1965,16 @@ export class GameScene extends Phaser.Scene {
           break;
 
         case 'hint_usage':
-          const hintPenalty = Math.min(1, this.hintsUsed / 5);
-          score = Math.floor(maxScore * (1 - hintPenalty));
+          const hintStats = this.getHintUsageStats();
+          const penalties = HintConfig.penalties;
+          const totalWeightedPenalty = (
+            hintStats.outlineFlashCount * 0.1 +
+            hintStats.pieceHighlightCount * 0.2 +
+            hintStats.fullPreviewCount * 0.35 +
+            hintStats.fullPreviewViewTime * 0.015
+          );
+          const towerHintPenalty = Math.min(1, totalWeightedPenalty);
+          score = Math.floor(maxScore * (1 - towerHintPenalty));
           break;
 
         case 'perfect_snap':
@@ -1819,6 +2049,12 @@ export class GameScene extends Phaser.Scene {
     this.isCompleted = true;
     if (this.timerEvent) this.timerEvent.paused = true;
 
+    if (this.fullPreviewActive) {
+      this.stopFullPreview();
+    }
+
+    this.pieces.forEach(piece => piece.clearAllHints());
+
     if (this.targetTween) {
       this.targetTween.stop();
     }
@@ -1850,7 +2086,8 @@ export class GameScene extends Phaser.Scene {
       this.levelRule.timeLimit,
       this.levelRule.timeLimit,
       this.snappedCount,
-      this.snappedCount
+      this.snappedCount,
+      this.getHintUsageStats()
     );
 
     this.showGameOver(result.score, this.snappedCount, this.pieces.length);

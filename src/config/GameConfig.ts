@@ -17,3 +17,18 @@ export const ScoreConfig = {
   perfectSnapBonus: 50,
   starThresholds: [1000, 2000, 3000]
 };
+
+export const HintConfig = {
+  maxFullPreviewCount: 3,
+  outlineFlashDuration: 2500,
+  outlineFlashCount: 4,
+  pieceHighlightDuration: 4000,
+  fullPreviewDuration: 3000,
+  fullPreviewAlpha: 0.35,
+  penalties: {
+    outlineFlashPenalty: 80,
+    pieceHighlightPenalty: 150,
+    fullPreviewPenalty: 250,
+    fullPreviewTimePenaltyPerSecond: 8
+  }
+};
