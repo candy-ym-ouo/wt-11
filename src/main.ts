@@ -30,6 +30,7 @@ import { QuizResultScene } from './scenes/QuizResultScene';
 import { ChapterMapScene } from './scenes/ChapterMapScene';
 import { EndingScene } from './scenes/EndingScene';
 import { DonationScene } from './scenes/DonationScene';
+import { ProfileScene } from './scenes/ProfileScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -71,7 +72,8 @@ const config: Phaser.Types.Core.GameConfig = {
     QuizResultScene,
     ChapterMapScene,
     EndingScene,
-    DonationScene
+    DonationScene,
+    ProfileScene
   ],
   physics: {
     default: 'arcade',
