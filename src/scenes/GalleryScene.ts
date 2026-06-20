@@ -634,7 +634,7 @@ export class GalleryScene extends Phaser.Scene {
     let familyBorderStyle: any = null;
     
     if (unlocked && family) {
-      const familyProgress = SaveManager.data.familyCollection.familyProgress[family.id];
+      const familyProgress = SaveManager.getFamilyProgress(family.id);
       if (familyProgress && familyProgress.activeBorderId) {
         const borderReward = family.rewards.find(r => r.id === familyProgress.activeBorderId && r.type === 'border');
         if (borderReward && borderReward.borderStyle) {

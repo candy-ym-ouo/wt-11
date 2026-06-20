@@ -441,8 +441,7 @@ export class GameScene extends Phaser.Scene {
       quantity: Math.ceil(style.particleCount / 10),
       frequency: 200,
       gravityY: 5,
-      rotate: { min: 0, max: 360 },
-      rotationVelocity: { min: -30, max: 30 }
+      rotate: { onEmit: () => Phaser.Math.Between(0, 360) }
     });
     emitter.setDepth(2);
     this.familyParticles.push(emitter);
@@ -1345,7 +1344,7 @@ export class GameScene extends Phaser.Scene {
     if (this.isPaused || this.isCompleted) return;
     if (SaveManager.getTotalTimeExtensionsAvailable() <= 0) return;
 
-    const familyProgressData = SaveManager.data.familyCollection.familyProgress;
+    const familyProgressData = SaveManager.getAllFamilyProgress();
     let bonusSeconds = 0;
     for (const [familyId, progress] of Object.entries(familyProgressData)) {
       if (progress.timeExtensionsAvailable > 0) {

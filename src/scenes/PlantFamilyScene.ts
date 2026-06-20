@@ -421,7 +421,7 @@ export class PlantFamilyScene extends Phaser.Scene {
       }).setOrigin(1, 0.5));
 
       if (isClaimed) {
-        const familyProgress = SaveManager.data.familyCollection.familyProgress[family.id];
+        const familyProgress = SaveManager.getFamilyProgress(family.id);
         
         if (reward.type === 'border' && familyProgress) {
           const isActive = familyProgress.activeBorderId === reward.id;
@@ -448,7 +448,7 @@ export class PlantFamilyScene extends Phaser.Scene {
             } else {
               SaveManager.setActiveBorder(family.id, reward.id);
             }
-            container.destroy();
+            c.destroy();
             this.detailContainer = null;
             this.showFamilyDetail(family);
           });
@@ -477,7 +477,7 @@ export class PlantFamilyScene extends Phaser.Scene {
             } else {
               SaveManager.setActiveBackground(family.id, reward.id);
             }
-            container.destroy();
+            c.destroy();
             this.detailContainer = null;
             this.showFamilyDetail(family);
           });
