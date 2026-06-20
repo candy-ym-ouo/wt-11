@@ -53,8 +53,12 @@ export class PuzzlePieceSprite extends Phaser.GameObjects.Container {
     this.createEffects();
     this.setupInputHandlers();
 
-    const randomRotation = Phaser.Math.Between(0, 3) * 90;
-    this.rotation = Phaser.Math.DegToRad(randomRotation);
+    if (pieceData.initialRotation !== undefined) {
+      this.rotation = pieceData.initialRotation;
+    } else {
+      const randomRotation = Phaser.Math.Between(0, 3) * 90;
+      this.rotation = Phaser.Math.DegToRad(randomRotation);
+    }
 
     scene.add.existing(this);
   }
@@ -357,8 +361,12 @@ export class PuzzlePieceSprite extends Phaser.GameObjects.Container {
     this.setInteractive();
     this.x = this.initialX;
     this.y = this.initialY;
-    const randomRotation = Phaser.Math.Between(0, 3) * 90;
-    this.rotation = Phaser.Math.DegToRad(randomRotation);
+    if (this.pieceData.initialRotation !== undefined) {
+      this.rotation = this.pieceData.initialRotation;
+    } else {
+      const randomRotation = Phaser.Math.Between(0, 3) * 90;
+      this.rotation = Phaser.Math.DegToRad(randomRotation);
+    }
     this.highlightBorder.lineStyle(3, 0x4caf50, 0);
     this.selectedGlow.lineStyle(4, 0x2196f3, 0);
     this.selectedGlow.fillStyle(0x2196f3, 0);

@@ -19,6 +19,7 @@ import { RandomEventManager } from '../utils/RandomEventManager';
 import { RandomEventData, ActiveRandomEvent, RandomEventSessionStats } from '../types/GameTypes';
 import { getRandomEventById, getRarityColor } from '../data/RandomEvents';
 import { HintConfig, PieceLayoutConfig } from '../config/GameConfig';
+import { PieceGenerationConfig, InitialRotationMode, ScatterAreaMode, SliceMode, InitialRotationRule, ScatterAreaConfig } from '../types/GameTypes';
 
 export class GameScene extends Phaser.Scene {
   private levelRule!: LevelRule;
@@ -668,6 +669,8 @@ export class GameScene extends Phaser.Scene {
         const randomRotation = rotations[Math.floor(Math.random() * rotations.length)];
         sprite.angle = randomRotation;
         sprite.setData('targetRotation', 0);
+      } else if (data.initialRotation !== undefined) {
+        sprite.rotation = data.initialRotation;
       }
 
       this.pieces.push(sprite);
@@ -752,44 +755,146 @@ export class GameScene extends Phaser.Scene {
   }
 
   private generatePieceData(): PuzzlePieceData[] {
+    const genConfig = this.levelRule.pieceGeneration;
+    const sliceMode: SliceMode = genConfig?.sliceMode ?? 'regular_grid';
     const { rows, cols } = this.levelRule;
     const total = rows * cols;
     const areaW = GameScene.TARGET_AREA_W - 24;
     const areaH = GameScene.TARGET_AREA_H - 24;
-    const pieceW = Math.floor(areaW / cols);
-    const pieceH = Math.floor(areaH / rows);
 
-    const startTargetX = GameScene.TARGET_AREA_X - ((cols - 1) * pieceW) / 2;
-    const startTargetY = GameScene.TARGET_AREA_Y - ((rows - 1) * pieceH) / 2;
-
-    const shufflePositions = this.generateShufflePositions(total);
+    const shufflePositions = this.generateShufflePositions(total, genConfig?.scatterArea);
+    const initialRotations = this.generateInitialRotations(total, genConfig?.initialRotation);
 
     const dataList: PuzzlePieceData[] = [];
-    for (let i = 0; i < total; i++) {
-      const row = Math.floor(i / cols);
-      const col = i % cols;
 
-      dataList.push({
-        id: i,
-        initialX: shufflePositions[i].x,
-        initialY: shufflePositions[i].y,
-        targetX: startTargetX + col * pieceW,
-        targetY: startTargetY + row * pieceH,
-        width: pieceW,
-        height: pieceH,
-        textureKey: `specimen-${this.specimen.id}-piece-${i}`,
-        sourceX: col * pieceW,
-        sourceY: row * pieceH
+    if (sliceMode === 'irregular_custom' && genConfig?.irregularSlices) {
+      const slices = genConfig.irregularSlices;
+      slices.forEach((slice, i) => {
+        dataList.push({
+          id: i,
+          initialX: shufflePositions[i]?.x ?? Phaser.Math.Between(80, 670),
+          initialY: shufflePositions[i]?.y ?? Phaser.Math.Between(920, 1100),
+          initialRotation: initialRotations[i],
+          targetX: slice.targetX,
+          targetY: slice.targetY,
+          width: slice.width,
+          height: slice.height,
+          textureKey: `specimen-${this.specimen.id}-piece-${i}`,
+          sourceX: slice.sourceX,
+          sourceY: slice.sourceY
+        });
       });
+    } else if (sliceMode === 'variable_size' && genConfig?.variableSizeRanges) {
+      const ranges = genConfig.variableSizeRanges;
+      const basePieceW = Math.floor(areaW / cols);
+      const basePieceH = Math.floor(areaH / rows);
+      const startTargetX = GameScene.TARGET_AREA_X - ((cols - 1) * basePieceW) / 2;
+      const startTargetY = GameScene.TARGET_AREA_Y - ((rows - 1) * basePieceH) / 2;
+
+      for (let i = 0; i < total; i++) {
+        const row = Math.floor(i / cols);
+        const col = i % cols;
+        const widthRatio = Phaser.Math.FloatBetween(ranges.minWidthRatio, ranges.maxWidthRatio);
+        const heightRatio = Phaser.Math.FloatBetween(ranges.minHeightRatio, ranges.maxHeightRatio);
+        const pieceW = Math.floor(basePieceW * widthRatio);
+        const pieceH = Math.floor(basePieceH * heightRatio);
+
+        dataList.push({
+          id: i,
+          initialX: shufflePositions[i].x,
+          initialY: shufflePositions[i].y,
+          initialRotation: initialRotations[i],
+          targetX: startTargetX + col * basePieceW,
+          targetY: startTargetY + row * basePieceH,
+          width: pieceW,
+          height: pieceH,
+          textureKey: `specimen-${this.specimen.id}-piece-${i}`,
+          sourceX: col * basePieceW,
+          sourceY: row * basePieceH
+        });
+      }
+    } else {
+      const pieceW = Math.floor(areaW / cols);
+      const pieceH = Math.floor(areaH / rows);
+      const startTargetX = GameScene.TARGET_AREA_X - ((cols - 1) * pieceW) / 2;
+      const startTargetY = GameScene.TARGET_AREA_Y - ((rows - 1) * pieceH) / 2;
+
+      for (let i = 0; i < total; i++) {
+        const row = Math.floor(i / cols);
+        const col = i % cols;
+
+        dataList.push({
+          id: i,
+          initialX: shufflePositions[i].x,
+          initialY: shufflePositions[i].y,
+          initialRotation: initialRotations[i],
+          targetX: startTargetX + col * pieceW,
+          targetY: startTargetY + row * pieceH,
+          width: pieceW,
+          height: pieceH,
+          textureKey: `specimen-${this.specimen.id}-piece-${i}`,
+          sourceX: col * pieceW,
+          sourceY: row * pieceH
+        });
+      }
     }
 
     return dataList;
   }
 
-  private generateShufflePositions(count: number): Array<{ x: number; y: number }> {
+  private generateInitialRotations(count: number, rule?: InitialRotationRule): number[] {
+    const rotations: number[] = [];
+    const mode: InitialRotationMode = rule?.mode ?? 'random_90';
+
+    for (let i = 0; i < count; i++) {
+      let angle: number;
+
+      switch (mode) {
+        case 'random_90':
+          angle = Phaser.Math.Between(0, 3) * 90;
+          break;
+        case 'random_any':
+          angle = rule?.angleRange 
+            ? Phaser.Math.FloatBetween(rule.angleRange.min, rule.angleRange.max)
+            : Phaser.Math.FloatBetween(0, 360);
+          if (rule?.snapTo90) {
+            angle = Math.round(angle / 90) * 90;
+          }
+          break;
+        case 'fixed_0':
+          angle = 0;
+          break;
+        case 'fixed_90':
+          angle = 90;
+          break;
+        case 'fixed_180':
+          angle = 180;
+          break;
+        case 'fixed_270':
+          angle = 270;
+          break;
+        case 'alternating':
+          angle = (i % 2 === 0) ? 0 : 180;
+          break;
+        case 'per_piece':
+          angle = rule?.perPieceAngles?.[i] ?? Phaser.Math.Between(0, 3) * 90;
+          break;
+        default:
+          angle = Phaser.Math.Between(0, 3) * 90;
+      }
+
+      rotations.push(Phaser.Math.DegToRad(angle));
+    }
+
+    return rotations;
+  }
+
+  private generateShufflePositions(count: number, scatterConfig?: ScatterAreaConfig): Array<{ x: number; y: number }> {
     const positions: Array<{ x: number; y: number }> = [];
-    const cols = Math.min(4, count);
-    const rows = Math.ceil(count / cols);
+    const mode: ScatterAreaMode = scatterConfig?.mode ?? 'bottom';
+    const padding = scatterConfig?.padding ?? 20;
+    const stackLayers = scatterConfig?.stackLayers ?? 1;
+    const allowOverlap = scatterConfig?.allowOverlap ?? false;
 
     const layout = this.levelRule.pieceLayout;
     const pieceW = Phaser.Math.Clamp(
@@ -804,17 +909,115 @@ export class GameScene extends Phaser.Scene {
     );
     const spacing = layout?.pieceSpacing ?? PieceLayoutConfig.defaultPieceSpacing;
 
-    const totalWidth = cols * pieceW + (cols - 1) * spacing;
-    const startX = (750 - totalWidth) / 2 + pieceW / 2;
-    const startY = GameScene.PIECE_AREA_START_Y + pieceH / 2;
+    let areaX = 375;
+    let areaY = 1000;
+    let areaW = 650;
+    let areaH = 400;
 
-    for (let i = 0; i < count; i++) {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      positions.push({
-        x: startX + col * (pieceW + spacing) + Phaser.Math.Between(-15, 15),
-        y: startY + row * (pieceH + spacing) + Phaser.Math.Between(-8, 8)
-      });
+    if (scatterConfig?.customArea) {
+      areaX = scatterConfig.customArea.x;
+      areaY = scatterConfig.customArea.y;
+      areaW = scatterConfig.customArea.width;
+      areaH = scatterConfig.customArea.height;
+    } else {
+      switch (mode) {
+        case 'bottom':
+          areaX = 375;
+          areaY = 1000;
+          areaW = 650;
+          areaH = 400;
+          break;
+        case 'top':
+          areaX = 375;
+          areaY = 250;
+          areaW = 650;
+          areaH = 200;
+          break;
+        case 'left_side':
+          areaX = 120;
+          areaY = 667;
+          areaW = 200;
+          areaH = 1000;
+          break;
+        case 'right_side':
+          areaX = 630;
+          areaY = 667;
+          areaW = 200;
+          areaH = 1000;
+          break;
+        case 'surround':
+          areaX = 375;
+          areaY = 667;
+          areaW = 700;
+          areaH = 1100;
+          break;
+        case 'custom':
+          areaX = scatterConfig?.customArea?.x ?? 375;
+          areaY = scatterConfig?.customArea?.y ?? 1000;
+          areaW = scatterConfig?.customArea?.width ?? 650;
+          areaH = scatterConfig?.customArea?.height ?? 400;
+          break;
+      }
+    }
+
+    const minX = areaX - areaW / 2 + padding;
+    const maxX = areaX + areaW / 2 - padding;
+    const minY = areaY - areaH / 2 + padding;
+    const maxY = areaY + areaH / 2 - padding;
+
+    if (mode === 'surround') {
+      for (let i = 0; i < count; i++) {
+        const side = i % 4;
+        let x: number, y: number;
+        
+        switch (side) {
+          case 0:
+            x = Phaser.Math.Between(minX, maxX);
+            y = Phaser.Math.Between(minY, minY + 80);
+            break;
+          case 1:
+            x = Phaser.Math.Between(minX, maxX);
+            y = Phaser.Math.Between(maxY - 80, maxY);
+            break;
+          case 2:
+            x = Phaser.Math.Between(minX, minX + 60);
+            y = Phaser.Math.Between(minY + 100, maxY - 100);
+            break;
+          case 3:
+            x = Phaser.Math.Between(maxX - 60, maxX);
+            y = Phaser.Math.Between(minY + 100, maxY - 100);
+            break;
+          default:
+            x = Phaser.Math.Between(minX, maxX);
+            y = Phaser.Math.Between(minY, maxY);
+        }
+        
+        positions.push({ x, y });
+      }
+    } else if (allowOverlap) {
+      for (let i = 0; i < count; i++) {
+        const layerOffset = (i % stackLayers) * 15;
+        positions.push({
+          x: Phaser.Math.Between(minX, maxX),
+          y: Phaser.Math.Between(minY + layerOffset, maxY - layerOffset)
+        });
+      }
+    } else {
+      const cols = Math.min(Math.ceil(Math.sqrt(count * (areaW / areaH))), 8);
+      const rows = Math.ceil(count / cols);
+      const cellW = (areaW - padding * 2) / cols;
+      const cellH = (areaH - padding * 2) / rows;
+
+      for (let i = 0; i < count; i++) {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const layerOffset = (i % stackLayers) * 10;
+        
+        positions.push({
+          x: minX + col * cellW + cellW / 2 + Phaser.Math.Between(-cellW / 4, cellW / 4),
+          y: minY + row * cellH + cellH / 2 + Phaser.Math.Between(-cellH / 4, cellH / 4) + layerOffset
+        });
+      }
     }
 
     return Phaser.Utils.Array.Shuffle(positions);

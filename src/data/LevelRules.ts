@@ -239,6 +239,19 @@ export const LevelRules: LevelRule[] = [
       pieceHeight: 90,
       pieceSpacing: 20
     },
+    pieceGeneration: {
+      sliceMode: 'regular_grid',
+      initialRotation: {
+        mode: 'random_any',
+        angleRange: { min: 0, max: 360 },
+        snapTo90: false
+      },
+      scatterArea: {
+        mode: 'surround',
+        padding: 30,
+        rotationVariation: 15
+      }
+    },
     rewardConfig: {
       scoreMultiplier: 1.5,
       fragmentDropBonus: 2,
@@ -283,6 +296,23 @@ export const LevelRules: LevelRule[] = [
       pieceWidth: 120,
       pieceHeight: 90,
       pieceSpacing: 20
+    },
+    pieceGeneration: {
+      sliceMode: 'variable_size',
+      variableSizeRanges: {
+        minWidthRatio: 0.7,
+        maxWidthRatio: 1.3,
+        minHeightRatio: 0.7,
+        maxHeightRatio: 1.3
+      },
+      initialRotation: {
+        mode: 'alternating'
+      },
+      scatterArea: {
+        mode: 'left_side',
+        padding: 20,
+        stackLayers: 2
+      }
     },
     rewardConfig: {
       scoreMultiplier: 1.8,
@@ -329,6 +359,35 @@ export const LevelRules: LevelRule[] = [
       pieceWidth: 120,
       pieceHeight: 90,
       pieceSpacing: 20
+    },
+    pieceGeneration: {
+      sliceMode: 'irregular_custom',
+      irregularSlices: [
+        { id: 0, targetX: 305, targetY: 345, width: 140, height: 110, sourceX: 0, sourceY: 0 },
+        { id: 1, targetX: 445, targetY: 345, width: 140, height: 110, sourceX: 140, sourceY: 0 },
+        { id: 2, targetX: 305, targetY: 455, width: 140, height: 110, sourceX: 0, sourceY: 110 },
+        { id: 3, targetX: 445, targetY: 455, width: 140, height: 110, sourceX: 140, sourceY: 110 },
+        { id: 4, targetX: 375, targetY: 400, width: 100, height: 80, sourceX: 70, sourceY: 55 },
+        { id: 5, targetX: 375, targetY: 510, width: 120, height: 90, sourceX: 60, sourceY: 165 },
+        { id: 6, targetX: 255, targetY: 400, width: 100, height: 80, sourceX: 0, sourceY: 55 },
+        { id: 7, targetX: 495, targetY: 400, width: 100, height: 80, sourceX: 200, sourceY: 55 },
+        { id: 8, targetX: 375, targetY: 290, width: 120, height: 90, sourceX: 60, sourceY: 0 },
+        { id: 9, targetX: 255, targetY: 510, width: 110, height: 90, sourceX: 0, sourceY: 165 },
+        { id: 10, targetX: 495, targetY: 510, width: 110, height: 90, sourceX: 190, sourceY: 165 },
+        { id: 11, targetX: 255, targetY: 290, width: 110, height: 90, sourceX: 0, sourceY: 0 },
+        { id: 12, targetX: 495, targetY: 290, width: 110, height: 90, sourceX: 190, sourceY: 0 },
+        { id: 13, targetX: 375, targetY: 565, width: 100, height: 70, sourceX: 70, sourceY: 220 },
+        { id: 14, targetX: 255, targetY: 565, width: 100, height: 70, sourceX: 0, sourceY: 220 },
+        { id: 15, targetX: 495, targetY: 565, width: 100, height: 70, sourceX: 200, sourceY: 220 }
+      ],
+      initialRotation: {
+        mode: 'random_90'
+      },
+      scatterArea: {
+        mode: 'top',
+        padding: 40,
+        allowOverlap: true
+      }
     },
     rewardConfig: {
       scoreMultiplier: 2.0,
@@ -381,6 +440,19 @@ export const LevelRules: LevelRule[] = [
       pieceHeight: 90,
       pieceSpacing: 20
     },
+    pieceGeneration: {
+      sliceMode: 'regular_grid',
+      initialRotation: {
+        mode: 'per_piece',
+        perPieceAngles: [0, 90, 180, 270, 45, 135, 225, 315, 0, 90, 180, 270, 30, 120, 210, 300, 60, 150, 240, 330]
+      },
+      scatterArea: {
+        mode: 'right_side',
+        padding: 25,
+        stackLayers: 3,
+        rotationVariation: 10
+      }
+    },
     rewardConfig: {
       scoreMultiplier: 2.5,
       fragmentDropBonus: 3,
@@ -432,6 +504,30 @@ export const LevelRules: LevelRule[] = [
       pieceWidth: 120,
       pieceHeight: 90,
       pieceSpacing: 20
+    },
+    pieceGeneration: {
+      sliceMode: 'variable_size',
+      variableSizeRanges: {
+        minWidthRatio: 0.6,
+        maxWidthRatio: 1.4,
+        minHeightRatio: 0.6,
+        maxHeightRatio: 1.4
+      },
+      initialRotation: {
+        mode: 'fixed_180'
+      },
+      scatterArea: {
+        mode: 'custom',
+        customArea: {
+          x: 375,
+          y: 1050,
+          width: 650,
+          height: 300
+        },
+        padding: 15,
+        allowOverlap: false,
+        stackLayers: 2
+      }
     },
     rewardConfig: {
       scoreMultiplier: 3.0,

@@ -2,6 +2,7 @@ export interface PuzzlePieceData {
   id: number;
   initialX: number;
   initialY: number;
+  initialRotation?: number;
   targetX: number;
   targetY: number;
   width: number;
@@ -165,6 +166,64 @@ export interface LevelPieceLayoutConfig {
   pieceSpacing?: number;
 }
 
+export type SliceMode = 'regular_grid' | 'irregular_custom' | 'variable_size';
+
+export type InitialRotationMode = 
+  | 'random_90' 
+  | 'random_any' 
+  | 'fixed_0' 
+  | 'fixed_90' 
+  | 'fixed_180' 
+  | 'fixed_270'
+  | 'alternating'
+  | 'per_piece';
+
+export type ScatterAreaMode = 'bottom' | 'surround' | 'left_side' | 'right_side' | 'top' | 'custom';
+
+export interface IrregularSliceConfig {
+  id: number;
+  targetX: number;
+  targetY: number;
+  width: number;
+  height: number;
+  sourceX: number;
+  sourceY: number;
+}
+
+export interface InitialRotationRule {
+  mode: InitialRotationMode;
+  angleRange?: { min: number; max: number };
+  perPieceAngles?: number[];
+  snapTo90?: boolean;
+}
+
+export interface ScatterAreaConfig {
+  mode: ScatterAreaMode;
+  customArea?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  padding?: number;
+  rotationVariation?: number;
+  allowOverlap?: boolean;
+  stackLayers?: number;
+}
+
+export interface PieceGenerationConfig {
+  sliceMode: SliceMode;
+  irregularSlices?: IrregularSliceConfig[];
+  initialRotation: InitialRotationRule;
+  scatterArea: ScatterAreaConfig;
+  variableSizeRanges?: {
+    minWidthRatio: number;
+    maxWidthRatio: number;
+    minHeightRatio: number;
+    maxHeightRatio: number;
+  };
+}
+
 export interface LevelRule {
   id: number;
   name: string;
@@ -180,6 +239,7 @@ export interface LevelRule {
   specialRules?: LevelSpecialRule[];
   rewardConfig?: LevelRewardConfig;
   pieceLayout?: LevelPieceLayoutConfig;
+  pieceGeneration?: PieceGenerationConfig;
 }
 
 export interface PlantSpecimen {
