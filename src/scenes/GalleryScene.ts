@@ -537,7 +537,7 @@ export class GalleryScene extends Phaser.Scene {
       const x = padding + col * (itemWidth + padding) + itemWidth / 2;
       const y = startY + row * (itemHeight + padding) + itemHeight / 2;
 
-      this.createGalleryItem(x, y, itemWidth, itemHeight, item);
+      this.createGalleryItem(x, y, itemWidth, itemHeight, item, this.galleryContainer!);
     });
 
     if (itemsToShow.length === 0) {
@@ -551,16 +551,18 @@ export class GalleryScene extends Phaser.Scene {
       const emptyBg = this.add.graphics();
       emptyBg.fillStyle(0x0f3460, 0.6);
       emptyBg.fillRoundedRect(125, 450, 500, 120, 15);
-      this.galleryContainer!.add(emptyBg);
+      this.galleryContainer.add(emptyBg);
       
-      this.add.text(375, 490, '🔍', {
+      const emptyIcon = this.add.text(375, 490, '🔍', {
         font: '36px Arial'
       }).setOrigin(0.5);
+      this.galleryContainer.add(emptyIcon);
       
-      this.add.text(375, 540, emptyText, {
+      const emptyMsg = this.add.text(375, 540, emptyText, {
         font: '18px Arial',
         color: '#888888'
       }).setOrigin(0.5);
+      this.galleryContainer.add(emptyMsg);
     }
 
     const filteredCount = itemsToShow.length;
@@ -573,7 +575,7 @@ export class GalleryScene extends Phaser.Scene {
     countBg.fillRoundedRect(45, countY, 660, 35, 10);
     this.galleryContainer.add(countBg);
 
-    this.add.text(375, countY + 17.5, 
+    const countText = this.add.text(375, countY + 17.5, 
       this.searchQuery 
         ? `搜索结果: ${filteredCount} 种 (已解锁 ${unlockedInFilter})` 
         : `共 ${totalCount} 种植物，当前显示 ${filteredCount} 种 (已解锁 ${unlockedInFilter})`, 
@@ -582,6 +584,7 @@ export class GalleryScene extends Phaser.Scene {
         color: '#888888'
       }
     ).setOrigin(0.5);
+    this.galleryContainer.add(countText);
   }
 
   private getUnlockSource(item: GalleryItem): { source: UnlockSource; text: string; icon: string } {
@@ -610,7 +613,8 @@ export class GalleryScene extends Phaser.Scene {
     y: number,
     width: number,
     height: number,
-    item: GalleryItem
+    item: GalleryItem,
+    container: Phaser.GameObjects.Container
   ): void {
     const progress = SaveManager.getProgress(item.id);
     const unlocked = SaveManager.isGalleryUnlocked(item.specimenId);
@@ -635,6 +639,7 @@ export class GalleryScene extends Phaser.Scene {
     card.lineStyle(unlocked ? 2 : 1, borderColor, unlocked ? 1 : 0.5);
     card.strokeRoundedRect(x - width / 2, y - height / 2, width, height, 12);
     card.fillRoundedRect(x - width / 2, y - height / 2, width, height, 12);
+    container.add(card);
 
     if (!unlocked) {
       const pattern = this.add.graphics();
@@ -644,7 +649,7 @@ export class GalleryScene extends Phaser.Scene {
           pattern.fillRect(px, py, 4, 4);
         }
       }
-      this.galleryContainer!.add(pattern);
+      container.add(pattern);
     }
 
     const badgeBg = this.add.graphics();
@@ -672,21 +677,25 @@ export class GalleryScene extends Phaser.Scene {
     
     badgeBg.fillStyle(badgeColor, unlocked ? 0.85 : 0.4);
     badgeBg.fillRoundedRect(x - width / 2 + 10, y - height / 2 + 10, badgeWidth, 26, 6);
+    container.add(badgeBg);
 
-    this.add.text(x - width / 2 + badgeTextX, y - height / 2 + 23, badgeText, {
+    const badgeLabel = this.add.text(x - width / 2 + badgeTextX, y - height / 2 + 23, badgeText, {
       font: 'bold 10px Arial',
       color: '#ffffff'
     }).setOrigin(0.5);
+    container.add(badgeLabel);
 
     if (unlocked && family) {
       const familyBadge = this.add.graphics();
       familyBadge.fillStyle(family.primaryColor, 0.7);
       familyBadge.fillRoundedRect(x + width / 2 - 85, y - height / 2 + 10, 75, 26, 6);
-      this.add.text(x + width / 2 - 47, y - height / 2 + 23, `${family.icon} ${family.genusName}`, {
+      container.add(familyBadge);
+      
+      const familyLabel = this.add.text(x + width / 2 - 47, y - height / 2 + 23, `${family.icon} ${family.genusName}`, {
         font: 'bold 10px Arial',
         color: '#ffffff'
       }).setOrigin(0.5);
-      this.galleryContainer!.add(familyBadge);
+      container.add(familyLabel);
     }
 
     const previewKey = `specimen-${item.specimenId}-preview`;
@@ -696,15 +705,19 @@ export class GalleryScene extends Phaser.Scene {
     if (unlocked) {
       const img = this.add.image(x, imageY, previewKey);
       img.setDisplaySize(140, 140);
+      container.add(img);
       
       if (isEvent) {
         const cornerBadge = this.add.graphics();
         cornerBadge.fillStyle(0xffd700, 1);
         cornerBadge.fillCircle(x + width / 2 - 15, y - height / 2 + 60, 16);
-        this.add.text(x + width / 2 - 15, y - height / 2 + 60, '★', {
+        container.add(cornerBadge);
+        
+        const cornerStar = this.add.text(x + width / 2 - 15, y - height / 2 + 60, '★', {
           font: 'bold 18px Arial',
           color: '#1a1a2e'
         }).setOrigin(0.5);
+        container.add(cornerStar);
       }
     } else {
       const lockContainer = this.add.container(x, imageY);
@@ -714,34 +727,37 @@ export class GalleryScene extends Phaser.Scene {
       silhouette.fillCircle(0, 0, 60);
       lockContainer.add(silhouette);
 
-      this.add.image(0, 0, 'lock').setScale(0.8);
+      const lockImg = this.add.image(0, 0, 'lock').setScale(0.8);
+      lockContainer.add(lockImg);
       
       const hintText = specimen?.family ? specimen.family : '???';
-      this.add.text(0, 55, hintText, {
+      const familyHint = this.add.text(0, 55, hintText, {
         font: '12px Arial',
         color: '#666666'
       }).setOrigin(0.5);
-      lockContainer.add(this.add.text(0, 55, hintText, {
-        font: '12px Arial',
-        color: '#666666'
-      }).setOrigin(0.5));
+      lockContainer.add(familyHint);
+      
+      container.add(lockContainer);
     }
 
-    this.add.text(x, y + 30, unlocked ? item.name : '??? 未知植物', {
+    const nameText = this.add.text(x, y + 30, unlocked ? item.name : '??? 未知植物', {
       font: 'bold 20px Arial',
       color: unlocked ? '#ffffff' : '#666666'
     }).setOrigin(0.5);
+    container.add(nameText);
 
     if (unlocked && specimen) {
-      this.add.text(x, y + 55, `${specimen.family} ${specimen.genus}`, {
+      const familyText = this.add.text(x, y + 55, `${specimen.family} ${specimen.genus}`, {
         font: '13px Arial',
         color: '#aaaaaa'
       }).setOrigin(0.5);
+      container.add(familyText);
     } else if (!unlocked) {
-      this.add.text(x, y + 55, '完成对应关卡解锁', {
+      const unlockHint = this.add.text(x, y + 55, '完成对应关卡解锁', {
         font: '12px Arial',
         color: '#666666'
       }).setOrigin(0.5);
+      container.add(unlockHint);
     }
 
     const sourceY = y + 78;
@@ -754,46 +770,55 @@ export class GalleryScene extends Phaser.Scene {
       sourceBg.fillStyle(0x2a2a3a, 0.8);
     }
     sourceBg.fillRoundedRect(x - width / 2 + 15, sourceY - 12, width - 30, 24, 6);
+    container.add(sourceBg);
     
     const sourceLabel = unlocked 
       ? `✅ ${sourceInfo.icon} ${sourceInfo.text}` 
       : `🔒 ${sourceInfo.icon} ${sourceInfo.text}`;
     
-    this.add.text(x, sourceY, sourceLabel, {
+    const sourceText = this.add.text(x, sourceY, sourceLabel, {
       font: '11px Arial',
       color: unlocked ? '#81c784' : '#888888'
     }).setOrigin(0.5);
+    container.add(sourceText);
 
     if (unlocked && progress) {
-      this.drawStars(x, y + 115, progress.stars);
+      this.drawStarsInContainer(container, x, y + 115, progress.stars, 18);
 
       const statsText = `🏆 ${progress.bestScore.toLocaleString()}${levelCompleted ? ' · ✓已通关' : ''}`;
-      this.add.text(x, y + 140, statsText, {
+      const statsDisplay = this.add.text(x, y + 140, statsText, {
         font: '12px Arial',
         color: '#ffd700'
       }).setOrigin(0.5);
+      container.add(statsDisplay);
     } else if (unlocked && isEvent && !progress) {
-      this.add.text(x, y + 115, '✨ 活动奖励解锁', {
+      const eventHint = this.add.text(x, y + 115, '✨ 活动奖励解锁', {
         font: '13px Arial',
         color: '#ff80ab'
       }).setOrigin(0.5);
+      container.add(eventHint);
     } else if (!unlocked) {
       const statusY = y + 115;
+      let statusText = '';
+      let statusColor = '#888888';
+      
       if (levelUnlocked && !item.isEventExclusive) {
-        this.add.text(x, statusY, '🎯 关卡已解锁，挑战可获得', {
-          font: '11px Arial',
-          color: '#ffb74d'
-        }).setOrigin(0.5);
+        statusText = '🎯 关卡已解锁，挑战可获得';
+        statusColor = '#ffb74d';
       } else if (!levelUnlocked && !item.isEventExclusive) {
-        this.add.text(x, statusY, '🔒 需先解锁对应关卡', {
-          font: '11px Arial',
-          color: '#888888'
-        }).setOrigin(0.5);
+        statusText = '🔒 需先解锁对应关卡';
+        statusColor = '#888888';
       } else if (item.isEventExclusive) {
-        this.add.text(x, statusY, '🎁 参与活动积分解锁', {
+        statusText = '🎁 参与活动积分解锁';
+        statusColor = '#f48fb1';
+      }
+      
+      if (statusText) {
+        const statusDisplay = this.add.text(x, statusY, statusText, {
           font: '11px Arial',
-          color: '#f48fb1'
+          color: statusColor
         }).setOrigin(0.5);
+        container.add(statusDisplay);
       }
     }
 
@@ -825,15 +850,21 @@ export class GalleryScene extends Phaser.Scene {
     }
   }
 
-  private drawStars(x: number, y: number, stars: number): void {
-    const starSize = 18;
+  private drawStarsInContainer(
+    container: Phaser.GameObjects.Container, 
+    x: number, 
+    y: number, 
+    stars: number, 
+    size: number
+  ): void {
     const spacing = 5;
-    const startX = x - starSize - spacing;
+    const startX = x - size - spacing;
 
     for (let i = 0; i < 3; i++) {
-      const starX = startX + i * (starSize + spacing);
+      const starX = startX + i * (size + spacing);
       const texture = i < stars ? 'star-filled' : 'star-empty';
-      this.add.image(starX, y, texture).setDisplaySize(starSize, starSize);
+      const star = this.add.image(starX, y, texture).setDisplaySize(size, size);
+      container.add(star);
     }
   }
 
@@ -1177,18 +1208,6 @@ export class GalleryScene extends Phaser.Scene {
 
     closeBtn.on('pointerup', close);
     overlay.on('pointerup', close);
-  }
-
-  private drawStarsInContainer(container: Phaser.GameObjects.Container, x: number, y: number, stars: number, size: number): void {
-    const spacing = 5;
-    const startX = x - size - spacing;
-
-    for (let i = 0; i < 3; i++) {
-      const starX = startX + i * (size + spacing);
-      const texture = i < stars ? 'star-filled' : 'star-empty';
-      const star = this.add.image(starX, y, texture).setDisplaySize(size, size);
-      container.add(star);
-    }
   }
 
   private addBackButton(): void {
