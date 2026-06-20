@@ -46,8 +46,6 @@ export class LevelSelectScene extends Phaser.Scene {
     if (this.hasResumeSave) {
       this.addResumeButton();
     }
-    this.addRecommendedChallenges();
-    this.addRecentPlaySection();
     this.addChapterTabs();
     this.addTutorialCard();
     this.addHiddenLevelHints();
@@ -60,15 +58,7 @@ export class LevelSelectScene extends Phaser.Scene {
     const allSaves = SaveManager.getAllPuzzleSaves();
     const saveEntries = Object.entries(allSaves);
     this.hasResumeSave = saveEntries.length > 0;
-    let offset = this.hasResumeSave ? 110 : 0;
-
-    const recommendations = SaveManager.getRecommendedChallenges(4);
-    if (recommendations.length > 0) offset += 170;
-
-    const recentRecords = SaveManager.getRecentPlayRecords(3);
-    if (recentRecords.length > 0) offset += 170;
-
-    this.contentOffsetY = offset;
+    this.contentOffsetY = this.hasResumeSave ? 110 : 0;
   }
 
   private addResumeButton(): void {
@@ -147,174 +137,6 @@ export class LevelSelectScene extends Phaser.Scene {
         towerFloorId: latestSave.towerFloorId ?? undefined,
         loadSave: true
       });
-    });
-  }
-
-  private addRecommendedChallenges(): void {
-    const recommendations = SaveManager.getRecommendedChallenges(4);
-    if (recommendations.length === 0) return;
-
-    const baseY = this.hasResumeSave ? 280 : 170;
-    const sectionY = baseY;
-    const sectionH = 160;
-
-    const sectionBg = this.add.graphics();
-    sectionBg.fillStyle(0x0f3460, 0.8);
-    sectionBg.fillRoundedRect(40, sectionY - sectionH / 2, 670, sectionH, 12);
-
-    this.add.text(60, sectionY - sectionH / 2 + 25, '💡 推荐挑战', {
-      font: 'bold 20px Arial',
-      color: '#ffffff'
-    }).setOrigin(0, 0.5);
-
-    const cardW = 150;
-    const cardH = 95;
-    const padding = 12;
-    const count = Math.min(recommendations.length, 4);
-    const totalW = cardW * count + padding * (count - 1);
-    const startX = 375 - totalW / 2 + cardW / 2;
-
-    recommendations.slice(0, count).forEach((rec, index) => {
-      const x = startX + index * (cardW + padding);
-      const y = sectionY + 10;
-
-      const card = this.add.graphics();
-      card.fillStyle(rec.color, 0.9);
-      card.fillRoundedRect(x - cardW / 2, y - cardH / 2, cardW, cardH, 12);
-      card.lineStyle(2, 0xffffff, 0.2);
-      card.strokeRoundedRect(x - cardW / 2, y - cardH / 2, cardW, cardH, 12);
-
-      this.add.text(x, y - 20, rec.icon, {
-        font: '28px Arial'
-      }).setOrigin(0.5);
-
-      this.add.text(x, y + 8, rec.title, {
-        font: 'bold 15px Arial',
-        color: '#ffffff'
-      }).setOrigin(0.5);
-
-      this.add.text(x, y + 28, rec.description, {
-        font: '10px Arial',
-        color: 'rgba(255,255,255,0.8)',
-        wordWrap: { width: cardW - 10 },
-        align: 'center'
-      }).setOrigin(0.5);
-
-      card.setInteractive(
-        new Phaser.Geom.Rectangle(x - cardW / 2, y - cardH / 2, cardW, cardH),
-        Phaser.Geom.Rectangle.Contains
-      );
-
-      card.on('pointerup', () => {
-        switch (rec.type) {
-          case 'next_level':
-          case 'incomplete':
-          case 'low_stars':
-          case 'hard_challenge':
-            if (rec.levelId) {
-              this.scene.start('GameScene', { levelId: rec.levelId });
-            }
-            break;
-          case 'daily_quest':
-            this.scene.start('DailyQuestScene');
-            break;
-          case 'tower':
-            this.scene.start('TowerSelectScene');
-            break;
-          case 'event':
-            this.scene.start('EventScene');
-            break;
-        }
-      });
-
-      card.on('pointerover', () => card.lineStyle(2, 0xffffff, 0.6));
-      card.on('pointerout', () => card.lineStyle(2, 0xffffff, 0.2));
-    });
-  }
-
-  private addRecentPlaySection(): void {
-    const records = SaveManager.getRecentPlayRecords(5);
-    if (records.length === 0) return;
-
-    const baseY = this.hasResumeSave ? 280 : 170;
-    const recCount = SaveManager.getRecommendedChallenges(4).length;
-    const sectionY = baseY + (recCount > 0 ? 170 : 0);
-    const sectionH = 160;
-
-    const sectionBg = this.add.graphics();
-    sectionBg.fillStyle(0x0f3460, 0.8);
-    sectionBg.fillRoundedRect(40, sectionY - sectionH / 2, 670, sectionH, 12);
-
-    this.add.text(60, sectionY - sectionH / 2 + 25, '🕒 最近游玩', {
-      font: 'bold 20px Arial',
-      color: '#ffffff'
-    }).setOrigin(0, 0.5);
-
-    const cardW = 195;
-    const cardH = 95;
-    const padding = 12;
-    const count = Math.min(records.length, 3);
-    const totalW = cardW * count + padding * (count - 1);
-    const startX = 375 - totalW / 2 + cardW / 2;
-
-    records.slice(0, count).forEach((record, index) => {
-      const x = startX + index * (cardW + padding);
-      const y = sectionY + 10;
-
-      const level = Levels.find(l => l.id === record.levelId);
-      const chapter = getChapterByLevelId(record.levelId);
-      if (!level) return;
-
-      const card = this.add.graphics();
-      const color = chapter?.primaryColor ?? 0xe94560;
-      card.fillStyle(color, 0.9);
-      card.fillRoundedRect(x - cardW / 2, y - cardH / 2, cardW, cardH, 12);
-      card.lineStyle(2, 0xffffff, 0.2);
-      card.strokeRoundedRect(x - cardW / 2, y - cardH / 2, cardW, cardH, 12);
-
-      const previewKey = `specimen-${level.specimen.id}-preview`;
-      if (this.textures.exists(previewKey)) {
-        const img = this.add.image(x - cardW / 2 + 28, y, previewKey);
-        img.setDisplaySize(45, 45);
-      }
-
-      this.add.text(x - cardW / 2 + 60, y - 15, level.name, {
-        font: 'bold 14px Arial',
-        color: '#ffffff'
-      }).setOrigin(0, 0.5);
-
-      const progress = SaveManager.getProgress(record.levelId);
-      const stars = progress?.stars ?? 0;
-      const starStr = '⭐'.repeat(stars) + '☆'.repeat(3 - stars);
-      this.add.text(x - cardW / 2 + 60, y + 8, starStr, {
-        font: '12px Arial',
-        color: '#ffd700'
-      }).setOrigin(0, 0.5);
-
-      const playDate = new Date(record.playedAt);
-      const dateStr = playDate.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
-      this.add.text(x + cardW / 2 - 10, y + 28, dateStr, {
-        font: '11px Arial',
-        color: 'rgba(255,255,255,0.6)'
-      }).setOrigin(1, 0.5);
-
-      card.setInteractive(
-        new Phaser.Geom.Rectangle(x - cardW / 2, y - cardH / 2, cardW, cardH),
-        Phaser.Geom.Rectangle.Contains
-      );
-
-      card.on('pointerup', () => {
-        this.scene.start('GameScene', {
-          levelId: record.levelId,
-          isEventLevel: record.isEventLevel,
-          eventId: record.eventId ?? undefined,
-          isTowerFloor: record.isTowerFloor,
-          towerFloorId: record.towerFloorId ?? undefined
-        });
-      });
-
-      card.on('pointerover', () => card.lineStyle(2, 0xffffff, 0.6));
-      card.on('pointerout', () => card.lineStyle(2, 0xffffff, 0.2));
     });
   }
 

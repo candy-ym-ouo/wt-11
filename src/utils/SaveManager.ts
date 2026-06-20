@@ -35,8 +35,12 @@ import {
   SaveMigrationLogEntry,
   HiddenLevelProgress,
   HiddenLevelTrigger,
-  RecentPlayRecord,
-  RecentPlaySaveData
+  RecentPlayedRecord,
+  LastPlayedState,
+  RecommendedChallenge,
+  ClaimableRewardInfo,
+  ClaimableRewardSource,
+  ChallengeSource
 } from '../types/GameTypes';
 import { TutorialManager } from './TutorialManager';
 import { ConservationManager } from './ConservationManager';
@@ -59,6 +63,9 @@ import { PlantFamilies, getPlantFamilyBySpecimenId, isFamilyComplete, getFamilyR
 import { TowerFloors, getTowerFloor } from '../data/TowerConfig';
 import { TowerSaveData, TowerFloorProgress, TowerReward, TowerResultData, ExhibitionSaveData, ExhibitionProgress, ExhibitionSpecimenSubmission, ExhibitionReward, AchievementSaveData, AchievementUnlockResult, ConservationSaveData, ConservationHealthLevel, FamilyCollectionSaveData, FamilyProgress, FamilyReward } from '../types/GameTypes';
 import { ExhibitionThemes, getExhibitionTheme, getBadgesByThemeId, getExhibitionBadge, getAllExhibitionThemes } from '../data/ExhibitionConfig';
+import { ExhibitionManager } from './ExhibitionManager';
+import { getTowerStarsRequired } from '../data/TowerConfig';
+import { DonationTiers } from '../data/DonationConfig';
 import { AchievementManager } from './AchievementManager';
 import { SeasonPassManager } from './SeasonPassManager';
 import { SeasonPassSaveData, NotificationSaveData } from '../types/GameTypes';
@@ -68,7 +75,6 @@ import { QuizManager } from './QuizManager';
 import { DonationManager } from './DonationManager';
 import { RandomEventManager } from './RandomEventManager';
 import { EventManager } from './EventManager';
-import { ExhibitionManager } from './ExhibitionManager';
 
 const STORAGE_KEY = 'plant_specimen_puzzle_save';
 const BACKUP_STORAGE_KEY = 'plant_specimen_puzzle_save_backup';
@@ -660,8 +666,11 @@ export class SaveManager {
       migrated.puzzleSaves = defaultData.puzzleSaves;
     }
 
-    if (!migrated.recentPlay) {
-      migrated.recentPlay = { records: [], maxRecords: 10 };
+    if (!migrated.recentPlayed) {
+      migrated.recentPlayed = [];
+    }
+    if (!migrated.lastPlayedState) {
+      migrated.lastPlayedState = null;
     }
 
     const fallbackTime = migrated.metadata?.createdAt || Date.now();
@@ -820,7 +829,8 @@ export class SaveManager {
       randomEvent: RandomEventManager.createDefaultSave(),
       puzzleSaves: { saves: {}, maxSavesPerLevel: 3 },
       replay: { replays: [], maxReplaysPerLevel: 3 },
-      recentPlay: { records: [], maxRecords: 10 }
+      recentPlayed: [],
+      lastPlayedState: null
     };
   }
 
@@ -1406,6 +1416,13 @@ export class SaveManager {
     SeasonPassManager.onScoreGain(scoreDiff, levelId, score);
 
     this.data.seasonPass = SeasonPassManager.getSaveData();
+
+    const chapterForLevel = getChapterByLevelId(levelId);
+    if (chapterForLevel) {
+      this.addRecentPlayed(levelId, chapterForLevel.id, stars, finalScore);
+      this.clearLastPlayedState();
+    }
+
     this.save();
     return {
       chapterCompleted: completionResult.chapterCompleted,
@@ -3740,255 +3757,434 @@ export class SaveManager {
     this.save();
   }
 
-  static recordRecentPlay(
-    levelId: number,
-    isEventLevel?: boolean,
-    eventId?: string | null,
-    isTowerFloor?: boolean,
-    towerFloorId?: number | null
-  ): void {
-    const record: RecentPlayRecord = {
+  static addRecentPlayed(levelId: number, chapterId: number, stars: number, score: number): void {
+    if (!this.data.recentPlayed) {
+      this.data.recentPlayed = [];
+    }
+
+    const existingIdx = this.data.recentPlayed.findIndex(r => r.levelId === levelId);
+    if (existingIdx >= 0) {
+      this.data.recentPlayed.splice(existingIdx, 1);
+    }
+
+    this.data.recentPlayed.unshift({
       levelId,
+      chapterId,
       playedAt: Date.now(),
-      isEventLevel,
-      eventId,
-      isTowerFloor,
-      towerFloorId
-    };
+      stars,
+      score
+    });
 
-    const existingIndex = this.data.recentPlay.records.findIndex(r =>
-      r.levelId === levelId &&
-      r.isEventLevel === isEventLevel &&
-      r.isTowerFloor === isTowerFloor
-    );
-
-    if (existingIndex >= 0) {
-      this.data.recentPlay.records.splice(existingIndex, 1);
+    if (this.data.recentPlayed.length > 6) {
+      this.data.recentPlayed = this.data.recentPlayed.slice(0, 6);
     }
-
-    this.data.recentPlay.records.unshift(record);
-
-    const maxRecords = this.data.recentPlay.maxRecords || 10;
-    if (this.data.recentPlay.records.length > maxRecords) {
-      this.data.recentPlay.records = this.data.recentPlay.records.slice(0, maxRecords);
-    }
-
     this.save();
   }
 
-  static getRecentPlayRecords(limit?: number): RecentPlayRecord[] {
-    const records = [...this.data.recentPlay.records];
-    if (limit !== undefined) {
-      return records.slice(0, limit);
-    }
-    return records;
+  static getRecentPlayed(limit: number = 5): RecentPlayedRecord[] {
+    if (!this.data.recentPlayed) return [];
+    return this.data.recentPlayed.slice(0, limit);
   }
 
-  static getLatestPuzzleSave(): PuzzleSaveData | undefined {
-    const allSaves = this.getAllPuzzleSaves();
-    return allSaves.length > 0 ? allSaves[0] : undefined;
+  static setLastPlayedState(
+    levelId: number,
+    chapterId: number,
+    progressPercent: number,
+    saveId?: string
+  ): void {
+    this.data.lastPlayedState = {
+      levelId,
+      chapterId,
+      lastSaveId: saveId,
+      savedAt: Date.now(),
+      progressPercent
+    };
+    this.save();
   }
 
-  static getRecommendedChallenges(limit: number = 4): Array<{
-    type: 'next_level' | 'incomplete' | 'low_stars' | 'hard_challenge' | 'daily_quest' | 'tower' | 'event';
-    levelId?: number;
-    chapterId?: number;
-    title: string;
-    description: string;
-    icon: string;
-    color: number;
-  }> {
-    const recommendations: Array<{
-      type: 'next_level' | 'incomplete' | 'low_stars' | 'hard_challenge' | 'daily_quest' | 'tower' | 'event';
-      levelId?: number;
-      chapterId?: number;
-      title: string;
-      description: string;
-      icon: string;
-      color: number;
-    }> = [];
+  static getLastPlayedState(): LastPlayedState | null {
+    return this.data.lastPlayedState;
+  }
 
-    const allProgress = this.getAllProgress();
-    const unlockedLevels = this.getUnlockedLevels();
+  static clearLastPlayedState(): void {
+    this.data.lastPlayedState = null;
+    this.save();
+  }
 
-    const nextUnplayedLevel = Levels.find(l =>
-      unlockedLevels.includes(l.id) &&
-      !allProgress[l.id]?.completed &&
-      !isHiddenLevel(l.id)
-    );
-    if (nextUnplayedLevel) {
-      const chapter = getChapterByLevelId(nextUnplayedLevel.id);
-      recommendations.push({
-        type: 'next_level',
-        levelId: nextUnplayedLevel.id,
-        chapterId: chapter?.id,
-        title: '下一关',
-        description: `继续探索：${nextUnplayedLevel.name}`,
-        icon: '🎯',
-        color: chapter?.primaryColor ?? 0xe94560
-      });
+  static getRecommendedChallenges(limit: number = 3): RecommendedChallenge[] {
+    const challenges: RecommendedChallenge[] = [];
+    const totalStars = this.getTotalStars();
+
+    for (const chapter of Chapters) {
+      const cp = this.data.chapterProgress[chapter.id];
+      if (!cp?.unlocked) continue;
+      for (const levelId of chapter.levelIds) {
+        const lp = this.data.progress[levelId];
+        if (!lp?.unlocked) continue;
+        const levelData = Levels.find(l => l.id === levelId);
+        if (!levelData) continue;
+        if (!lp.completed) {
+          challenges.push({
+            id: `level_${levelId}`,
+            source: 'chapter_level',
+            title: levelData.name,
+            subtitle: `${chapter.name} · 未完成`,
+            icon: '🎯',
+            color: chapter.primaryColor,
+            chapterId: chapter.id,
+            levelId,
+            sceneKey: 'GameScene',
+            sceneData: { levelId },
+            priority: 100 + (3 - lp.stars) * 10,
+            reason: '当前未完成的关卡',
+            rewardPreview: `+${100 + levelData.rule.difficulty === 'hard' ? 200 : levelData.rule.difficulty === 'medium' ? 100 : 50} 积分`
+          });
+        } else if (lp.stars < 3) {
+          challenges.push({
+            id: `level_${levelId}`,
+            source: 'chapter_level',
+            title: levelData.name,
+            subtitle: `${chapter.name} · ${lp.stars}/3 ⭐`,
+            icon: '⭐',
+            color: chapter.secondaryColor,
+            chapterId: chapter.id,
+            levelId,
+            sceneKey: 'GameScene',
+            sceneData: { levelId },
+            priority: 80 + (3 - lp.stars) * 15,
+            reason: '可以获得更多星星',
+            rewardPreview: `${3 - lp.stars} 颗星星待获取`
+          });
+        }
+      }
     }
 
-    const incompleteLevels = Levels.filter(l =>
-      unlockedLevels.includes(l.id) &&
-      !allProgress[l.id]?.completed &&
-      !isHiddenLevel(l.id)
-    );
-    if (incompleteLevels.length > 0 && !nextUnplayedLevel) {
-      const randomIncomplete = incompleteLevels[Math.floor(Math.random() * incompleteLevels.length)];
-      const chapter = getChapterByLevelId(randomIncomplete.id);
-      recommendations.push({
-        type: 'incomplete',
-        levelId: randomIncomplete.id,
-        chapterId: chapter?.id,
-        title: '待完成',
-        description: `${randomIncomplete.name} 等待修复`,
-        icon: '⏳',
-        color: chapter?.primaryColor ?? 0xff9800
-      });
+    const towerSave = this.data.tower;
+    if (towerSave && totalStars >= getTowerStarsRequired()) {
+      for (const floor of TowerFloors) {
+        const fp = towerSave.floorProgress[floor.id];
+        if (!fp?.unlocked) continue;
+        if (!fp.completed) {
+          challenges.push({
+            id: `tower_${floor.id}`,
+            source: 'tower_floor',
+            title: floor.name,
+            subtitle: `挑战塔 · 第 ${floor.floorNumber} 层`,
+            icon: '🏰',
+            color: 0x9c27b0,
+            sceneKey: 'TowerSelectScene',
+            priority: 90,
+            reason: '挑战塔可以获得稀有奖励',
+            rewardPreview: floor.rewards.slice(0, 2).map((r: TowerReward) => (r.type === 'badge' ? '🏅' : r.type === 'fragment' ? '💠' : r.type === 'material' ? '📦' : r.type === 'research_point' ? '🔬' : '💰') + ' ' + r.name).join('、')
+          });
+          break;
+        }
+      }
     }
 
-    const lowStarLevels = Levels.filter(l => {
-      const p = allProgress[l.id];
-      return p?.completed && p.stars < 3 && !isHiddenLevel(l.id);
-    });
-    if (lowStarLevels.length > 0) {
-      const lowStar = lowStarLevels[Math.floor(Math.random() * lowStarLevels.length)];
-      const chapter = getChapterByLevelId(lowStar.id);
-      const stars = allProgress[lowStar.id]?.stars ?? 0;
-      recommendations.push({
-        type: 'low_stars',
-        levelId: lowStar.id,
-        chapterId: chapter?.id,
-        title: '追求完美',
-        description: `${lowStar.name} (${stars}/3 ⭐) 挑战三星`,
-        icon: '⭐',
-        color: chapter?.primaryColor ?? 0xffd700
-      });
+    const activeEvent = getActiveEvent();
+    if (activeEvent && EventManager.canAccessEvent(activeEvent.id).allowed) {
+      const ep = this.data.event.eventProgress[activeEvent.id];
+      if (ep) {
+        for (const elp of Object.values(ep.levelProgress)) {
+          if (elp.unlocked && !elp.completed) {
+            const eventLevelRules = getEventLevelRulesByEventId(activeEvent.id);
+            const rule = eventLevelRules.find(r => r.id === elp.eventLevelId);
+            if (rule) {
+              challenges.push({
+                id: `event_${elp.eventLevelId}`,
+                source: 'event_level',
+                title: rule.name,
+                subtitle: `${activeEvent.name} · 限时活动`,
+                icon: activeEvent.banner || '🔥',
+                color: activeEvent.primaryColor,
+                sceneKey: 'EventScene',
+                priority: 95,
+                reason: '限时活动不要错过',
+                rewardPreview: `×${rule.scoreMultiplier.toFixed(1)} 积分倍率`
+              });
+              break;
+            }
+          }
+        }
+      }
     }
 
-    const hardLevels = Levels.filter(l =>
-      l.rule.difficulty === 'hard' &&
-      unlockedLevels.includes(l.id) &&
-      !isHiddenLevel(l.id)
-    );
-    if (hardLevels.length > 0) {
-      const hardUncompleted = hardLevels.filter(l => !allProgress[l.id]?.completed);
-      const targetHard = hardUncompleted.length > 0
-        ? hardUncompleted[0]
-        : hardLevels[Math.floor(Math.random() * hardLevels.length)];
-      const chapter = getChapterByLevelId(targetHard.id);
-      recommendations.push({
-        type: 'hard_challenge',
-        levelId: targetHard.id,
-        chapterId: chapter?.id,
-        title: '挑战自我',
-        description: `困难模式：${targetHard.name}`,
-        icon: '🔥',
-        color: 0xf44336
-      });
-    }
-
-    if (DailyQuestManager.hasClaimableQuests() || DailyQuestManager.getQuestsByStatus('in_progress').length > 0) {
-      recommendations.push({
-        type: 'daily_quest',
-        title: '每日委托',
-        description: '完成委托获取丰厚奖励',
+    const dailyQuests = DailyQuestManager.getAllQuests();
+    const activeDaily = dailyQuests.find((q: DailyQuest) => q.status === 'in_progress' || q.status === 'completed');
+    if (activeDaily) {
+      challenges.push({
+        id: `daily_${activeDaily.id}`,
+        source: 'daily_quest',
+        title: activeDaily.title,
+        subtitle: `每日任务 · ${activeDaily.currentProgress}/${activeDaily.targetProgress}`,
         icon: '📋',
-        color: 0x03a9f4
+        color: 0x2196f3,
+        sceneKey: 'DailyQuestScene',
+        priority: activeDaily.status === 'completed' ? 88 : 70,
+        reason: activeDaily.status === 'completed' ? '任务已完成，快去领取奖励' : '完成每日任务获取奖励',
+        rewardPreview: activeDaily.rewards.map((r: any) => (r.rarity === 'legendary' ? '⭐' : r.rarity === 'epic' ? '💜' : r.rarity === 'rare' ? '💙' : '💚') + ' ' + r.name).join('、')
       });
     }
 
-    const towerSave = this.getTowerSaveData();
-    const nextFloor = towerSave ? Object.values(towerSave.floorProgress).find(p => p.unlocked && !p.completed) : null;
-    if (nextFloor) {
-      recommendations.push({
-        type: 'tower',
-        title: '挑战塔',
-        description: `第 ${nextFloor.floorId} 层等待攻克`,
-        icon: '🏰',
-        color: 0x9c27b0
-      });
-    }
-
-    const activeEvent = getActiveEvent();
-    if (activeEvent) {
-      const access = EventManager.canAccessEvent(activeEvent.id);
-      if (access.allowed) {
-        recommendations.push({
-          type: 'event',
-          title: activeEvent.name,
-          description: '限时活动进行中',
-          icon: '🔥',
-          color: activeEvent.primaryColor
-        });
+    for (const route of BranchRoutesList) {
+      const rp = this.data.chapterMap.routeProgress[route.id];
+      if (!rp?.unlocked) continue;
+      const currentNode = getMapNode(route.id, rp.currentNodeId);
+      if (currentNode && currentNode.type === 'level' && currentNode.levelId) {
+        const nodeLevel = this.data.progress[currentNode.levelId];
+        if (nodeLevel && nodeLevel.unlocked && !nodeLevel.completed) {
+          challenges.push({
+            id: `route_${route.id}_${currentNode.id}`,
+            source: 'branch_route',
+            title: currentNode.name,
+            subtitle: `${route.name}路线 · 分支剧情`,
+            icon: route.icon,
+            color: route.primaryColor,
+            sceneKey: 'ChapterMapScene',
+            priority: 85,
+            reason: '分支剧情解锁新结局',
+            rewardPreview: currentNode.rewards?.slice(0, 2).map((r: Reward) => (r.type === 'badge' ? '🏅' : r.type === 'specimen' ? '🌱' : '💰') + ' ' + r.name).join('、')
+          });
+          break;
+        }
       }
     }
 
-    return recommendations.slice(0, limit);
+    challenges.sort((a, b) => b.priority - a.priority);
+    return challenges.slice(0, limit);
   }
 
-  static getTotalUnclaimedRewards(): {
-    total: number;
-    chapter: number;
-    dailyQuest: number;
-    tower: number;
-    event: number;
-    exhibition: number;
-    seasonPass: boolean;
-    chapterMap: number;
-  } {
-    let chapterCount = 0;
-    Chapters.forEach(chapter => {
-      if (this.canClaimRewards(chapter.id)) chapterCount++;
-    });
+  static getAllClaimableRewards(): ClaimableRewardInfo[] {
+    const rewards: ClaimableRewardInfo[] = [];
 
-    const dailyQuestCount = DailyQuestManager.getClaimableQuestsCount();
+    for (const chapter of Chapters) {
+      if (this.canClaimRewards(chapter.id)) {
+        const chapterRewards = getRewardsByChapterId(chapter.id);
+        rewards.push({
+          id: `chapter_${chapter.id}`,
+          source: 'chapter',
+          name: chapter.name,
+          description: '完成章节奖励',
+          icon: '📖',
+          count: chapterRewards.length,
+          color: chapter.primaryColor,
+          sceneKey: 'ChapterSelectScene',
+          rewardNames: chapterRewards.map(r => r.name)
+        });
+      }
+    }
 
-    let towerCount = 0;
-    const towerSave = this.getTowerSaveData();
+    const towerSave = this.data.tower;
     if (towerSave) {
-      Object.values(towerSave.floorProgress).forEach(fp => {
-        if (this.canClaimTowerRewards(fp.floorId)) towerCount++;
+      const towerClaimable = Object.values(towerSave.floorProgress).filter(p => this.canClaimTowerRewards(p.floorId));
+      if (towerClaimable.length > 0) {
+        const allNames: string[] = [];
+        towerClaimable.forEach(p => {
+          const floor = getTowerFloor(p.floorId);
+          if (floor) allNames.push(...floor.rewards.map(r => r.name));
+        });
+        rewards.push({
+          id: 'tower',
+          source: 'tower',
+          name: '挑战塔',
+          description: `${towerClaimable.length} 层奖励待领取`,
+          icon: '🏰',
+          count: towerClaimable.length,
+          color: 0x9c27b0,
+          sceneKey: 'TowerSelectScene',
+          rewardNames: allNames
+        });
+      }
+    }
+
+    const activeEvent = getActiveEvent();
+    if (activeEvent && EventManager.canAccessEvent(activeEvent.id).allowed) {
+      const eventClaimable = this.getClaimableEventRewards(activeEvent.id);
+      if (eventClaimable.length > 0) {
+        rewards.push({
+          id: `event_${activeEvent.id}`,
+          source: 'event',
+          name: activeEvent.name,
+          description: '活动奖励待领取',
+          icon: activeEvent.banner || '🔥',
+          count: eventClaimable.length,
+          color: activeEvent.primaryColor,
+          sceneKey: 'EventScene',
+          rewardNames: eventClaimable.map(r => r.name)
+        });
+      }
+    }
+
+    const allThemes = getAllExhibitionThemes();
+    for (const theme of allThemes) {
+      if (!ExhibitionManager.canAccessTheme(theme.id).allowed) continue;
+      const exhibitionClaimable = this.getClaimableExhibitionRewards(theme.id);
+      if (exhibitionClaimable.length > 0) {
+        rewards.push({
+          id: `exhibition_${theme.id}`,
+          source: 'exhibition',
+          name: theme.name,
+          description: '展览奖励待领取',
+          icon: theme.icon,
+          count: exhibitionClaimable.length,
+          color: theme.primaryColor,
+          sceneKey: 'ExhibitionScene',
+          rewardNames: exhibitionClaimable.map(r => r.name)
+        });
+      }
+    }
+
+    if (SeasonPassManager.hasClaimableRewards()) {
+      const seasonInfo = SeasonPassManager.getSeasonInfo();
+      rewards.push({
+        id: 'season_pass',
+        source: 'season_pass',
+        name: seasonInfo.seasonName,
+        description: '赛季通行证奖励',
+        icon: SeasonPassManager.isPremium() ? '👑' : '🎫',
+        count: 1,
+        color: SeasonPassManager.isPremium() ? 0x9c27b0 : 0x4caf50,
+        sceneKey: 'SeasonPassScene',
+        rewardNames: ['通行证奖励']
       });
     }
 
-    let eventCount = 0;
-    const activeEvent = getActiveEvent();
-    if (activeEvent) {
-      eventCount = this.getClaimableEventRewards(activeEvent.id).length;
-    }
-
-    let exhibitionCount = 0;
-    getAllExhibitionThemes().forEach(theme => {
-      if (ExhibitionManager.canAccessTheme(theme.id).allowed) {
-        exhibitionCount += this.getClaimableExhibitionRewards(theme.id).length;
-      }
-    });
-
-    const seasonPassHasClaimable = SeasonPassManager.hasClaimableRewards();
-
-    let chapterMapCount = 0;
-    BranchRoutesList.forEach(route => {
-      if (this.isRouteUnlocked(route.id)) {
-        const completedNodes = this.getCompletedNodes(route.id);
-        completedNodes.forEach(nodeId => {
-          if (this.canClaimNodeReward(route.id, nodeId)) chapterMapCount++;
+    const familyProgress = this.getAllFamilyProgress();
+    for (const fp of Object.values(familyProgress)) {
+      const family = PlantFamilies.find(f => f.id === fp.familyId);
+      if (!family) continue;
+      const familyClaimable = family.rewards.filter(r => this.canClaimFamilyReward(fp.familyId, r.id));
+      if (familyClaimable.length > 0) {
+        rewards.push({
+          id: `family_${family.id}`,
+          source: 'family',
+          name: family.familyName,
+          description: '植物家族奖励',
+          icon: family.icon,
+          count: familyClaimable.length,
+          color: family.primaryColor,
+          sceneKey: 'PlantFamilyScene',
+          rewardNames: familyClaimable.map(r => r.name)
         });
       }
-    });
+    }
 
-    const total = chapterCount + dailyQuestCount + towerCount + eventCount + exhibitionCount + chapterMapCount + (seasonPassHasClaimable ? 1 : 0);
+    const donationRewards: string[] = [];
+    for (const tier of DonationTiers) {
+      for (const r of tier.rewards) {
+        if (
+          r.id !== undefined &&
+          this.getTotalDonations() >= tier.requiredDonations &&
+          !this.isDonationRewardClaimed(r.id)
+        ) {
+          donationRewards.push(r.name);
+        }
+      }
+    }
+    if (donationRewards.length > 0) {
+      rewards.push({
+        id: 'donation',
+        source: 'donation',
+        name: '捐赠中心',
+        description: '捐赠奖励待领取',
+        icon: '🎁',
+        count: donationRewards.length,
+        color: 0xffb74d,
+        sceneKey: 'DonationScene',
+        rewardNames: donationRewards
+      });
+    }
+
+    for (const route of BranchRoutesList) {
+      const completedNodes = this.getCompletedNodes(route.id);
+      const nodeRewards: string[] = [];
+      for (const nodeId of completedNodes) {
+        if (this.canClaimNodeReward(route.id, nodeId)) {
+          const node = getMapNode(route.id, nodeId);
+          if (node?.rewards) {
+            nodeRewards.push(...node.rewards.map(r => r.name));
+          }
+        }
+      }
+      if (nodeRewards.length > 0) {
+        rewards.push({
+          id: `route_${route.id}`,
+          source: 'branch_route',
+          name: route.name + '路线',
+          description: '分支路线奖励',
+          icon: route.icon,
+          count: nodeRewards.length,
+          color: route.primaryColor,
+          sceneKey: 'ChapterMapScene',
+          rewardNames: nodeRewards
+        });
+      }
+    }
+
+    const claimedDailyIds = this.data.dailyQuest.claimedQuestIds || [];
+    const dailyQuests = DailyQuestManager.getAllQuests();
+    const dailyRewardNames: string[] = [];
+    for (const q of dailyQuests) {
+      if (q.status === 'completed' && !claimedDailyIds.includes(q.id)) {
+        dailyRewardNames.push(...q.rewards.map((r: any) => r.name));
+      }
+    }
+    if (dailyRewardNames.length > 0) {
+      rewards.push({
+        id: 'daily_quest',
+        source: 'daily_quest',
+        name: '每日任务',
+        description: '任务奖励待领取',
+        icon: '📋',
+        count: dailyRewardNames.length,
+        color: 0x2196f3,
+        sceneKey: 'DailyQuestScene',
+        rewardNames: dailyRewardNames
+      });
+    }
+
+    return rewards;
+  }
+
+  static getTotalClaimableRewardsCount(): number {
+    return this.getAllClaimableRewards().reduce((sum, r) => sum + r.count, 0);
+  }
+
+  static recordLevelStart(levelId: number, chapterId: number): void {
+    this.setLastPlayedState(levelId, chapterId, 0);
+  }
+
+  static recordLevelComplete(levelId: number, chapterId: number, stars: number, score: number): void {
+    this.addRecentPlayed(levelId, chapterId, stars, score);
+    this.clearLastPlayedState();
+  }
+
+  static getLastPlayedLevelProgress(): { levelId: number; chapterId: number; saveId?: string; progressPercent: number; savedAt: number } | null {
+    const state = this.getLastPlayedState();
+    if (!state) return null;
+
+    const levelProgress = this.data.progress[state.levelId];
+    if (!levelProgress?.unlocked) {
+      this.clearLastPlayedState();
+      return null;
+    }
+
+    if (levelProgress.completed) {
+      this.clearLastPlayedState();
+      return null;
+    }
+
+    const puzzleSave = state.lastSaveId
+      ? this.data.puzzleSaves.saves[state.lastSaveId]
+      : null;
 
     return {
-      total,
-      chapter: chapterCount,
-      dailyQuest: dailyQuestCount,
-      tower: towerCount,
-      event: eventCount,
-      exhibition: exhibitionCount,
-      seasonPass: seasonPassHasClaimable,
-      chapterMap: chapterMapCount
+      levelId: state.levelId,
+      chapterId: state.chapterId,
+      saveId: state.lastSaveId,
+      progressPercent: puzzleSave ? (puzzleSave.snappedCount / Math.max(1, puzzleSave.pieces.length)) * 100 : state.progressPercent,
+      savedAt: state.savedAt
     };
   }
 }

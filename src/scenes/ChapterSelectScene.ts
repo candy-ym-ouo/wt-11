@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
-import { Chapters, getChapterById, getChapterByLevelId, Badges, getChapterTotalStars } from '../data/Chapters';
+import { Chapters, getChapterById, Badges, getChapterTotalStars } from '../data/Chapters';
 import { SaveManager } from '../utils/SaveManager';
-import { ChapterData, ConservationHealthLevel } from '../types/GameTypes';
+import { ChapterData, ConservationHealthLevel, ClaimableRewardInfo } from '../types/GameTypes';
+import { Levels } from '../data/Levels';
 import { EventManager } from '../utils/EventManager';
 import { getActiveEvent } from '../data/Events';
 import { getTotalTowerFloors, getTowerStarsRequired } from '../data/TowerConfig';
@@ -15,21 +16,36 @@ import { getChapterQuiz, canAttemptQuiz } from '../data/ChapterQuizzes';
 import { QuizManager } from '../utils/QuizManager';
 import { BranchRoutesList } from '../data/BranchRoutes';
 import { DonationTiers } from '../data/DonationConfig';
-import { Levels } from '../data/Levels';
 
 export class ChapterSelectScene extends Phaser.Scene {
+  private contentHeight = 0;
+  private targetScrollY = 0;
+  private isDragging = false;
+  private dragStartPointerY = 0;
+  private dragStartScrollY = 0;
+  private lastPointerY = 0;
+  private lastMoveTime = 0;
+  private velocityY = 0;
+  private viewportHeight = 1334;
+  private dragThreshold = 6;
+  private isHorizontalSwipe = false;
+  private dragStartPointerX = 0;
+
   constructor() {
     super('ChapterSelectScene');
   }
 
   create(): void {
+    this.viewportHeight = this.cameras.main.height;
     this.addBackground();
+    this.initScrollContainer();
+
     this.addTitle();
     this.addStatsBar();
-    this.addUnclaimedRewardsBanner();
-    this.addResumeButton();
-    this.addRecentPlaySection();
-    this.addRecommendedChallengesSection();
+    this.addContinueLastGame();
+    this.addRecentPlayed();
+    this.addClaimableRewardsSummary();
+    this.addRecommendedChallenges();
     this.addEventBanner();
     this.addTowerBanner();
     this.addExhibitionBanner();
@@ -38,6 +54,9 @@ export class ChapterSelectScene extends Phaser.Scene {
     this.addChapterMapBanner();
     this.addChapterCards();
     this.addBottomButtons();
+
+    this.finalizeScrollContainer();
+    this.setupInputHandler();
 
     ConservationManager.processDecay();
     this.showEmergencyRemindersIfNeeded();
@@ -51,6 +70,8 @@ export class ChapterSelectScene extends Phaser.Scene {
 
     const displayCount = Math.min(urgentOrHigh.length, 3);
     const container = this.add.container(0, 0);
+    container.setScrollFactor(0, 0);
+    container.setDepth(1000);
 
     const overlay = this.add.graphics();
     overlay.fillStyle(0x000000, 0.7);
@@ -202,6 +223,7 @@ export class ChapterSelectScene extends Phaser.Scene {
     const bg = this.add.graphics();
     bg.fillStyle(0x16213e, 1);
     bg.fillRoundedRect(25, 80, 700, 1180, 20);
+    bg.setScrollFactor(0, 0);
 
     const decor = this.add.graphics();
     for (let i = 0; i < 8; i++) {
@@ -211,6 +233,7 @@ export class ChapterSelectScene extends Phaser.Scene {
       decor.fillStyle(0xffffff, 0.03);
       decor.fillCircle(x, y, size);
     }
+    decor.setScrollFactor(0, 0);
   }
 
   private addTitle(): void {
@@ -323,341 +346,11 @@ export class ChapterSelectScene extends Phaser.Scene {
     }).setOrigin(1, 0.5);
   }
 
-  private addUnclaimedRewardsBanner(): void {
-    const rewards = SaveManager.getTotalUnclaimedRewards();
-    if (rewards.total === 0) return;
-
-    const bannerY = 235;
-    const bannerH = 70;
-
-    const banner = this.add.graphics();
-    const gradientSteps = 10;
-    for (let i = 0; i < gradientSteps; i++) {
-      const t = i / gradientSteps;
-      const r = Math.floor(((0xff9800 >> 16) & 0xff) * (1 - t) + ((0xf44336 >> 16) & 0xff) * t);
-      const g = Math.floor(((0xff9800 >> 8) & 0xff) * (1 - t) + ((0xf44336 >> 8) & 0xff) * t);
-      const b = Math.floor((0xff9800 & 0xff) * (1 - t) + (0xf44336 & 0xff) * t);
-      const color = (r << 16) | (g << 8) | b;
-      banner.fillStyle(color, 0.95);
-      banner.fillRect(45 + (660 * i) / gradientSteps, bannerY - bannerH / 2, 660 / gradientSteps + 1, bannerH);
-    }
-    banner.fillRoundedRect(45, bannerY - bannerH / 2, 660, bannerH, 16);
-    banner.lineStyle(3, 0xffeb3b, 0.8);
-    banner.strokeRoundedRect(45, bannerY - bannerH / 2, 660, bannerH, 16);
-
-    this.add.text(80, bannerY, '🎁', {
-      font: '32px Arial'
-    }).setOrigin(0, 0.5);
-
-    this.add.text(130, bannerY - 10, '有未领取的奖励！', {
-      font: 'bold 20px Arial',
-      color: '#ffffff'
-    }).setOrigin(0, 0.5);
-
-    const parts: string[] = [];
-    if (rewards.chapter > 0) parts.push(`章节×${rewards.chapter}`);
-    if (rewards.dailyQuest > 0) parts.push(`委托×${rewards.dailyQuest}`);
-    if (rewards.tower > 0) parts.push(`塔×${rewards.tower}`);
-    if (rewards.event > 0) parts.push(`活动×${rewards.event}`);
-    if (rewards.exhibition > 0) parts.push(`展览×${rewards.exhibition}`);
-    if (rewards.seasonPass) parts.push('通行证');
-    if (rewards.chapterMap > 0) parts.push(`地图×${rewards.chapterMap}`);
-
-    this.add.text(130, bannerY + 15, parts.join(' · '), {
-      font: '14px Arial',
-      color: 'rgba(255,255,255,0.85)'
-    }).setOrigin(0, 0.5);
-
-    const badge = this.add.graphics();
-    badge.fillStyle(0xffeb3b, 1);
-    badge.fillCircle(640, bannerY, 22);
-    this.add.text(640, bannerY, rewards.total.toString(), {
-      font: 'bold 18px Arial',
-      color: '#1a1a2e'
-    }).setOrigin(0.5);
-
-    this.add.text(680, bannerY, '→', {
-      font: 'bold 22px Arial',
-      color: '#ffffff'
-    }).setOrigin(0.5);
-
-    banner.setInteractive(
-      new Phaser.Geom.Rectangle(45, bannerY - bannerH / 2, 660, bannerH),
-      Phaser.Geom.Rectangle.Contains
-    );
-
-    const handleClick = () => {
-      if (rewards.dailyQuest > 0) {
-        this.scene.start('DailyQuestScene');
-      } else if (rewards.chapter > 0) {
-        const claimableChapter = Chapters.find(c => SaveManager.canClaimRewards(c.id));
-        if (claimableChapter) {
-          this.scene.start('LevelSelectScene', { chapterId: claimableChapter.id });
-        }
-      } else if (rewards.seasonPass) {
-        this.scene.start('SeasonPassScene');
-      } else if (rewards.tower > 0) {
-        this.scene.start('TowerSelectScene');
-      } else if (rewards.event > 0) {
-        this.scene.start('EventScene');
-      } else if (rewards.exhibition > 0) {
-        this.scene.start('ExhibitionScene');
-      } else if (rewards.chapterMap > 0) {
-        this.scene.start('ChapterMapScene');
-      }
-    };
-
-    banner.on('pointerup', handleClick);
-    banner.on('pointerover', () => banner.lineStyle(3, 0xffffff, 1));
-    banner.on('pointerout', () => banner.lineStyle(3, 0xffeb3b, 0.8));
-  }
-
-  private addResumeButton(): void {
-    const latestSave = SaveManager.getLatestPuzzleSave();
-    if (!latestSave) return;
-
-    const level = Levels.find(l => l.id === latestSave.levelId);
-    if (!level) return;
-
-    const btnY = 325;
-    const btnW = 660;
-    const btnH = 80;
-
-    const btn = this.add.graphics();
-    btn.fillStyle(0x2196f3, 0.95);
-    btn.fillRoundedRect(45, btnY - btnH / 2, btnW, btnH, 16);
-    btn.lineStyle(3, 0xffffff, 0.3);
-    btn.strokeRoundedRect(45, btnY - btnH / 2, btnW, btnH, 16);
-
-    btn.setInteractive(
-      new Phaser.Geom.Rectangle(45, btnY - btnH / 2, btnW, btnH),
-      Phaser.Geom.Rectangle.Contains
-    );
-
-    this.add.text(80, btnY - 15, '💾 继续上次游戏', {
-      font: 'bold 22px Arial',
-      color: '#ffffff'
-    }).setOrigin(0, 0.5);
-
-    const saveDate = new Date(latestSave.savedAt);
-    const timeStr = saveDate.toLocaleString('zh-CN', {
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-
-    const formatTime = (seconds: number): string => {
-      const m = Math.floor(seconds / 60);
-      const s = Math.floor(seconds % 60);
-      return `${m}:${s.toString().padStart(2, '0')}`;
-    };
-
-    this.add.text(80, btnY + 15, `${level.name} · 剩余 ${formatTime(latestSave.remainingTime)} · 进度 ${latestSave.snappedCount}/${latestSave.pieces.length} · ${timeStr}`, {
-      font: '14px Arial',
-      color: 'rgba(255,255,255,0.8)'
-    }).setOrigin(0, 0.5);
-
-    this.add.text(670, btnY, '开始 →', {
-      font: 'bold 18px Arial',
-      color: '#ffffff'
-    }).setOrigin(1, 0.5);
-
-    btn.on('pointerover', () => {
-      btn.clear();
-      btn.fillStyle(0x42a5f5, 0.95);
-      btn.fillRoundedRect(45, btnY - btnH / 2, btnW, btnH, 16);
-      btn.lineStyle(3, 0xffffff, 0.5);
-      btn.strokeRoundedRect(45, btnY - btnH / 2, btnW, btnH, 16);
-    });
-
-    btn.on('pointerout', () => {
-      btn.clear();
-      btn.fillStyle(0x2196f3, 0.95);
-      btn.fillRoundedRect(45, btnY - btnH / 2, btnW, btnH, 16);
-      btn.lineStyle(3, 0xffffff, 0.3);
-      btn.strokeRoundedRect(45, btnY - btnH / 2, btnW, btnH, 16);
-    });
-
-    btn.on('pointerup', () => {
-      this.scene.start('GameScene', {
-        levelId: latestSave.levelId,
-        isEventLevel: latestSave.isEventLevel,
-        eventId: latestSave.eventId ?? undefined,
-        isTowerFloor: latestSave.isTowerFloor,
-        towerFloorId: latestSave.towerFloorId ?? undefined,
-        loadSave: true
-      });
-    });
-  }
-
-  private addRecentPlaySection(): void {
-    const records = SaveManager.getRecentPlayRecords(5);
-    if (records.length === 0) return;
-
-    const sectionY = 435;
-    const sectionH = 160;
-
-    const sectionBg = this.add.graphics();
-    sectionBg.fillStyle(0x0f3460, 0.8);
-    sectionBg.fillRoundedRect(45, sectionY - sectionH / 2, 660, sectionH, 16);
-
-    this.add.text(70, sectionY - sectionH / 2 + 25, '🕒 最近游玩', {
-      font: 'bold 20px Arial',
-      color: '#ffffff'
-    }).setOrigin(0, 0.5);
-
-    const cardW = 180;
-    const cardH = 95;
-    const padding = 15;
-    const startX = 75 + cardW / 2;
-
-    records.slice(0, 3).forEach((record, index) => {
-      const x = startX + index * (cardW + padding);
-      const y = sectionY + 10;
-
-      const level = Levels.find(l => l.id === record.levelId);
-      const chapter = getChapterByLevelId(record.levelId);
-      if (!level) return;
-
-      const card = this.add.graphics();
-      const color = chapter?.primaryColor ?? 0xe94560;
-      card.fillStyle(color, 0.9);
-      card.fillRoundedRect(x - cardW / 2, y - cardH / 2, cardW, cardH, 12);
-      card.lineStyle(2, 0xffffff, 0.2);
-      card.strokeRoundedRect(x - cardW / 2, y - cardH / 2, cardW, cardH, 12);
-
-      const previewKey = `specimen-${level.specimen.id}-preview`;
-      if (this.textures.exists(previewKey)) {
-        const img = this.add.image(x - cardW / 2 + 25, y, previewKey);
-        img.setDisplaySize(45, 45);
-      }
-
-      this.add.text(x - cardW / 2 + 55, y - 15, level.name, {
-        font: 'bold 14px Arial',
-        color: '#ffffff'
-      }).setOrigin(0, 0.5);
-
-      const progress = SaveManager.getProgress(record.levelId);
-      const stars = progress?.stars ?? 0;
-      const starStr = '⭐'.repeat(stars) + '☆'.repeat(3 - stars);
-      this.add.text(x - cardW / 2 + 55, y + 8, starStr, {
-        font: '12px Arial',
-        color: '#ffd700'
-      }).setOrigin(0, 0.5);
-
-      const playDate = new Date(record.playedAt);
-      const dateStr = playDate.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
-      this.add.text(x + cardW / 2 - 10, y + 28, dateStr, {
-        font: '11px Arial',
-        color: 'rgba(255,255,255,0.6)'
-      }).setOrigin(1, 0.5);
-
-      card.setInteractive(
-        new Phaser.Geom.Rectangle(x - cardW / 2, y - cardH / 2, cardW, cardH),
-        Phaser.Geom.Rectangle.Contains
-      );
-
-      card.on('pointerup', () => {
-        this.scene.start('GameScene', {
-          levelId: record.levelId,
-          isEventLevel: record.isEventLevel,
-          eventId: record.eventId ?? undefined,
-          isTowerFloor: record.isTowerFloor,
-          towerFloorId: record.towerFloorId ?? undefined
-        });
-      });
-
-      card.on('pointerover', () => card.lineStyle(2, 0xffffff, 0.6));
-      card.on('pointerout', () => card.lineStyle(2, 0xffffff, 0.2));
-    });
-  }
-
-  private addRecommendedChallengesSection(): void {
-    const recommendations = SaveManager.getRecommendedChallenges(4);
-    if (recommendations.length === 0) return;
-
-    const sectionY = 615;
-    const sectionH = 160;
-
-    const sectionBg = this.add.graphics();
-    sectionBg.fillStyle(0x0f3460, 0.8);
-    sectionBg.fillRoundedRect(45, sectionY - sectionH / 2, 660, sectionH, 16);
-
-    this.add.text(70, sectionY - sectionH / 2 + 25, '💡 推荐挑战', {
-      font: 'bold 20px Arial',
-      color: '#ffffff'
-    }).setOrigin(0, 0.5);
-
-    const cardW = 150;
-    const cardH = 95;
-    const padding = 12;
-    const totalW = cardW * Math.min(recommendations.length, 4) + padding * (Math.min(recommendations.length, 4) - 1);
-    const startX = 375 - totalW / 2 + cardW / 2;
-
-    recommendations.slice(0, 4).forEach((rec, index) => {
-      const x = startX + index * (cardW + padding);
-      const y = sectionY + 10;
-
-      const card = this.add.graphics();
-      card.fillStyle(rec.color, 0.9);
-      card.fillRoundedRect(x - cardW / 2, y - cardH / 2, cardW, cardH, 12);
-      card.lineStyle(2, 0xffffff, 0.2);
-      card.strokeRoundedRect(x - cardW / 2, y - cardH / 2, cardW, cardH, 12);
-
-      this.add.text(x, y - 20, rec.icon, {
-        font: '28px Arial'
-      }).setOrigin(0.5);
-
-      this.add.text(x, y + 8, rec.title, {
-        font: 'bold 15px Arial',
-        color: '#ffffff'
-      }).setOrigin(0.5);
-
-      this.add.text(x, y + 28, rec.description, {
-        font: '10px Arial',
-        color: 'rgba(255,255,255,0.8)',
-        wordWrap: { width: cardW - 10 },
-        align: 'center'
-      }).setOrigin(0.5);
-
-      card.setInteractive(
-        new Phaser.Geom.Rectangle(x - cardW / 2, y - cardH / 2, cardW, cardH),
-        Phaser.Geom.Rectangle.Contains
-      );
-
-      card.on('pointerup', () => {
-        switch (rec.type) {
-          case 'next_level':
-          case 'incomplete':
-          case 'low_stars':
-          case 'hard_challenge':
-            if (rec.levelId) {
-              this.scene.start('GameScene', { levelId: rec.levelId });
-            }
-            break;
-          case 'daily_quest':
-            this.scene.start('DailyQuestScene');
-            break;
-          case 'tower':
-            this.scene.start('TowerSelectScene');
-            break;
-          case 'event':
-            this.scene.start('EventScene');
-            break;
-        }
-      });
-
-      card.on('pointerover', () => card.lineStyle(2, 0xffffff, 0.6));
-      card.on('pointerout', () => card.lineStyle(2, 0xffffff, 0.2));
-    });
-  }
-
   private addEventBanner(): void {
     const activeEvent = getActiveEvent();
     if (!activeEvent) return;
 
-    const bannerY = 730;
+    const bannerY = 810;
     const bannerH = 90;
     const access = EventManager.canAccessEvent(activeEvent.id);
     const canEnter = access.allowed;
@@ -789,7 +482,7 @@ export class ChapterSelectScene extends Phaser.Scene {
   }
 
   private addTowerBanner(): void {
-    const bannerY = 840;
+    const bannerY = 915;
     const bannerH = 80;
     const totalStars = SaveManager.getTotalStars();
     const requiredStars = getTowerStarsRequired();
@@ -894,7 +587,7 @@ export class ChapterSelectScene extends Phaser.Scene {
   }
 
   private addExhibitionBanner(): void {
-    const bannerY = 945;
+    const bannerY = 1020;
     const bannerH = 80;
     const totalStars = SaveManager.getTotalStars();
     const allThemes = getAllExhibitionThemes();
@@ -1005,7 +698,7 @@ export class ChapterSelectScene extends Phaser.Scene {
   }
 
   private addAchievementBanner(): void {
-    const bannerY = 1050;
+    const bannerY = 1125;
     const bannerH = 80;
     const achievementCount = SaveManager.getUnlockedAchievementsCount();
     const titleCount = SaveManager.getUnlockedTitlesCount();
@@ -1091,7 +784,7 @@ export class ChapterSelectScene extends Phaser.Scene {
   }
 
   private addSeasonPassBanner(): void {
-    const bannerY = 1155;
+    const bannerY = 1230;
     const bannerH = 80;
     const seasonInfo = SeasonPassManager.getSeasonInfo();
     const stats = SeasonPassManager.getTotalStats();
@@ -1183,7 +876,7 @@ export class ChapterSelectScene extends Phaser.Scene {
   }
 
   private addChapterMapBanner(): void {
-    const bannerY = 1265;
+    const bannerY = 1340;
     const bannerH = 90;
     const unlockedRoutes = BranchRoutesList.filter(r => SaveManager.isRouteUnlocked(r.id)).length;
     const completedRoutes = SaveManager.getTotalRoutesCompleted();
@@ -1294,7 +987,7 @@ export class ChapterSelectScene extends Phaser.Scene {
   }
 
   private addChapterCards(): void {
-    const startY = 1385;
+    const startY = 1450;
     const cardWidth = 660;
     const cardHeight = 280;
     const padding = 25;
@@ -1685,7 +1378,7 @@ export class ChapterSelectScene extends Phaser.Scene {
   }
 
   private addBottomButtons(): void {
-    const btnY = 1230;
+    const btnY = 2320;
     const btnW = 68;
     const btnH = 60;
     const spacing = 3;
@@ -1876,6 +1569,579 @@ export class ChapterSelectScene extends Phaser.Scene {
     btn.on('pointerup', onClick);
 
     return btn;
+  }
+
+  private addContinueLastGame(): void {
+    const lastProgress = SaveManager.getLastPlayedLevelProgress();
+    if (!lastProgress) return;
+
+    const sectionY = 220;
+    const bannerH = 72;
+
+    const level = Levels.find(l => l.id === lastProgress.levelId);
+    const chapter = getChapterById(lastProgress.chapterId);
+    if (!level || !chapter) return;
+
+    const banner = this.add.graphics();
+    const gradientSteps = 15;
+    for (let i = 0; i < gradientSteps; i++) {
+      const t = i / gradientSteps;
+      const baseColor = 0xe94560;
+      const baseColor2 = 0xff6b81;
+      const r = Math.floor(((baseColor >> 16) & 0xff) * (1 - t) + ((baseColor2 >> 16) & 0xff) * t);
+      const g = Math.floor(((baseColor >> 8) & 0xff) * (1 - t) + ((baseColor2 >> 8) & 0xff) * t);
+      const b = Math.floor((baseColor & 0xff) * (1 - t) + (baseColor2 & 0xff) * t);
+      const color = (r << 16) | (g << 8) | b;
+      banner.fillStyle(color, 0.95);
+      banner.fillRect(45 + (660 * i) / gradientSteps, sectionY - bannerH / 2, 660 / gradientSteps + 1, bannerH);
+    }
+    banner.fillRoundedRect(45, sectionY - bannerH / 2, 660, bannerH, 16);
+    banner.lineStyle(3, 0xffd700, 0.8);
+    banner.strokeRoundedRect(45, sectionY - bannerH / 2, 660, bannerH, 16);
+
+    this.add.text(80, sectionY, '▶️', { font: '38px Arial' }).setOrigin(0, 0.5);
+
+    this.add.text(140, sectionY - 18, '继续上次游玩', {
+      font: 'bold 22px Arial',
+      color: '#ffffff'
+    }).setOrigin(0, 0.5);
+
+    const savedDate = new Date(lastProgress.savedAt);
+    const timeAgo = this.getTimeAgo(savedDate);
+    this.add.text(140, sectionY + 15, `${level.name} · ${chapter.name} · ${timeAgo}`, {
+      font: '14px Arial',
+      color: 'rgba(255,255,255,0.85)'
+    }).setOrigin(0, 0.5);
+
+    const progress = Math.min(100, Math.max(0, lastProgress.progressPercent));
+    const barW = 180;
+    const barH = 14;
+    const barX = 500;
+    const barY = sectionY - 6;
+    const barBg = this.add.graphics();
+    barBg.fillStyle(0x000000, 0.35);
+    barBg.fillRoundedRect(barX, barY, barW, barH, barH / 2);
+    const barFill = this.add.graphics();
+    barFill.fillStyle(0xffd700, 0.95);
+    barFill.fillRoundedRect(barX, barY, Math.max(6, (barW * progress) / 100), barH, barH / 2);
+    this.add.text(barX + barW + 8, sectionY, `${Math.round(progress)}%`, {
+      font: 'bold 15px Arial',
+      color: '#ffd700'
+    }).setOrigin(0, 0.5);
+
+    const goBtn = this.add.graphics();
+    goBtn.fillStyle(0xffffff, 1);
+    goBtn.fillRoundedRect(620, sectionY - 22, 70, 44, 12);
+    this.add.text(655, sectionY, '继续 →', {
+      font: 'bold 15px Arial',
+      color: '#e94560'
+    }).setOrigin(0.5);
+
+    banner.setInteractive(
+      new Phaser.Geom.Rectangle(45, sectionY - bannerH / 2, 660, bannerH),
+      Phaser.Geom.Rectangle.Contains
+    );
+    goBtn.setInteractive(
+      new Phaser.Geom.Rectangle(620, sectionY - 22, 70, 44),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    const goToLevel = () => {
+      this.scene.start('GameScene', { levelId: lastProgress.levelId });
+    };
+    banner.on('pointerup', goToLevel);
+    goBtn.on('pointerup', goToLevel);
+
+    banner.on('pointerover', () => banner.lineStyle(3, 0xffffff, 1));
+    banner.on('pointerout', () => banner.lineStyle(3, 0xffd700, 0.8));
+  }
+
+  private getTimeAgo(date: Date): string {
+    const diff = Date.now() - date.getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return '刚刚';
+    if (mins < 60) return `${mins}分钟前`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}小时前`;
+    const days = Math.floor(hours / 24);
+    return `${days}天前`;
+  }
+
+  private addRecentPlayed(): void {
+    const recent = SaveManager.getRecentPlayed(5);
+    if (recent.length === 0) return;
+
+    const sectionY = 305;
+    const cardW = 660;
+    const cardH = 82;
+
+    const titleBg = this.add.graphics();
+    titleBg.fillStyle(0x0f3460, 0.6);
+    titleBg.fillRoundedRect(45, sectionY - cardH / 2 - 32, 660, 30, 8);
+    this.add.text(70, sectionY - cardH / 2 - 17, '🕐 最近游玩', {
+      font: 'bold 16px Arial',
+      color: '#eaeaea'
+    }).setOrigin(0, 0.5);
+
+    const maxVisible = Math.min(5, recent.length);
+    const itemGap = 5;
+    const totalItemsW = 660;
+    const itemW = (totalItemsW - (maxVisible - 1) * itemGap) / maxVisible;
+    const itemH = cardH;
+
+    recent.slice(0, maxVisible).forEach((record, index) => {
+      const itemX = 45 + index * (itemW + itemGap) + itemW / 2;
+      const itemY = sectionY;
+      const level = Levels.find(l => l.id === record.levelId);
+      const chapter = getChapterById(record.chapterId);
+      if (!level || !chapter) return;
+
+      const item = this.add.graphics();
+      item.fillStyle(chapter.primaryColor, 0.9);
+      item.fillRoundedRect(itemX - itemW / 2, itemY - itemH / 2, itemW, itemH, 12);
+      item.lineStyle(2, chapter.secondaryColor, 0.7);
+      item.strokeRoundedRect(itemX - itemW / 2, itemY - itemH / 2, itemW, itemH, 12);
+
+      const stars = '⭐'.repeat(record.stars) + '☆'.repeat(3 - record.stars);
+      this.add.text(itemX, itemY - itemH / 2 + 20, stars, {
+        font: '14px Arial'
+      }).setOrigin(0.5);
+
+      this.add.text(itemX, itemY + 2, level.name, {
+        font: 'bold 13px Arial',
+        color: '#ffffff',
+        wordWrap: { width: itemW - 10 }
+      }).setOrigin(0.5);
+
+      const scoreText = record.score > 0 ? `${(record.score / 1000).toFixed(1)}k` : '未完成';
+      this.add.text(itemX, itemY + itemH / 2 - 18, scoreText, {
+        font: '12px Arial',
+        color: 'rgba(255,255,255,0.75)'
+      }).setOrigin(0.5);
+
+      item.setInteractive(
+        new Phaser.Geom.Rectangle(itemX - itemW / 2, itemY - itemH / 2, itemW, itemH),
+        Phaser.Geom.Rectangle.Contains
+      );
+
+      item.on('pointerover', () => {
+        item.clear();
+        item.fillStyle(this.lighten(chapter.primaryColor, 20), 1);
+        item.fillRoundedRect(itemX - itemW / 2, itemY - itemH / 2, itemW, itemH, 12);
+        item.lineStyle(3, 0xffffff, 0.9);
+        item.strokeRoundedRect(itemX - itemW / 2, itemY - itemH / 2, itemW, itemH, 12);
+      });
+      item.on('pointerout', () => {
+        item.clear();
+        item.fillStyle(chapter.primaryColor, 0.9);
+        item.fillRoundedRect(itemX - itemW / 2, itemY - itemH / 2, itemW, itemH, 12);
+        item.lineStyle(2, chapter.secondaryColor, 0.7);
+        item.strokeRoundedRect(itemX - itemW / 2, itemY - itemH / 2, itemW, itemH, 12);
+      });
+      item.on('pointerup', () => {
+        this.scene.start('GameScene', { levelId: record.levelId });
+      });
+    });
+  }
+
+  private addClaimableRewardsSummary(): void {
+    const rewards = SaveManager.getAllClaimableRewards();
+    if (rewards.length === 0) return;
+
+    const totalCount = SaveManager.getTotalClaimableRewardsCount();
+    const sectionY = 400;
+    const bannerH = 68;
+
+    const banner = this.add.graphics();
+    const gradientSteps = 15;
+    for (let i = 0; i < gradientSteps; i++) {
+      const t = i / gradientSteps;
+      const baseColor = 0xff9800;
+      const baseColor2 = 0xffeb3b;
+      const r = Math.floor(((baseColor >> 16) & 0xff) * (1 - t) + ((baseColor2 >> 16) & 0xff) * t);
+      const g = Math.floor(((baseColor >> 8) & 0xff) * (1 - t) + ((baseColor2 >> 8) & 0xff) * t);
+      const b = Math.floor((baseColor & 0xff) * (1 - t) + (baseColor2 & 0xff) * t);
+      const color = (r << 16) | (g << 8) | b;
+      banner.fillStyle(color, 0.95);
+      banner.fillRect(45 + (660 * i) / gradientSteps, sectionY - bannerH / 2, 660 / gradientSteps + 1, bannerH);
+    }
+    banner.fillRoundedRect(45, sectionY - bannerH / 2, 660, bannerH, 16);
+    banner.lineStyle(3, 0xff5722, 0.8);
+    banner.strokeRoundedRect(45, sectionY - bannerH / 2, 660, bannerH, 16);
+
+    this.add.text(80, sectionY, '🎁', { font: '38px Arial' }).setOrigin(0, 0.5);
+
+    this.add.text(140, sectionY - 15, `${totalCount} 个奖励待领取！`, {
+      font: 'bold 22px Arial',
+      color: '#1a1a2e'
+    }).setOrigin(0, 0.5);
+
+    const sourcesText = rewards.slice(0, 3).map(r => r.icon + r.name).join(' · ');
+    this.add.text(140, sectionY + 15, sourcesText + (rewards.length > 3 ? ' 等' : ''), {
+      font: '14px Arial',
+      color: 'rgba(26,26,46,0.85)'
+    }).setOrigin(0, 0.5);
+
+    const badge = this.add.graphics();
+    badge.fillStyle(0xe94560, 1);
+    badge.fillCircle(610, sectionY - 25, 20);
+    this.add.text(610, sectionY - 25, totalCount.toString(), {
+      font: 'bold 15px Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+
+    const goBtn = this.add.graphics();
+    goBtn.fillStyle(0x1a1a2e, 1);
+    goBtn.fillRoundedRect(615, sectionY - 15, 75, 38, 10);
+    this.add.text(652, sectionY + 4, '查看 →', {
+      font: 'bold 14px Arial',
+      color: '#ffeb3b'
+    }).setOrigin(0.5);
+
+    banner.setInteractive(
+      new Phaser.Geom.Rectangle(45, sectionY - bannerH / 2, 660, bannerH),
+      Phaser.Geom.Rectangle.Contains
+    );
+    goBtn.setInteractive(
+      new Phaser.Geom.Rectangle(615, sectionY - 15, 75, 38),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    const showRewardsModal = () => {
+      this.showClaimableRewardsModal(rewards);
+    };
+    banner.on('pointerup', showRewardsModal);
+    goBtn.on('pointerup', showRewardsModal);
+
+    banner.on('pointerover', () => banner.lineStyle(3, 0xffffff, 1));
+    banner.on('pointerout', () => banner.lineStyle(3, 0xff5722, 0.8));
+
+    this.tweens.add({
+      targets: [banner, badge],
+      scale: 1.015,
+      duration: 800,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+  }
+
+  private showClaimableRewardsModal(rewards: ClaimableRewardInfo[]): void {
+    const container = this.add.container(0, 0);
+    container.setScrollFactor(0, 0);
+    container.setDepth(1000);
+    const overlay = this.add.graphics();
+    overlay.fillStyle(0x000000, 0.8);
+    overlay.fillRect(0, 0, 750, 1334);
+    overlay.setInteractive();
+    container.add(overlay);
+
+    const modalH = Math.min(900, 280 + rewards.length * 95);
+    const modalY = (1334 - modalH) / 2;
+    const modal = this.add.graphics();
+    modal.fillStyle(0x16213e, 1);
+    modal.fillRoundedRect(60, modalY, 630, modalH, 24);
+    modal.lineStyle(4, 0xff9800, 1);
+    modal.strokeRoundedRect(60, modalY, 630, modalH, 24);
+    container.add(modal);
+
+    this.add.text(375, modalY + 50, '🎁 奖励领取中心', {
+      font: 'bold 30px Arial',
+      color: '#ffd700'
+    }).setOrigin(0.5);
+
+    const totalCount = SaveManager.getTotalClaimableRewardsCount();
+    this.add.text(375, modalY + 85, `共有 ${totalCount} 项奖励待领取`, {
+      font: '16px Arial',
+      color: '#aaaaaa'
+    }).setOrigin(0.5);
+
+    const listBg = this.add.graphics();
+    listBg.fillStyle(0x0f3460, 0.6);
+    listBg.fillRoundedRect(85, modalY + 120, 580, modalH - 240, 12);
+    container.add(listBg);
+
+    let itemY = modalY + 150;
+    rewards.forEach((reward, index) => {
+      const item = this.add.graphics();
+      item.fillStyle(reward.color, 0.15);
+      item.fillRoundedRect(100, itemY - 30, 550, 80, 10);
+      item.lineStyle(2, reward.color, 0.5);
+      item.strokeRoundedRect(100, itemY - 30, 550, 80, 10);
+      container.add(item);
+
+      this.add.text(125, itemY + 10, reward.icon, { font: '30px Arial' }).setOrigin(0, 0.5);
+
+      this.add.text(170, itemY - 8, reward.name, {
+        font: 'bold 17px Arial',
+        color: '#ffffff'
+      }).setOrigin(0, 0.5);
+
+      const rewardPreview = reward.rewardNames.slice(0, 2).join('、') + (reward.rewardNames.length > 2 ? ' 等' : '');
+      this.add.text(170, itemY + 15, rewardPreview, {
+        font: '13px Arial',
+        color: '#aaaaaa',
+        wordWrap: { width: 300 }
+      }).setOrigin(0, 0.5);
+
+      const countBadge = this.add.graphics();
+      countBadge.fillStyle(0xffeb3b, 1);
+      countBadge.fillCircle(520, itemY - 8, 16);
+      this.add.text(520, itemY - 8, reward.count.toString(), {
+        font: 'bold 12px Arial',
+        color: '#1a1a2e'
+      }).setOrigin(0.5);
+
+      const goBtn = this.add.graphics();
+      goBtn.fillStyle(reward.color, 0.95);
+      goBtn.fillRoundedRect(485, itemY + 2, 140, 38, 10);
+      this.add.text(555, itemY + 21, '前往领取 →', {
+        font: 'bold 13px Arial',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+      container.add(goBtn);
+
+      goBtn.setInteractive(
+        new Phaser.Geom.Rectangle(485, itemY + 2, 140, 38),
+        Phaser.Geom.Rectangle.Contains
+      );
+      goBtn.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+        pointer.event.stopPropagation();
+        container.destroy();
+        if (reward.sceneData) {
+          this.scene.start(reward.sceneKey, reward.sceneData);
+        } else {
+          this.scene.start(reward.sceneKey);
+        }
+      });
+
+      itemY += 90;
+    });
+
+    const closeBtn = this.add.graphics();
+    closeBtn.fillStyle(0xff9800, 1);
+    closeBtn.fillRoundedRect(250, modalY + modalH - 85, 250, 55, 14);
+    closeBtn.setInteractive(
+      new Phaser.Geom.Rectangle(250, modalY + modalH - 85, 250, 55),
+      Phaser.Geom.Rectangle.Contains
+    );
+    container.add(closeBtn);
+
+    this.add.text(375, modalY + modalH - 58, '知道了', {
+      font: 'bold 19px Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+
+    const close = () => container.destroy();
+    closeBtn.on('pointerup', close);
+    overlay.on('pointerup', close);
+  }
+
+  private addRecommendedChallenges(): void {
+    const challenges = SaveManager.getRecommendedChallenges(3);
+    if (challenges.length === 0) return;
+
+    const sectionY = 490;
+    const cardW = 660;
+    const cardH = 100;
+
+    const titleBg = this.add.graphics();
+    titleBg.fillStyle(0x0f3460, 0.6);
+    titleBg.fillRoundedRect(45, sectionY - cardH / 2 - 32, 660, 30, 8);
+    this.add.text(70, sectionY - cardH / 2 - 17, '💡 推荐挑战', {
+      font: 'bold 16px Arial',
+      color: '#eaeaea'
+    }).setOrigin(0, 0.5);
+
+    const itemGap = 12;
+    const maxVisible = Math.min(3, challenges.length);
+
+    challenges.slice(0, maxVisible).forEach((challenge, index) => {
+      const itemY = sectionY - cardH / 2 + index * (cardH + itemGap) + cardH / 2;
+
+      const item = this.add.graphics();
+      const gradientSteps = 12;
+      for (let i = 0; i < gradientSteps; i++) {
+        const t = i / gradientSteps;
+        const baseColor = challenge.color;
+        const baseColor2 = this.lighten(challenge.color, -30);
+        const r = Math.floor(((baseColor >> 16) & 0xff) * (1 - t) + ((baseColor2 >> 16) & 0xff) * t);
+        const g = Math.floor(((baseColor >> 8) & 0xff) * (1 - t) + ((baseColor2 >> 8) & 0xff) * t);
+        const b = Math.floor((baseColor & 0xff) * (1 - t) + (baseColor2 & 0xff) * t);
+        const color = (r << 16) | (g << 8) | b;
+        item.fillStyle(color, 0.92);
+        item.fillRect(45 + (cardW * i) / gradientSteps, itemY - cardH / 2, cardW / gradientSteps + 1, cardH);
+      }
+      item.fillRoundedRect(45, itemY - cardH / 2, cardW, cardH, 14);
+      item.lineStyle(2, challenge.color, 0.7);
+      item.strokeRoundedRect(45, itemY - cardH / 2, cardW, cardH, 14);
+
+      const iconBg = this.add.graphics();
+      iconBg.fillStyle(0xffffff, 0.2);
+      iconBg.fillCircle(90, itemY, 32);
+      this.add.text(90, itemY, challenge.icon, { font: '32px Arial' }).setOrigin(0.5);
+
+      this.add.text(140, itemY - 22, challenge.title, {
+        font: 'bold 18px Arial',
+        color: '#ffffff'
+      }).setOrigin(0, 0.5);
+
+      this.add.text(140, itemY + 2, challenge.subtitle, {
+        font: '14px Arial',
+        color: 'rgba(255,255,255,0.8)'
+      }).setOrigin(0, 0.5);
+
+      this.add.text(140, itemY + 26, '💭 ' + challenge.reason, {
+        font: '12px Arial',
+        color: 'rgba(255,255,255,0.65)'
+      }).setOrigin(0, 0.5);
+
+      if (challenge.rewardPreview) {
+        const rewardTag = this.add.graphics();
+        rewardTag.fillStyle(0x000000, 0.35);
+        rewardTag.fillRoundedRect(445, itemY - 18, 200, 24, 6);
+        this.add.text(455, itemY - 6, '🎁 ' + challenge.rewardPreview, {
+          font: '12px Arial',
+          color: '#ffd700',
+          wordWrap: { width: 185 }
+        }).setOrigin(0, 0.5);
+      }
+
+      const goBtn = this.add.graphics();
+      goBtn.fillStyle(0xffffff, 1);
+      goBtn.fillRoundedRect(625, itemY - 20, 65, 40, 10);
+      this.add.text(657, itemY, '挑战', {
+        font: 'bold 14px Arial',
+        color: '#' + challenge.color.toString(16).padStart(6, '0')
+      }).setOrigin(0.5);
+
+      item.setInteractive(
+        new Phaser.Geom.Rectangle(45, itemY - cardH / 2, cardW, cardH),
+        Phaser.Geom.Rectangle.Contains
+      );
+      goBtn.setInteractive(
+        new Phaser.Geom.Rectangle(625, itemY - 20, 65, 40),
+        Phaser.Geom.Rectangle.Contains
+      );
+
+      const handleClick = () => {
+        if (challenge.sceneData) {
+          this.scene.start(challenge.sceneKey, challenge.sceneData);
+        } else {
+          this.scene.start(challenge.sceneKey);
+        }
+      };
+      item.on('pointerup', handleClick);
+      goBtn.on('pointerup', handleClick);
+
+      item.on('pointerover', () => {
+        item.lineStyle(3, 0xffffff, 1);
+      });
+      item.on('pointerout', () => {
+        item.lineStyle(2, challenge.color, 0.7);
+      });
+    });
+  }
+
+  private initScrollContainer(): void {
+    this.cameras.main.scrollY = 0;
+    this.targetScrollY = 0;
+    this.velocityY = 0;
+    this.isDragging = false;
+    this.isHorizontalSwipe = false;
+    this.contentHeight = 0;
+  }
+
+  private finalizeScrollContainer(): void {
+    const chapterCount = Chapters.length;
+    const lastChapterY = 1450 + chapterCount * (280 + 25);
+    const bottomY = 2320 + 100;
+    this.contentHeight = Math.max(lastChapterY, bottomY) + 120;
+    this.events.on('update', this.updateScroll, this);
+  }
+
+  private setupInputHandler(): void {
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if ((pointer as any)._fromModal) return;
+      this.isDragging = false;
+      this.isHorizontalSwipe = false;
+      this.velocityY = 0;
+      this.dragStartPointerX = pointer.x;
+      this.dragStartPointerY = pointer.y;
+      this.lastPointerY = pointer.y;
+      this.dragStartScrollY = this.cameras.main.scrollY;
+      this.lastMoveTime = this.time.now;
+    });
+
+    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+      if (!pointer.isDown) return;
+
+      const dx = pointer.x - this.dragStartPointerX;
+      const dy = pointer.y - this.dragStartPointerY;
+
+      if (!this.isDragging && !this.isHorizontalSwipe) {
+        if (Math.abs(dx) > this.dragThreshold || Math.abs(dy) > this.dragThreshold) {
+          if (Math.abs(dx) > Math.abs(dy)) {
+            this.isHorizontalSwipe = true;
+          } else {
+            this.isDragging = true;
+          }
+        }
+      }
+
+      if (this.isHorizontalSwipe) return;
+
+      if (this.isDragging) {
+        const now = this.time.now;
+        const dt = Math.max(1, now - this.lastMoveTime);
+        this.velocityY = (this.lastPointerY - pointer.y) / dt * 16;
+        this.lastPointerY = pointer.y;
+        this.lastMoveTime = now;
+
+        let newScroll = this.dragStartScrollY + (this.dragStartPointerY - pointer.y);
+        const maxScroll = Math.max(0, this.contentHeight - this.viewportHeight);
+        const overscroll = 120;
+        if (newScroll < -overscroll) newScroll = -overscroll;
+        if (newScroll > maxScroll + overscroll) newScroll = maxScroll + overscroll;
+        this.cameras.main.scrollY = newScroll;
+        this.targetScrollY = newScroll;
+      }
+    });
+
+    const endDrag = () => {
+      if (this.isDragging) {
+        const maxScroll = Math.max(0, this.contentHeight - this.viewportHeight);
+        let target = this.cameras.main.scrollY + this.velocityY * 8;
+        if (target < 0) target = 0;
+        if (target > maxScroll) target = maxScroll;
+        this.targetScrollY = target;
+      }
+      this.isDragging = false;
+      this.isHorizontalSwipe = false;
+    };
+
+    this.input.on('pointerup', endDrag);
+    this.input.on('pointerupoutside', endDrag);
+    this.input.on('pointercancel', endDrag);
+  }
+
+  private updateScroll(): void {
+    if (this.isDragging) return;
+    const maxScroll = Math.max(0, this.contentHeight - this.viewportHeight);
+    if (this.cameras.main.scrollY < 0) {
+      this.targetScrollY = 0;
+    } else if (this.cameras.main.scrollY > maxScroll) {
+      this.targetScrollY = maxScroll;
+    }
+    const diff = this.targetScrollY - this.cameras.main.scrollY;
+    if (Math.abs(diff) < 0.5) {
+      this.cameras.main.scrollY = this.targetScrollY;
+      this.velocityY = 0;
+      return;
+    }
+    const lerp = 0.18;
+    this.cameras.main.scrollY += diff * lerp;
+    this.velocityY *= 0.92;
   }
 
   private lighten(hex: number, amount: number): number {

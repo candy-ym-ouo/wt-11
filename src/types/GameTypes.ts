@@ -1587,7 +1587,8 @@ export interface SaveData {
   randomEvent: RandomEventSaveData;
   puzzleSaves: PuzzleSaves;
   replay: ReplaySaveData;
-  recentPlay: RecentPlaySaveData;
+  recentPlayed: RecentPlayedRecord[];
+  lastPlayedState: LastPlayedState | null;
 }
 
 export interface SnapRecord {
@@ -1645,20 +1646,6 @@ export interface ReplaySaveData {
   maxReplaysPerLevel: number;
 }
 
-export interface RecentPlayRecord {
-  levelId: number;
-  playedAt: number;
-  isEventLevel?: boolean;
-  eventId?: string | null;
-  isTowerFloor?: boolean;
-  towerFloorId?: number | null;
-}
-
-export interface RecentPlaySaveData {
-  records: RecentPlayRecord[];
-  maxRecords: number;
-}
-
 export type HiddenLevelTriggerType =
   | 'chapter_perfect'
   | 'chapters_completed'
@@ -1697,4 +1684,68 @@ export interface HiddenLevelProgress {
   unlocked: boolean;
   revealedAt?: number;
   unlockedAt?: number;
+}
+
+export interface RecentPlayedRecord {
+  levelId: number;
+  chapterId: number;
+  playedAt: number;
+  stars: number;
+  score: number;
+}
+
+export interface LastPlayedState {
+  levelId: number;
+  chapterId: number;
+  lastSaveId?: string;
+  savedAt: number;
+  progressPercent: number;
+}
+
+export type ChallengeSource =
+  | 'chapter_level'
+  | 'tower_floor'
+  | 'event_level'
+  | 'exhibition'
+  | 'daily_quest'
+  | 'branch_route';
+
+export interface RecommendedChallenge {
+  id: string | number;
+  source: ChallengeSource;
+  title: string;
+  subtitle: string;
+  icon: string;
+  color: number;
+  chapterId?: number;
+  levelId?: number;
+  sceneKey: string;
+  sceneData?: any;
+  priority: number;
+  reason: string;
+  rewardPreview?: string;
+}
+
+export type ClaimableRewardSource =
+  | 'chapter'
+  | 'tower'
+  | 'event'
+  | 'exhibition'
+  | 'season_pass'
+  | 'family'
+  | 'donation'
+  | 'branch_route'
+  | 'daily_quest';
+
+export interface ClaimableRewardInfo {
+  id: string | number;
+  source: ClaimableRewardSource;
+  name: string;
+  description: string;
+  icon: string;
+  count: number;
+  color: number;
+  sceneKey: string;
+  sceneData?: any;
+  rewardNames: string[];
 }
