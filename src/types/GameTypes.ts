@@ -132,9 +132,20 @@ export interface LevelRule {
 export interface PlantSpecimen {
   id: number;
   name: string;
+  aliases: string[];
   family: string;
   genus: string;
   description: string;
+  distribution: string[];
+  habitat: string;
+  careKnowledge: {
+    light: string;
+    water: string;
+    temperature: string;
+    soil: string;
+    fertilizer: string;
+    tips: string;
+  };
   primaryColor: number;
   secondaryColor: number;
   leafColor: number;
@@ -444,6 +455,7 @@ export interface EventSaveData {
   eventProgress: Record<string, EventProgress>;
   eventBadges: Record<number, boolean>;
   eventGalleryUnlocked: number[];
+  eventGalleryUnlockTimes: Record<number, number>;
   rankingCache: Record<string, EventRankingData>;
 }
 
@@ -1401,6 +1413,7 @@ export interface SaveData {
   unlockedLevels: number[];
   unlockedChapters: number[];
   galleryUnlocked: number[];
+  galleryUnlockTimes: Record<number, number>;
   workshop: WorkshopProgress;
   event: EventSaveData;
   dailyQuest: DailyQuestSaveData;

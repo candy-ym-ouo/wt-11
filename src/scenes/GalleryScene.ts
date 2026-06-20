@@ -883,6 +883,7 @@ export class GalleryScene extends Phaser.Scene {
     const family = getPlantFamilyBySpecimenId(item.specimenId);
     const progress = SaveManager.getProgress(item.id);
     const unlockSource = this.getUnlockSource(item);
+    const unlockTime = SaveManager.getGalleryUnlockTime(item.specimenId);
     
     let headerColor = 0xe94560;
     if (isEvent) {
@@ -895,21 +896,21 @@ export class GalleryScene extends Phaser.Scene {
 
     const modal = this.add.graphics();
     modal.fillStyle(0x16213e, 1);
-    modal.fillRoundedRect(50, 180, 650, 980, 20);
+    modal.fillRoundedRect(50, 120, 650, 1100, 20);
     modal.lineStyle(3, headerColor, 1);
-    modal.strokeRoundedRect(50, 180, 650, 980, 20);
+    modal.strokeRoundedRect(50, 120, 650, 1100, 20);
     container.add(modal);
 
-    const img = this.add.image(375, 370, targetKey);
-    img.setDisplaySize(360, 288);
+    const img = this.add.image(375, 300, targetKey);
+    img.setDisplaySize(320, 256);
     container.add(img);
 
     const typeBadgeContainer = this.add.container(0, 0);
     if (isEvent) {
       const eventBadge = this.add.graphics();
       eventBadge.fillStyle(0xe91e63, 0.95);
-      eventBadge.fillRoundedRect(200, 200, 350, 36, 18);
-      this.add.text(375, 218, `🌸 ${item.eventName || '活动限定'} 专属图鉴`, {
+      eventBadge.fillRoundedRect(200, 140, 350, 36, 18);
+      this.add.text(375, 158, `🌸 ${item.eventName || '活动限定'} 专属图鉴`, {
         font: 'bold 15px Arial',
         color: '#ffffff'
       }).setOrigin(0.5);
@@ -917,8 +918,8 @@ export class GalleryScene extends Phaser.Scene {
     } else if (route) {
       const routeBadge = this.add.graphics();
       routeBadge.fillStyle(route.primaryColor, 0.95);
-      routeBadge.fillRoundedRect(200, 200, 350, 36, 18);
-      this.add.text(375, 218, `${route.icon} ${route.name} 专属图鉴`, {
+      routeBadge.fillRoundedRect(200, 140, 350, 36, 18);
+      this.add.text(375, 158, `${route.icon} ${route.name} 专属图鉴`, {
         font: 'bold 15px Arial',
         color: '#ffffff'
       }).setOrigin(0.5);
@@ -926,28 +927,39 @@ export class GalleryScene extends Phaser.Scene {
     }
     container.add(typeBadgeContainer);
 
-    const nameText = this.add.text(375, 530, item.name, {
-      font: 'bold 34px Arial',
+    const nameText = this.add.text(375, 450, item.name, {
+      font: 'bold 32px Arial',
       color: '#ffffff'
     }).setOrigin(0.5);
     container.add(nameText);
 
     if (specimen) {
-      const familyText = this.add.text(375, 570, `${specimen.family} · ${specimen.genus}`, {
-        font: '18px Arial',
+      const familyText = this.add.text(375, 485, `${specimen.family} · ${specimen.genus}`, {
+        font: '16px Arial',
         color: '#aaaaaa'
       }).setOrigin(0.5);
       container.add(familyText);
+    }
+
+    if (specimen?.aliases && specimen.aliases.length > 0) {
+      const aliasBg = this.add.graphics();
+      aliasBg.fillStyle(0x1a3a5c, 0.6);
+      aliasBg.fillRoundedRect(100, 505, 550, 32, 8);
+      this.add.text(120, 521, `别名: ${specimen.aliases.join('、')}`, {
+        font: '13px Arial',
+        color: '#90caf9'
+      }).setOrigin(0, 0.5);
+      container.add(aliasBg);
     }
 
     if (family) {
       const familyTagBg = this.add.graphics();
       familyTagBg.fillStyle(family.primaryColor, 0.3);
       familyTagBg.lineStyle(1, family.primaryColor, 0.6);
-      familyTagBg.fillRoundedRect(175, 595, 400, 32, 8);
-      familyTagBg.strokeRoundedRect(175, 595, 400, 32, 8);
-      this.add.text(375, 611, `${family.icon} ${family.familyName} ${family.genusName}`, {
-        font: 'bold 14px Arial',
+      familyTagBg.fillRoundedRect(175, 548, 400, 30, 8);
+      familyTagBg.strokeRoundedRect(175, 548, 400, 30, 8);
+      this.add.text(375, 563, `${family.icon} ${family.familyName} ${family.genusName}`, {
+        font: 'bold 13px Arial',
         color: '#ffffff'
       }).setOrigin(0.5);
       container.add(familyTagBg);
@@ -956,8 +968,8 @@ export class GalleryScene extends Phaser.Scene {
     const unlockInfoBg = this.add.graphics();
     unlockInfoBg.fillStyle(0x1a3a5c, 0.8);
     unlockInfoBg.lineStyle(1, headerColor, 0.4);
-    unlockInfoBg.fillRoundedRect(100, 640, 550, 55, 10);
-    unlockInfoBg.strokeRoundedRect(100, 640, 550, 55, 10);
+    unlockInfoBg.fillRoundedRect(100, 590, 550, 75, 10);
+    unlockInfoBg.strokeRoundedRect(100, 590, 550, 75, 10);
     
     const sourceIcon = unlockSource.icon;
     const sourceText = unlockSource.text;
@@ -985,19 +997,28 @@ export class GalleryScene extends Phaser.Scene {
       progressText = '🔒 关卡未解锁';
     }
 
-    this.add.text(130, 658, `${sourceIcon} 解锁来源`, {
+    this.add.text(130, 610, `${sourceIcon} 解锁来源`, {
       font: 'bold 12px Arial',
       color: '#888888'
     }).setOrigin(0, 0.5);
-    this.add.text(130, 680, `${sourceText}${unlockDetail ? ' · ' + unlockDetail : ''}`, {
-      font: '14px Arial',
+    this.add.text(130, 632, `${sourceText}${unlockDetail ? ' · ' + unlockDetail : ''}`, {
+      font: '13px Arial',
       color: '#81c784'
     }).setOrigin(0, 0.5);
     
     if (progressText) {
-      this.add.text(630, 668, progressText, {
-        font: 'bold 13px Arial',
+      this.add.text(630, 610, progressText, {
+        font: 'bold 12px Arial',
         color: levelProgress?.completed ? '#4caf50' : levelUnlocked ? '#ffb74d' : '#888888'
+      }).setOrigin(1, 0.5);
+    }
+
+    if (unlockTime) {
+      const unlockDate = new Date(unlockTime);
+      const dateStr = `${unlockDate.getFullYear()}-${(unlockDate.getMonth() + 1).toString().padStart(2, '0')}-${unlockDate.getDate().toString().padStart(2, '0')}`;
+      this.add.text(630, 632, `📅 ${dateStr}`, {
+        font: '12px Arial',
+        color: '#90caf9'
       }).setOrigin(1, 0.5);
     }
     container.add(unlockInfoBg);
@@ -1008,39 +1029,125 @@ export class GalleryScene extends Phaser.Scene {
       displayDescription = getGalleryModifiedDescription(item.description, conservationHealth);
     }
 
-    const descLabel = this.add.text(100, 715, '📖 植物介绍', {
-      font: 'bold 14px Arial',
+    const descLabel = this.add.text(100, 678, '📖 植物介绍', {
+      font: 'bold 13px Arial',
       color: '#888888'
     }).setOrigin(0, 0.5);
     container.add(descLabel);
 
     const descBg = this.add.graphics();
     descBg.fillStyle(0x0f3460, 0.6);
-    descBg.fillRoundedRect(100, 730, 550, 120, 10);
+    descBg.fillRoundedRect(100, 690, 550, 90, 10);
     container.add(descBg);
 
-    const descText = this.add.text(375, 790, displayDescription, {
-      font: '15px Arial',
+    const descText = this.add.text(375, 735, displayDescription, {
+      font: '14px Arial',
       color: '#eaeaea',
       align: 'center',
       wordWrap: { width: 500 }
     }).setOrigin(0.5);
     container.add(descText);
 
+    if (specimen?.distribution && specimen.distribution.length > 0) {
+      const distLabel = this.add.text(100, 795, '🌍 分布区域', {
+        font: 'bold 13px Arial',
+        color: '#888888'
+      }).setOrigin(0, 0.5);
+      container.add(distLabel);
+
+      const distBg = this.add.graphics();
+      distBg.fillStyle(0x0f3460, 0.6);
+      distBg.fillRoundedRect(100, 807, 550, 38, 10);
+      container.add(distBg);
+
+      const distText = this.add.text(130, 826, specimen.distribution.join(' · '), {
+        font: '13px Arial',
+        color: '#90caf9',
+        wordWrap: { width: 490 }
+      }).setOrigin(0, 0.5);
+      container.add(distText);
+    }
+
+    if (specimen?.habitat) {
+      const habitatLabel = this.add.text(100, 858, '🏞️ 生长环境', {
+        font: 'bold 13px Arial',
+        color: '#888888'
+      }).setOrigin(0, 0.5);
+      container.add(habitatLabel);
+
+      const habitatBg = this.add.graphics();
+      habitatBg.fillStyle(0x0f3460, 0.6);
+      habitatBg.fillRoundedRect(100, 870, 550, 40, 10);
+      container.add(habitatBg);
+
+      const habitatText = this.add.text(375, 890, specimen.habitat, {
+        font: '13px Arial',
+        color: '#a5d6a7',
+        align: 'center',
+        wordWrap: { width: 500 }
+      }).setOrigin(0.5);
+      container.add(habitatText);
+    }
+
+    if (specimen?.careKnowledge) {
+      const careLabel = this.add.text(100, 923, '🌱 养护知识', {
+        font: 'bold 13px Arial',
+        color: '#888888'
+      }).setOrigin(0, 0.5);
+      container.add(careLabel);
+
+      const careBg = this.add.graphics();
+      careBg.fillStyle(0x1b5e20, 0.2);
+      careBg.lineStyle(1, 0x4caf50, 0.3);
+      careBg.fillRoundedRect(100, 935, 550, 150, 10);
+      careBg.strokeRoundedRect(100, 935, 550, 150, 10);
+      container.add(careBg);
+
+      const careItems = [
+        { icon: '☀️', label: '光照', value: specimen.careKnowledge.light },
+        { icon: '💧', label: '浇水', value: specimen.careKnowledge.water },
+        { icon: '🌡️', label: '温度', value: specimen.careKnowledge.temperature },
+        { icon: '🪴', label: '土壤', value: specimen.careKnowledge.soil },
+        { icon: '🧪', label: '施肥', value: specimen.careKnowledge.fertilizer }
+      ];
+
+      let careY = 952;
+      careItems.forEach(item => {
+        this.add.text(125, careY, `${item.icon} ${item.label}:`, {
+          font: 'bold 12px Arial',
+          color: '#81c784'
+        }).setOrigin(0, 0.5);
+        this.add.text(210, careY, item.value, {
+          font: '11px Arial',
+          color: '#cccccc',
+          wordWrap: { width: 420 }
+        }).setOrigin(0, 0.5);
+        careY += 22;
+      });
+
+      if (specimen.careKnowledge.tips) {
+        this.add.text(125, careY + 4, `💡 小贴士: ${specimen.careKnowledge.tips}`, {
+          font: '11px Arial',
+          color: '#ffd54f',
+          wordWrap: { width: 500 }
+        }).setOrigin(0, 0.5);
+      }
+    }
+
     if (family) {
       const familyDescBg = this.add.graphics();
       familyDescBg.fillStyle(family.primaryColor, 0.1);
       familyDescBg.lineStyle(1, family.primaryColor, 0.3);
-      familyDescBg.fillRoundedRect(100, 865, 550, 60, 10);
-      familyDescBg.strokeRoundedRect(100, 865, 550, 60, 10);
+      familyDescBg.fillRoundedRect(100, 1095, 550, 50, 10);
+      familyDescBg.strokeRoundedRect(100, 1095, 550, 50, 10);
       
-      this.add.text(130, 885, `${family.icon} 科属特征`, {
+      this.add.text(130, 1110, `${family.icon} 科属特征`, {
         font: 'bold 12px Arial',
         color: '#aaaaaa'
       }).setOrigin(0, 0.5);
       
-      this.add.text(375, 908, family.featureDescription, {
-        font: '12px Arial',
+      this.add.text(375, 1128, family.featureDescription, {
+        font: '11px Arial',
         color: '#cccccc',
         align: 'center',
         wordWrap: { width: 490 }
@@ -1052,107 +1159,27 @@ export class GalleryScene extends Phaser.Scene {
       const eventTagBg = this.add.graphics();
       eventTagBg.fillStyle(0x2d0a1a, 0.8);
       eventTagBg.lineStyle(1, 0xe91e63, 0.5);
-      eventTagBg.fillRoundedRect(150, 940, 450, 36, 10);
-      eventTagBg.strokeRoundedRect(150, 940, 450, 36, 10);
-      this.add.text(375, 958, '✨ 通过活动奖励获得的限定标本', {
-        font: '14px Arial',
+      eventTagBg.fillRoundedRect(150, 1155, 450, 32, 10);
+      eventTagBg.strokeRoundedRect(150, 1155, 450, 32, 10);
+      this.add.text(375, 1171, '✨ 通过活动奖励获得的限定标本', {
+        font: '13px Arial',
         color: '#ff80ab'
       }).setOrigin(0.5);
       container.add(eventTagBg);
     }
 
-    if (progress) {
-      const statsBg = this.add.graphics();
-      statsBg.fillStyle(0x0f3460, 0.9);
-      const statsY = isEvent ? 990 : 990;
-      statsBg.fillRoundedRect(100, statsY, 550, 70, 12);
-      container.add(statsBg);
-
-      this.add.text(140, statsY + 22, '🏆 最高分', {
-        font: '12px Arial',
-        color: '#888888'
-      }).setOrigin(0, 0.5);
-      container.add(this.add.text(140, statsY + 45, progress.bestScore.toLocaleString(), {
-        font: 'bold 18px Arial',
-        color: '#ffd700'
-      }).setOrigin(0, 0.5));
-
-      this.add.text(310, statsY + 22, '⏱️ 最快', {
-        font: '12px Arial',
-        color: '#888888'
-      }).setOrigin(0, 0.5);
-      const mins = Math.floor(progress.bestTime / 60);
-      const secs = Math.floor(progress.bestTime % 60);
-      container.add(this.add.text(310, statsY + 45, `${mins}:${secs.toString().padStart(2, '0')}`, {
-        font: 'bold 18px Arial',
-        color: '#2196f3'
-      }).setOrigin(0, 0.5));
-
-      this.add.text(460, statsY + 22, '⭐ 评价', {
-        font: '12px Arial',
-        color: '#888888'
-      }).setOrigin(0, 0.5);
-      this.drawStarsInContainer(container, 460, statsY + 48, progress.stars, 18);
-    } else if (isEvent) {
-      const rewardInfoBg = this.add.graphics();
-      rewardInfoBg.fillStyle(0x0f3460, 0.8);
-      rewardInfoBg.fillRoundedRect(100, 990, 550, 50, 12);
-      this.add.text(375, 1015, '🎁 通过参与活动积累积分解锁此图鉴', {
-        font: '15px Arial',
-        color: '#81c784'
-      }).setOrigin(0.5);
-      container.add(rewardInfoBg);
-    }
-
-    const conservationStatus = SaveManager.getConservationHealth(item.specimenId);
-    if (conservationStatus > 0) {
-      const consBg = this.add.graphics();
-      const consY = progress || isEvent ? 1070 : 1030;
-      consBg.fillStyle(0x1b5e20, 0.4);
-      consBg.lineStyle(1, 0x4caf50, 0.5);
-      consBg.fillRoundedRect(100, consY, 550, 40, 10);
-      consBg.strokeRoundedRect(100, consY, 550, 40, 10);
-      
-      let consStatus = '';
-      let consColor = '#4caf50';
-      if (conservationStatus >= 80) {
-        consStatus = '🌿 生长旺盛';
-        consColor = '#4caf50';
-      } else if (conservationStatus >= 50) {
-        consStatus = '🍃 状态良好';
-        consColor = '#8bc34a';
-      } else if (conservationStatus >= 20) {
-        consStatus = '🥀 需要照料';
-        consColor = '#ff9800';
-      } else {
-        consStatus = '💀 状态危急';
-        consColor = '#f44336';
-      }
-      
-      this.add.text(130, consY + 20, consStatus, {
-        font: 'bold 14px Arial',
-        color: consColor
-      }).setOrigin(0, 0.5);
-      
-      this.add.text(620, consY + 20, `健康度: ${conservationStatus}%`, {
-        font: '13px Arial',
-        color: '#aaaaaa'
-      }).setOrigin(1, 0.5);
-      container.add(consBg);
-    }
-
     const closeBtn = this.add.graphics();
     closeBtn.fillStyle(headerColor, 1);
-    const closeBtnY = conservationStatus > 0 ? 1125 : (progress || isEvent ? 1125 : 1085);
-    closeBtn.fillRoundedRect(175, closeBtnY, 180, 50, 12);
+    const closeBtnY = 1195;
+    closeBtn.fillRoundedRect(175, closeBtnY, 180, 45, 12);
     closeBtn.setInteractive(
-      new Phaser.Geom.Rectangle(175, closeBtnY, 180, 50),
+      new Phaser.Geom.Rectangle(175, closeBtnY, 180, 45),
       Phaser.Geom.Rectangle.Contains
     );
     container.add(closeBtn);
 
-    this.add.text(265, closeBtnY + 25, '关闭', {
-      font: 'bold 18px Arial',
+    this.add.text(265, closeBtnY + 22, '关闭', {
+      font: 'bold 16px Arial',
       color: '#ffffff'
     }).setOrigin(0.5);
 
@@ -1160,17 +1187,17 @@ export class GalleryScene extends Phaser.Scene {
       const playBtn = this.add.graphics();
       const canPlay = SaveManager.isLevelUnlocked(item.id);
       playBtn.fillStyle(canPlay ? 0x4caf50 : 0x555555, 1);
-      playBtn.fillRoundedRect(395, closeBtnY, 180, 50, 12);
+      playBtn.fillRoundedRect(395, closeBtnY, 180, 45, 12);
       if (canPlay) {
         playBtn.setInteractive(
-          new Phaser.Geom.Rectangle(395, closeBtnY, 180, 50),
+          new Phaser.Geom.Rectangle(395, closeBtnY, 180, 45),
           Phaser.Geom.Rectangle.Contains
         );
       }
       container.add(playBtn);
 
-      this.add.text(485, closeBtnY + 25, canPlay ? '🎮 挑战关卡' : '🔒 未解锁', {
-        font: 'bold 16px Arial',
+      this.add.text(485, closeBtnY + 22, canPlay ? '🎮 挑战关卡' : '🔒 未解锁', {
+        font: 'bold 15px Arial',
         color: '#ffffff'
       }).setOrigin(0.5);
 
@@ -1184,16 +1211,16 @@ export class GalleryScene extends Phaser.Scene {
 
     const logBtn = this.add.graphics();
     logBtn.fillStyle(0x2196f3, 1);
-    const logBtnY = closeBtnY + 65;
-    logBtn.fillRoundedRect(100, logBtnY, 550, 45, 12);
+    const logBtnY = closeBtnY + 55;
+    logBtn.fillRoundedRect(100, logBtnY, 550, 40, 12);
     logBtn.setInteractive(
-      new Phaser.Geom.Rectangle(100, logBtnY, 550, 45),
+      new Phaser.Geom.Rectangle(100, logBtnY, 550, 40),
       Phaser.Geom.Rectangle.Contains
     );
     container.add(logBtn);
 
-    this.add.text(375, logBtnY + 22, '📋 查看修复日志', {
-      font: 'bold 16px Arial',
+    this.add.text(375, logBtnY + 20, '📋 查看修复日志', {
+      font: 'bold 14px Arial',
       color: '#ffffff'
     }).setOrigin(0.5);
 

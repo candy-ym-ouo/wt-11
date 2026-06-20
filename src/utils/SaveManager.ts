@@ -244,6 +244,9 @@ export class SaveManager {
     if (!migrated.galleryUnlocked) {
       migrated.galleryUnlocked = [];
     }
+    if (!migrated.galleryUnlockTimes) {
+      migrated.galleryUnlockTimes = {};
+    }
     if (!migrated.workshop) {
       migrated.workshop = defaultData.workshop;
     }
@@ -258,6 +261,9 @@ export class SaveManager {
       }
       if (!migrated.event.eventGalleryUnlocked) {
         migrated.event.eventGalleryUnlocked = defaultData.event.eventGalleryUnlocked;
+      }
+      if (!migrated.event.eventGalleryUnlockTimes) {
+        migrated.event.eventGalleryUnlockTimes = {};
       }
       if (!migrated.event.rankingCache) {
         migrated.event.rankingCache = defaultData.event.rankingCache;
@@ -718,6 +724,7 @@ export class SaveManager {
       unlockedLevels: [1],
       unlockedChapters: [1],
       galleryUnlocked: [],
+      galleryUnlockTimes: {},
       workshop: {
         fragments: {},
         materials: {},
@@ -950,6 +957,7 @@ export class SaveManager {
       eventProgress,
       eventBadges,
       eventGalleryUnlocked: [],
+      eventGalleryUnlockTimes: {},
       rankingCache: {}
     };
   }
@@ -1057,6 +1065,16 @@ export class SaveManager {
   static getUnlockedGalleryItems(): number[] {
     const combined = [...new Set([...this.data.galleryUnlocked, ...this.data.event.eventGalleryUnlocked])];
     return combined;
+  }
+
+  static getGalleryUnlockTime(specimenId: number): number | null {
+    if (this.data.galleryUnlockTimes[specimenId]) {
+      return this.data.galleryUnlockTimes[specimenId];
+    }
+    if (this.data.event.eventGalleryUnlockTimes[specimenId]) {
+      return this.data.event.eventGalleryUnlockTimes[specimenId];
+    }
+    return null;
   }
 
   static hasBadge(badgeId: number): boolean {
@@ -1776,6 +1794,7 @@ export class SaveManager {
 
     if (!this.data.galleryUnlocked.includes(specimenId)) {
       this.data.galleryUnlocked.push(specimenId);
+      this.data.galleryUnlockTimes[specimenId] = Date.now();
     }
 
     ConservationManager.registerSpecimen(specimenId);
@@ -2122,21 +2141,26 @@ export class SaveManager {
         this.data.badges[reward.id] = true;
         break;
       case 'specimen':
+        const now = Date.now();
         if (reward.specimenId) {
           if (!this.data.event.eventGalleryUnlocked.includes(reward.specimenId)) {
             this.data.event.eventGalleryUnlocked.push(reward.specimenId);
+            this.data.event.eventGalleryUnlockTimes[reward.specimenId] = now;
           }
           if (!this.data.galleryUnlocked.includes(reward.specimenId)) {
             this.data.galleryUnlocked.push(reward.specimenId);
+            this.data.galleryUnlockTimes[reward.specimenId] = now;
           }
         } else {
           const eventLevels = getEventLevelRulesByEventId(eventId);
           eventLevels.forEach(rule => {
             if (!this.data.event.eventGalleryUnlocked.includes(rule.specimenId)) {
               this.data.event.eventGalleryUnlocked.push(rule.specimenId);
+              this.data.event.eventGalleryUnlockTimes[rule.specimenId] = now;
             }
             if (!this.data.galleryUnlocked.includes(rule.specimenId)) {
               this.data.galleryUnlocked.push(rule.specimenId);
+              this.data.galleryUnlockTimes[rule.specimenId] = now;
             }
           });
         }
@@ -2911,6 +2935,7 @@ export class SaveManager {
   static unlockGallerySpecimen(specimenId: number): void {
     if (!this.data.galleryUnlocked.includes(specimenId)) {
       this.data.galleryUnlocked.push(specimenId);
+      this.data.galleryUnlockTimes[specimenId] = Date.now();
       this.syncFamilyProgress();
       SeasonPassManager.onGalleryUnlock(specimenId);
       this.save();
@@ -2927,6 +2952,7 @@ export class SaveManager {
   static unlockGalleryItem(specimenId: number): void {
     if (!this.data.galleryUnlocked.includes(specimenId)) {
       this.data.galleryUnlocked.push(specimenId);
+      this.data.galleryUnlockTimes[specimenId] = Date.now();
       this.save();
     }
   }
