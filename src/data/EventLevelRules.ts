@@ -14,7 +14,33 @@ export const EventLevelRules: EventLevelRule[] = [
     snapPositionThreshold: 55,
     snapRotationThreshold: 18,
     eventId: EVENT_ID_SPRING_FESTIVAL,
-    scoreMultiplier: 1.2
+    scoreMultiplier: 1.2,
+    background: {
+      cameraBackgroundColor: '#2e1a2e',
+      fillGradientFrom: 0x5a1e4a,
+      fillGradientTo: 0x3a0f3e,
+      headerColor: 0x9c27b0,
+      headerAlpha: 0.9,
+      particleEffect: 'sakura'
+    },
+    soundTheme: {
+      bgmKey: 'bgm_event_spring',
+      snapSfxKey: 'sfx_snap_soft',
+      completeSfxKey: 'sfx_complete_gentle',
+      failSfxKey: 'sfx_fail_soft',
+      ambientKey: 'ambient_spring'
+    },
+    pieceLayout: {
+      pieceWidth: 140,
+      pieceHeight: 110,
+      pieceSpacing: 20
+    },
+    rewardConfig: {
+      scoreMultiplier: 1.2,
+      fragmentDropBonus: 1,
+      materialDropBonus: 0,
+      bonusResearchPoints: 15
+    }
   },
   {
     id: 1002,
@@ -27,7 +53,33 @@ export const EventLevelRules: EventLevelRule[] = [
     snapPositionThreshold: 50,
     snapRotationThreshold: 16,
     eventId: EVENT_ID_SPRING_FESTIVAL,
-    scoreMultiplier: 1.3
+    scoreMultiplier: 1.3,
+    background: {
+      cameraBackgroundColor: '#1a2e2e',
+      fillGradientFrom: 0x0a3a4a,
+      fillGradientTo: 0x0f2a3e,
+      headerColor: 0x00838f,
+      headerAlpha: 0.9,
+      particleEffect: 'lotus_glow'
+    },
+    soundTheme: {
+      bgmKey: 'bgm_event_lotus',
+      snapSfxKey: 'sfx_snap_medium',
+      completeSfxKey: 'sfx_complete_medium',
+      failSfxKey: 'sfx_fail_medium',
+      ambientKey: 'ambient_water'
+    },
+    pieceLayout: {
+      pieceWidth: 130,
+      pieceHeight: 100,
+      pieceSpacing: 20
+    },
+    rewardConfig: {
+      scoreMultiplier: 1.3,
+      fragmentDropBonus: 1,
+      materialDropBonus: 1,
+      bonusResearchPoints: 20
+    }
   },
   {
     id: 1003,
@@ -40,7 +92,41 @@ export const EventLevelRules: EventLevelRule[] = [
     snapPositionThreshold: 45,
     snapRotationThreshold: 14,
     eventId: EVENT_ID_SPRING_FESTIVAL,
-    scoreMultiplier: 1.5
+    scoreMultiplier: 1.5,
+    background: {
+      cameraBackgroundColor: '#2e1a1a',
+      fillGradientFrom: 0x5a1a1a,
+      fillGradientTo: 0x3a0a0a,
+      headerColor: 0xc62828,
+      headerAlpha: 0.9,
+      particleEffect: 'red_petals'
+    },
+    soundTheme: {
+      bgmKey: 'bgm_event_legend',
+      snapSfxKey: 'sfx_snap_medium',
+      completeSfxKey: 'sfx_complete_medium',
+      failSfxKey: 'sfx_fail_medium',
+      ambientKey: 'ambient_legend'
+    },
+    specialRules: [
+      {
+        type: 'time_pressure',
+        name: '时间压力',
+        description: '剩余时间低于40%时计时加速',
+        value: 1.2
+      }
+    ],
+    pieceLayout: {
+      pieceWidth: 130,
+      pieceHeight: 100,
+      pieceSpacing: 20
+    },
+    rewardConfig: {
+      scoreMultiplier: 1.5,
+      fragmentDropBonus: 2,
+      materialDropBonus: 1,
+      bonusResearchPoints: 30
+    }
   },
   {
     id: 1004,
@@ -53,7 +139,41 @@ export const EventLevelRules: EventLevelRule[] = [
     snapPositionThreshold: 40,
     snapRotationThreshold: 12,
     eventId: EVENT_ID_SPRING_FESTIVAL,
-    scoreMultiplier: 1.8
+    scoreMultiplier: 1.8,
+    background: {
+      cameraBackgroundColor: '#1a1a3e',
+      fillGradientFrom: 0x1a0a4a,
+      fillGradientTo: 0x0a052a,
+      headerColor: 0x311b92,
+      headerAlpha: 0.9,
+      particleEffect: 'moonlight'
+    },
+    soundTheme: {
+      bgmKey: 'bgm_event_moonlight',
+      snapSfxKey: 'sfx_snap_hard',
+      completeSfxKey: 'sfx_complete_hard',
+      failSfxKey: 'sfx_fail_hard',
+      ambientKey: 'ambient_night'
+    },
+    specialRules: [
+      {
+        type: 'fog_of_war',
+        name: '迷雾遮罩',
+        description: '未吸附区域被迷雾覆盖',
+        value: 0.5
+      }
+    ],
+    pieceLayout: {
+      pieceWidth: 120,
+      pieceHeight: 90,
+      pieceSpacing: 20
+    },
+    rewardConfig: {
+      scoreMultiplier: 1.8,
+      fragmentDropBonus: 3,
+      materialDropBonus: 2,
+      bonusResearchPoints: 40
+    }
   },
   {
     id: 1005,
@@ -66,7 +186,47 @@ export const EventLevelRules: EventLevelRule[] = [
     snapPositionThreshold: 35,
     snapRotationThreshold: 10,
     eventId: EVENT_ID_SPRING_FESTIVAL,
-    scoreMultiplier: 2.0
+    scoreMultiplier: 2.0,
+    background: {
+      cameraBackgroundColor: '#1a2e3e',
+      fillGradientFrom: 0x0a2a5a,
+      fillGradientTo: 0x0f1a3e,
+      headerColor: 0x0d47a1,
+      headerAlpha: 0.9,
+      particleEffect: 'snowflakes'
+    },
+    soundTheme: {
+      bgmKey: 'bgm_event_ice',
+      snapSfxKey: 'sfx_snap_hard',
+      completeSfxKey: 'sfx_complete_special',
+      failSfxKey: 'sfx_fail_hard',
+      ambientKey: 'ambient_snow'
+    },
+    specialRules: [
+      {
+        type: 'piece_drift',
+        name: '碎片漂移',
+        description: '未吸附拼图块会缓慢漂移',
+        value: 0.4
+      },
+      {
+        type: 'limited_hints',
+        name: '提示限制',
+        description: '本关提示次数上限降低',
+        value: 2
+      }
+    ],
+    pieceLayout: {
+      pieceWidth: 120,
+      pieceHeight: 90,
+      pieceSpacing: 20
+    },
+    rewardConfig: {
+      scoreMultiplier: 2.0,
+      fragmentDropBonus: 4,
+      materialDropBonus: 3,
+      bonusResearchPoints: 60
+    }
   }
 ];
 

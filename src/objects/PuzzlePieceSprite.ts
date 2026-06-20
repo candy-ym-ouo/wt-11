@@ -324,6 +324,16 @@ export class PuzzlePieceSprite extends Phaser.GameObjects.Container {
     });
   }
 
+  rotatePieceBy(degrees: number): void {
+    if (this.isSnapped) return;
+    this.scene.tweens.add({
+      targets: this,
+      rotation: this.rotation + Phaser.Math.DegToRad(degrees),
+      duration: 160,
+      ease: 'Cubic.easeOut'
+    });
+  }
+
   isPieceSnapped(): boolean {
     return this.isSnapped;
   }

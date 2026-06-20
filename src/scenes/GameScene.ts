@@ -4,7 +4,7 @@ import { getLevelRule } from '../data/LevelRules';
 import { getPlantSpecimen } from '../data/PlantSpecimens';
 import { SaveManager } from '../utils/SaveManager';
 import { calculateScore, formatTime, getDifficultyColor, getDifficultyText } from '../utils/GameUtils';
-import { LevelRule, PlantSpecimen, PuzzlePieceData, EventLevelRule, DailyQuest, TowerFloorData, TowerResultData, TowerScoringCondition, TowerRuleModifier, AchievementUnlockResult, TutorialStep, ConservationHealthLevel, PuzzleSaveData, PuzzlePieceSaveData, HintUsageStats, ComboRewardStats, SnapRecord, MistakeRecord, SpeedSample, ReplayData } from '../types/GameTypes';
+import { LevelRule, PlantSpecimen, PuzzlePieceData, EventLevelRule, DailyQuest, TowerFloorData, TowerResultData, TowerScoringCondition, TowerRuleModifier, AchievementUnlockResult, TutorialStep, ConservationHealthLevel, PuzzleSaveData, PuzzlePieceSaveData, HintUsageStats, ComboRewardStats, SnapRecord, MistakeRecord, SpeedSample, ReplayData, LevelSpecialRule } from '../types/GameTypes';
 import { getDropRule, getFragmentsBySpecimenId, Fragments, Materials } from '../data/WorkshopConfig';
 import { getEventLevelRule, isEventLevel } from '../data/EventLevelRules';
 import { getEventById } from '../data/Events';
@@ -98,6 +98,13 @@ export class GameScene extends Phaser.Scene {
   private randomEventStats!: RandomEventSessionStats;
   private lastUpdateTime: number = 0;
   private eventNotificationTimer: Phaser.Time.TimerEvent | null = null;
+
+  private currentBgmKey: string | null = null;
+  private currentAmbientKey: string | null = null;
+  private fogOverlay!: Phaser.GameObjects.Graphics;
+  private scoreSurgeMultiplier: number = 1;
+  private scoreSurgeTimer: Phaser.Time.TimerEvent | null = null;
+  private pieceDriftTimer: Phaser.Time.TimerEvent | null = null;
 
   private static readonly TARGET_AREA_X = 375;
   private static readonly TARGET_AREA_Y = 420;
@@ -239,6 +246,8 @@ export class GameScene extends Phaser.Scene {
     this.addControlButtons();
     this.setupEvents();
     this.setupRandomEventUI();
+    this.setupLevelSoundTheme();
+    this.setupLevelSpecialRules();
 
     if (!this.isEventLevel && !this.isTowerFloor && TutorialManager.shouldShowLevelTutorial(this.levelRule.id)) {
       const tutorialSteps = getGameTutorial(this.levelRule.id);
@@ -333,20 +342,63 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.updateActiveEventUI();
+
+    if (this.hasLevelSpecialRule('time_pressure')) {
+      const pressureDelta = this.applyLevelTimePressure(deltaSeconds);
+      this.elapsedTime += pressureDelta - deltaSeconds;
+    }
+
+    if (this.hasLevelSpecialRule('gravity_pull')) {
+      this.applyGravityPull();
+    }
   }
 
   private addBackground(): void {
-    this.cameras.main.setBackgroundColor('#1a1a2e');
+    const bg = this.levelRule.background;
+    const cameraColor = bg?.cameraBackgroundColor ?? '#1a1a2e';
+    this.cameras.main.setBackgroundColor(cameraColor);
 
-    const bg = this.add.graphics();
-    bg.fillStyle(0x16213e, 1);
-    bg.fillRect(0, 0, 750, 1334);
+    const graphics = this.add.graphics();
+    const from = bg?.fillGradientFrom ?? 0x16213e;
+    const to = bg?.fillGradientTo ?? 0x16213e;
+
+    if (from !== to) {
+      const gradientH = 667;
+      for (let i = 0; i < gradientH; i++) {
+        const t = i / gradientH;
+        const r = Math.round(((from >> 16) & 0xff) * (1 - t) + ((to >> 16) & 0xff) * t);
+        const g = Math.round(((from >> 8) & 0xff) * (1 - t) + ((to >> 8) & 0xff) * t);
+        const b = Math.round((from & 0xff) * (1 - t) + (to & 0xff) * t);
+        const color = (r << 16) | (g << 8) | b;
+        graphics.fillStyle(color, 1);
+        graphics.fillRect(0, i * 2, 750, 2);
+      }
+    } else {
+      graphics.fillStyle(from, 1);
+      graphics.fillRect(0, 0, 750, 1334);
+    }
+
+    if (bg?.backgroundImageKey) {
+      this.add.image(375, 667, bg.backgroundImageKey).setAlpha(0.3).setDepth(0);
+    }
   }
 
   private addHeader(): void {
     const header = this.add.graphics();
-    const headerColor = this.isEventLevel && this.eventId ? getEventById(this.eventId)?.primaryColor ?? 0x0f3460 : 0x0f3460;
-    header.fillStyle(headerColor, this.isEventLevel ? 0.9 : 1);
+    const bgConfig = this.levelRule.background;
+    const defaultHeaderColor = 0x0f3460;
+    let headerColor: number;
+    let headerAlpha: number;
+
+    if (this.isEventLevel && this.eventId) {
+      headerColor = getEventById(this.eventId)?.primaryColor ?? bgConfig?.headerColor ?? defaultHeaderColor;
+      headerAlpha = bgConfig?.headerAlpha ?? 0.9;
+    } else {
+      headerColor = bgConfig?.headerColor ?? defaultHeaderColor;
+      headerAlpha = bgConfig?.headerAlpha ?? 1;
+    }
+
+    header.fillStyle(headerColor, headerAlpha);
     header.fillRect(0, 0, 750, 120);
 
     this.add.text(60, 40, this.levelRule.name, {
@@ -738,10 +790,12 @@ export class GameScene extends Phaser.Scene {
     const cols = Math.min(4, count);
     const rows = Math.ceil(count / cols);
 
-    const pieceW = this.levelRule.id <= 2 ? 140 : this.levelRule.id <= 4 ? 130 : 120;
-    const pieceH = this.levelRule.id <= 2 ? 110 : this.levelRule.id <= 4 ? 100 : 90;
+    const layout = this.levelRule.pieceLayout;
+    const pieceW = layout?.pieceWidth ?? (this.levelRule.difficulty === 'easy' ? 140 : this.levelRule.difficulty === 'medium' ? 130 : 120);
+    const pieceH = layout?.pieceHeight ?? (this.levelRule.difficulty === 'easy' ? 110 : this.levelRule.difficulty === 'medium' ? 100 : 90);
+    const spacing = layout?.pieceSpacing ?? 20;
 
-    const totalWidth = cols * pieceW + (cols - 1) * 20;
+    const totalWidth = cols * pieceW + (cols - 1) * spacing;
     const startX = (750 - totalWidth) / 2 + pieceW / 2;
     const startY = GameScene.PIECE_AREA_START_Y + pieceH / 2;
 
@@ -749,8 +803,8 @@ export class GameScene extends Phaser.Scene {
       const col = i % cols;
       const row = Math.floor(i / cols);
       positions.push({
-        x: startX + col * (pieceW + 20) + Phaser.Math.Between(-15, 15),
-        y: startY + row * (pieceH + 20) + Phaser.Math.Between(-8, 8)
+        x: startX + col * (pieceW + spacing) + Phaser.Math.Between(-15, 15),
+        y: startY + row * (pieceH + spacing) + Phaser.Math.Between(-8, 8)
       });
     }
 
@@ -1024,15 +1078,16 @@ export class GameScene extends Phaser.Scene {
 
   private rotateSelectedPiece(): void {
     const selected = PuzzlePieceSprite.getSelectedPiece();
+    const rotationAngle = this.hasLevelSpecialRule('no_rotation_reset') ? 45 : 90;
     if (selected && !selected.isPieceSnapped()) {
-      selected.rotatePiece();
+      selected.rotatePieceBy(rotationAngle);
       this.rotationAdjustCount++;
       this.cameras.main.shake(40, 0.002, false);
     } else {
       const pieceToRotate = this.pieces.find(p => !p.isPieceSnapped());
       if (pieceToRotate) {
         pieceToRotate.setSelected(true);
-        pieceToRotate.rotatePiece();
+        pieceToRotate.rotatePieceBy(rotationAngle);
         this.rotationAdjustCount++;
       }
     }
@@ -1045,6 +1100,14 @@ export class GameScene extends Phaser.Scene {
   private useOutlineFlashHint(): void {
     if (this.hasTowerRule('no_hint_restriction')) return;
     if (this.isPaused || this.isCompleted) return;
+
+    if (this.hasLevelSpecialRule('limited_hints')) {
+      const limit = this.getLevelSpecialRule('limited_hints')?.value ?? 2;
+      if (this.outlineFlashCount + this.pieceHighlightCount + this.fullPreviewCount >= limit) {
+        this.cameras.main.flash(100, 255, 100, 100, false);
+        return;
+      }
+    }
 
     if (this.randomEventsEnabled && !this.isTowerFloor && !this.isEventLevel && RandomEventManager.isHintDisabled()) {
       this.cameras.main.flash(100, 255, 100, 100, false);
@@ -1070,6 +1133,14 @@ export class GameScene extends Phaser.Scene {
     if (this.hasTowerRule('no_hint_restriction')) return;
     if (this.isPaused || this.isCompleted) return;
 
+    if (this.hasLevelSpecialRule('limited_hints')) {
+      const limit = this.getLevelSpecialRule('limited_hints')?.value ?? 2;
+      if (this.outlineFlashCount + this.pieceHighlightCount + this.fullPreviewCount >= limit) {
+        this.cameras.main.flash(100, 255, 100, 100, false);
+        return;
+      }
+    }
+
     if (this.randomEventsEnabled && !this.isTowerFloor && !this.isEventLevel && RandomEventManager.isHintDisabled()) {
       this.cameras.main.flash(100, 255, 100, 100, false);
       return;
@@ -1094,6 +1165,14 @@ export class GameScene extends Phaser.Scene {
   private useFullPreviewHint(): void {
     if (this.hasTowerRule('no_hint_restriction')) return;
     if (this.isPaused || this.isCompleted) return;
+
+    if (this.hasLevelSpecialRule('limited_hints')) {
+      const limit = this.getLevelSpecialRule('limited_hints')?.value ?? 2;
+      if (this.outlineFlashCount + this.pieceHighlightCount + this.fullPreviewCount >= limit) {
+        this.cameras.main.flash(100, 255, 100, 100, false);
+        return;
+      }
+    }
 
     if (this.randomEventsEnabled && !this.isTowerFloor && !this.isEventLevel && RandomEventManager.isHintDisabled()) {
       this.cameras.main.flash(100, 255, 100, 100, false);
@@ -1197,6 +1276,7 @@ export class GameScene extends Phaser.Scene {
     this.fullPreviewTimer = null;
     this.fullPreviewActive = false;
     this.fullPreviewStartAt = null;
+    this.scoreSurgeMultiplier = 1;
 
     this.pieces.forEach(piece => piece.clearAllHints());
 
@@ -1275,6 +1355,10 @@ export class GameScene extends Phaser.Scene {
 
       this.updateUI();
 
+      this.playLevelSfx('snap');
+      this.updateFogOverlay();
+      this.handleScoreSurgeOnSnap();
+
       this.cameras.main.flash(80, 255, 255, 200, false);
 
       this.saveCurrentProgress();
@@ -1347,6 +1431,224 @@ export class GameScene extends Phaser.Scene {
     this.randomEventContainer = this.add.container(375, 700);
     this.randomEventContainer.setDepth(50);
     this.randomEventContainer.setVisible(true);
+  }
+
+  private setupLevelSoundTheme(): void {
+    const theme = this.levelRule.soundTheme;
+    if (!theme) return;
+
+    if (theme.bgmKey && this.cache.audio.exists(theme.bgmKey)) {
+      this.currentBgmKey = theme.bgmKey;
+      this.sound.play(theme.bgmKey, { loop: true, volume: 0.4 });
+    }
+
+    if (theme.ambientKey && this.cache.audio.exists(theme.ambientKey)) {
+      this.currentAmbientKey = theme.ambientKey;
+      this.sound.play(theme.ambientKey, { loop: true, volume: 0.2 });
+    }
+  }
+
+  private playLevelSfx(sfxType: 'snap' | 'complete' | 'fail'): void {
+    const theme = this.levelRule.soundTheme;
+    let key: string | undefined;
+    switch (sfxType) {
+      case 'snap': key = theme?.snapSfxKey; break;
+      case 'complete': key = theme?.completeSfxKey; break;
+      case 'fail': key = theme?.failSfxKey; break;
+    }
+    if (key && this.cache.audio.exists(key)) {
+      this.sound.play(key, { volume: 0.6 });
+    }
+  }
+
+  private stopLevelSoundTheme(): void {
+    if (this.currentBgmKey) {
+      const bgm = this.sound.get(this.currentBgmKey);
+      if (bgm && bgm.isPlaying) bgm.stop();
+      this.currentBgmKey = null;
+    }
+    if (this.currentAmbientKey) {
+      const ambient = this.sound.get(this.currentAmbientKey);
+      if (ambient && ambient.isPlaying) ambient.stop();
+      this.currentAmbientKey = null;
+    }
+  }
+
+  private setupLevelSpecialRules(): void {
+    const rules = this.levelRule.specialRules;
+    if (!rules || rules.length === 0) return;
+
+    rules.forEach(rule => {
+      switch (rule.type) {
+        case 'fog_of_war':
+          this.setupFogOfWar(rule.value ?? 0.5);
+          break;
+        case 'piece_drift':
+          this.setupPieceDrift(rule.value ?? 0.5);
+          break;
+        case 'limited_hints':
+          break;
+        case 'time_pressure':
+          break;
+        case 'score_surge':
+          break;
+        case 'no_rotation_reset':
+          break;
+        case 'gravity_pull':
+          break;
+      }
+    });
+
+    if (rules.some(r => r.type !== 'fog_of_war' && r.type !== 'piece_drift' && r.type !== 'limited_hints')) {
+      this.addSpecialRulesIndicator(rules);
+    }
+  }
+
+  private setupFogOfWar(intensity: number): void {
+    this.fogOverlay = this.add.graphics();
+    this.fogOverlay.setDepth(8);
+    this.updateFogOverlay();
+  }
+
+  private updateFogOverlay(): void {
+    if (!this.fogOverlay) return;
+
+    const rule = this.getLevelSpecialRule('fog_of_war');
+    if (!rule) return;
+
+    const intensity = rule.value ?? 0.5;
+    const progress = this.realPiecesCount > 0 ? this.snappedCount / this.realPiecesCount : 0;
+    const effectiveIntensity = intensity * (1 - progress * 0.8);
+
+    this.fogOverlay.clear();
+    if (effectiveIntensity > 0.01) {
+      this.fogOverlay.fillStyle(0x000000, effectiveIntensity);
+      this.fogOverlay.fillRect(0, 120, 750, 780);
+    }
+  }
+
+  private setupPieceDrift(speed: number): void {
+    this.pieceDriftTimer = this.time.addEvent({
+      delay: 2000,
+      loop: true,
+      callback: () => {
+        if (this.isPaused || this.isCompleted) return;
+        const unsnapped = this.pieces.filter(p => !p.isPieceSnapped() && !p.isMirror);
+        unsnapped.forEach(piece => {
+          const dx = (Math.random() - 0.5) * speed * 20;
+          const dy = (Math.random() - 0.5) * speed * 20;
+          this.tweens.add({
+            targets: piece,
+            x: piece.x + dx,
+            y: piece.y + dy,
+            duration: 1500,
+            ease: 'Sine.easeInOut'
+          });
+        });
+      }
+    });
+  }
+
+  private getLevelSpecialRule(type: string): LevelSpecialRule | undefined {
+    return this.levelRule.specialRules?.find(r => r.type === type);
+  }
+
+  private hasLevelSpecialRule(type: string): boolean {
+    return this.levelRule.specialRules?.some(r => r.type === type) ?? false;
+  }
+
+  private addSpecialRulesIndicator(rules: LevelSpecialRule[]): void {
+    const displayRules = rules.filter(r => r.type !== 'fog_of_war');
+    if (displayRules.length === 0) return;
+
+    const rulesY = this.isTowerFloor ? 128 : 128;
+    const ruleNames = displayRules.map(r => r.name);
+    const ruleText = ruleNames.join(' · ');
+    const ruleBg = this.add.graphics();
+    ruleBg.fillStyle(0x9c27b0, 0.8);
+    const ruleTextWidth = Math.min(660, ruleText.length * 13 + 24);
+    ruleBg.fillRoundedRect(60, rulesY - 10, ruleTextWidth, 22, 6);
+    this.add.text(72, rulesY + 1, `📜 ${ruleText}`, {
+      font: 'bold 11px Arial',
+      color: '#ffffff'
+    }).setOrigin(0, 0.5);
+  }
+
+  private cleanupSpecialRules(): void {
+    if (this.pieceDriftTimer) {
+      this.pieceDriftTimer.remove(false);
+      this.pieceDriftTimer = null;
+    }
+    if (this.scoreSurgeTimer) {
+      this.scoreSurgeTimer.remove(false);
+      this.scoreSurgeTimer = null;
+    }
+    if (this.fogOverlay) {
+      this.fogOverlay.destroy();
+      this.fogOverlay = null as any;
+    }
+    this.scoreSurgeMultiplier = 1;
+  }
+
+  private handleScoreSurgeOnSnap(): void {
+    if (!this.hasLevelSpecialRule('score_surge')) return;
+
+    const rule = this.getLevelSpecialRule('score_surge');
+    if (!rule) return;
+
+    if (this.comboCount >= 3) {
+      this.scoreSurgeMultiplier = rule.value ?? 1.5;
+
+      if (this.scoreSurgeTimer) {
+        this.scoreSurgeTimer.remove(false);
+      }
+
+      this.scoreSurgeTimer = this.time.delayedCall(5000, () => {
+        this.scoreSurgeMultiplier = 1;
+      });
+    }
+  }
+
+  private applyLevelTimePressure(deltaSeconds: number): number {
+    if (!this.hasLevelSpecialRule('time_pressure')) return deltaSeconds;
+
+    const rule = this.getLevelSpecialRule('time_pressure');
+    if (!rule) return deltaSeconds;
+
+    const remaining = this.levelRule.timeLimit - this.elapsedTime;
+    const ratio = remaining / this.levelRule.timeLimit;
+    const threshold = 0.3;
+
+    if (ratio < threshold) {
+      return deltaSeconds * (rule.value ?? 1.3);
+    }
+    return deltaSeconds;
+  }
+
+  private applyGravityPull(): void {
+    if (!this.hasLevelSpecialRule('gravity_pull')) return;
+    if (this.isPaused || this.isCompleted) return;
+
+    const rule = this.getLevelSpecialRule('gravity_pull');
+    const strength = (rule?.value ?? 0.3) * 0.3;
+
+    const unsnapped = this.pieces.filter(p => !p.isPieceSnapped() && !p.isMirror);
+    unsnapped.forEach(piece => {
+      const dx = GameScene.TARGET_AREA_X - piece.x;
+      const dy = GameScene.TARGET_AREA_Y - piece.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 10) {
+        piece.x += (dx / dist) * strength;
+        piece.y += (dy / dist) * strength;
+      }
+    });
+  }
+
+  private getLevelScoreMultiplier(): number {
+    const rewardConfig = this.levelRule.rewardConfig;
+    let multiplier = rewardConfig?.scoreMultiplier ?? 1;
+    multiplier *= this.scoreSurgeMultiplier;
+    return multiplier;
   }
 
   private handleRandomEventTriggered(activeEvent: ActiveRandomEvent): void {
@@ -1638,6 +1940,10 @@ export class GameScene extends Phaser.Scene {
     this.isCompleted = true;
     if (this.timerEvent) this.timerEvent.paused = true;
 
+    this.playLevelSfx('fail');
+    this.stopLevelSoundTheme();
+    this.cleanupSpecialRules();
+
     if (this.fullPreviewActive) {
       this.stopFullPreview();
     }
@@ -1753,11 +2059,12 @@ export class GameScene extends Phaser.Scene {
       this.getComboRewardStats()
     );
     let finalMultiplier = this.scoreMultiplier;
-    
+    finalMultiplier *= this.getLevelScoreMultiplier();
+
     if (this.randomEventsEnabled && !this.isTowerFloor && !this.isEventLevel) {
       finalMultiplier *= RandomEventManager.getScoreMultiplier();
     }
-    
+
     const finalScore = Math.floor(result.score * finalMultiplier);
     this.scoreText.setText(`得分: ${finalScore}`);
   }
@@ -1796,6 +2103,10 @@ export class GameScene extends Phaser.Scene {
     this.isCompleted = true;
     if (this.timerEvent) this.timerEvent.paused = true;
     if (this.speedSampleTimer) this.speedSampleTimer.paused = true;
+
+    this.playLevelSfx('complete');
+    this.stopLevelSoundTheme();
+    this.cleanupSpecialRules();
 
     if (this.fullPreviewActive) {
       this.stopFullPreview();
@@ -1867,7 +2178,7 @@ export class GameScene extends Phaser.Scene {
       this.getHintUsageStats(),
       this.getComboRewardStats()
     );
-    let finalScore = Math.floor(result.score * this.scoreMultiplier);
+    let finalScore = Math.floor(result.score * this.scoreMultiplier * this.getLevelScoreMultiplier());
     
     let randomEventStats: RandomEventSessionStats | null = null;
     let rewardMultiplier = 1;
@@ -1939,6 +2250,11 @@ export class GameScene extends Phaser.Scene {
         const multiplier = ConservationManager.getRewardMultiplierForSpecimen(chapterResult.conservationInfo.specimenId);
         conservationMultiplier = multiplier;
       }
+    }
+
+    const bonusPoints = this.levelRule.rewardConfig?.bonusResearchPoints ?? 0;
+    if (bonusPoints > 0 && !this.isEventLevel && !this.isTowerFloor) {
+      SaveManager.addResearchPoints(bonusPoints);
     }
 
     let drops = this.calculateDrops(result.stars);
@@ -2177,6 +2493,10 @@ export class GameScene extends Phaser.Scene {
     this.isCompleted = true;
     if (this.timerEvent) this.timerEvent.paused = true;
 
+    this.playLevelSfx('fail');
+    this.stopLevelSoundTheme();
+    this.cleanupSpecialRules();
+
     if (this.fullPreviewActive) {
       this.stopFullPreview();
     }
@@ -2226,6 +2546,10 @@ export class GameScene extends Phaser.Scene {
     const rule = getDropRule(this.levelRule.difficulty, stars);
     if (!rule) return { fragments: [], materials: [] };
 
+    const rewardConfig = this.levelRule.rewardConfig;
+    const fragBonus = rewardConfig?.fragmentDropBonus ?? 0;
+    const matBonus = rewardConfig?.materialDropBonus ?? 0;
+
     const specimenFragments = getFragmentsBySpecimenId(this.specimen.id);
     const fragmentDrops: { id: number; count: number }[] = [];
     const materialDrops: { id: number; count: number }[] = [];
@@ -2234,7 +2558,8 @@ export class GameScene extends Phaser.Scene {
       const matching = specimenFragments.filter(f => f.rarity === drop.rarity);
       if (matching.length > 0) {
         const frag = matching[Phaser.Math.Between(0, matching.length - 1)];
-        const count = Phaser.Math.Between(drop.minCount, drop.maxCount);
+        let count = Phaser.Math.Between(drop.minCount, drop.maxCount);
+        count += fragBonus;
         if (count > 0) {
           const existing = fragmentDrops.find(d => d.id === frag.id);
           if (existing) {
@@ -2247,7 +2572,8 @@ export class GameScene extends Phaser.Scene {
     });
 
     rule.materialDrops.forEach(drop => {
-      const count = Phaser.Math.Between(drop.minCount, drop.maxCount);
+      let count = Phaser.Math.Between(drop.minCount, drop.maxCount);
+      count += matBonus;
       if (count > 0) {
         const existing = materialDrops.find(d => d.id === drop.materialId);
         if (existing) {

@@ -117,6 +117,54 @@ export interface LevelProgressResult {
   starsImproved: boolean;
 }
 
+export type LevelSpecialRuleType =
+  | 'fog_of_war'
+  | 'time_pressure'
+  | 'piece_drift'
+  | 'limited_hints'
+  | 'score_surge'
+  | 'no_rotation_reset'
+  | 'gravity_pull';
+
+export interface LevelBackgroundConfig {
+  cameraBackgroundColor?: string;
+  fillGradientFrom?: number;
+  fillGradientTo?: number;
+  backgroundImageKey?: string;
+  particleEffect?: string;
+  headerColor?: number;
+  headerAlpha?: number;
+}
+
+export interface LevelSoundThemeConfig {
+  bgmKey?: string;
+  snapSfxKey?: string;
+  completeSfxKey?: string;
+  failSfxKey?: string;
+  ambientKey?: string;
+}
+
+export interface LevelSpecialRule {
+  type: LevelSpecialRuleType;
+  name: string;
+  description: string;
+  value?: number;
+}
+
+export interface LevelRewardConfig {
+  scoreMultiplier?: number;
+  fragmentDropBonus?: number;
+  materialDropBonus?: number;
+  starThresholds?: number[];
+  bonusResearchPoints?: number;
+}
+
+export interface LevelPieceLayoutConfig {
+  pieceWidth?: number;
+  pieceHeight?: number;
+  pieceSpacing?: number;
+}
+
 export interface LevelRule {
   id: number;
   name: string;
@@ -127,6 +175,11 @@ export interface LevelRule {
   timeLimit: number;
   snapPositionThreshold: number;
   snapRotationThreshold: number;
+  background?: LevelBackgroundConfig;
+  soundTheme?: LevelSoundThemeConfig;
+  specialRules?: LevelSpecialRule[];
+  rewardConfig?: LevelRewardConfig;
+  pieceLayout?: LevelPieceLayoutConfig;
 }
 
 export interface PlantSpecimen {
