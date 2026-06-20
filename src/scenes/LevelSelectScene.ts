@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { Levels } from '../data/Levels';
 import { SaveManager } from '../utils/SaveManager';
 import { getDifficultyColor, getDifficultyText, formatTime } from '../utils/GameUtils';
-import { LevelData } from '../types/GameTypes';
+import { LevelData, PuzzleSaveData } from '../types/GameTypes';
 import { Chapters, getChapterById, getChapterByLevelId } from '../data/Chapters';
 import { DailyQuestManager } from '../utils/DailyQuestManager';
 import { TutorialManager } from '../utils/TutorialManager';
@@ -24,6 +24,8 @@ export class LevelSelectScene extends Phaser.Scene {
 
   private filterContainer: Phaser.GameObjects.Container | null = null;
   private levelGridContainer: Phaser.GameObjects.Container | null = null;
+  private hasResumeSave: boolean = false;
+  private contentOffsetY: number = 0;
 
   constructor() {
     super('LevelSelectScene');
@@ -37,13 +39,103 @@ export class LevelSelectScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.checkForResumeSave();
     this.addBackground();
     this.addTitle();
+    if (this.hasResumeSave) {
+      this.addResumeButton();
+    }
     this.addChapterTabs();
     this.addTutorialCard();
     this.addFilterBar();
     this.addLevelGrid();
     this.addBottomButtons();
+  }
+
+  private checkForResumeSave(): void {
+    const allSaves = SaveManager.getAllPuzzleSaves();
+    const saveEntries = Object.entries(allSaves);
+    this.hasResumeSave = saveEntries.length > 0;
+    this.contentOffsetY = this.hasResumeSave ? 110 : 0;
+  }
+
+  private addResumeButton(): void {
+    const allSaves = SaveManager.getAllPuzzleSaves();
+    const saveEntries = Object.entries(allSaves);
+
+    if (saveEntries.length === 0) return;
+
+    const latestSave = saveEntries.reduce((latest, [key, save]) => {
+      return save.savedAt > latest[1].savedAt ? [key, save] : latest;
+    })[1];
+
+    const level = Levels.find(l => l.id === latestSave.levelId);
+    if (!level) return;
+
+    const btnY = 170;
+    const btnW = 680;
+    const btnH = 80;
+
+    const btn = this.add.graphics();
+    btn.fillStyle(0x2196f3, 0.95);
+    btn.fillRoundedRect(375 - btnW / 2, btnY - btnH / 2, btnW, btnH, 16);
+    btn.lineStyle(3, 0xffffff, 0.3);
+    btn.strokeRoundedRect(375 - btnW / 2, btnY - btnH / 2, btnW, btnH, 16);
+
+    btn.setInteractive(
+      new Phaser.Geom.Rectangle(375 - btnW / 2, btnY - btnH / 2, btnW, btnH),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    this.add.text(80, btnY - 15, '💾 继续上次游戏', {
+      font: 'bold 22px Arial',
+      color: '#ffffff'
+    }).setOrigin(0, 0.5);
+
+    const saveDate = new Date(latestSave.savedAt);
+    const timeStr = saveDate.toLocaleString('zh-CN', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    this.add.text(80, btnY + 15, `${level.name} · 剩余 ${formatTime(latestSave.remainingTime)} · 进度 ${latestSave.snappedCount}/${latestSave.pieces.length} · ${timeStr}`, {
+      font: '14px Arial',
+      color: 'rgba(255,255,255,0.8)'
+    }).setOrigin(0, 0.5);
+
+    this.add.text(670, btnY, '开始 →', {
+      font: 'bold 18px Arial',
+      color: '#ffffff'
+    }).setOrigin(1, 0.5);
+
+    btn.on('pointerover', () => {
+      btn.clear();
+      btn.fillStyle(0x42a5f5, 0.95);
+      btn.fillRoundedRect(375 - btnW / 2, btnY - btnH / 2, btnW, btnH, 16);
+      btn.lineStyle(3, 0xffffff, 0.5);
+      btn.strokeRoundedRect(375 - btnW / 2, btnY - btnH / 2, btnW, btnH, 16);
+    });
+
+    btn.on('pointerout', () => {
+      btn.clear();
+      btn.fillStyle(0x2196f3, 0.95);
+      btn.fillRoundedRect(375 - btnW / 2, btnY - btnH / 2, btnW, btnH, 16);
+      btn.lineStyle(3, 0xffffff, 0.3);
+      btn.strokeRoundedRect(375 - btnW / 2, btnY - btnH / 2, btnW, btnH, 16);
+    });
+
+    btn.on('pointerup', () => {
+      this.scene.start('GameScene', {
+        levelId: latestSave.levelId,
+        isEventLevel: latestSave.isEventLevel,
+        eventId: latestSave.eventId ?? undefined,
+        isTowerFloor: latestSave.isTowerFloor,
+        towerFloorId: latestSave.towerFloorId ?? undefined,
+        loadSave: true
+      });
+    });
   }
 
   private addBackground(): void {
@@ -67,7 +159,7 @@ export class LevelSelectScene extends Phaser.Scene {
   }
 
   private addChapterTabs(): void {
-    const tabY = 150;
+    const tabY = 150 + this.contentOffsetY;
     const tabWidth = 220;
     const tabHeight = 50;
     const spacing = 10;
@@ -121,7 +213,7 @@ export class LevelSelectScene extends Phaser.Scene {
     const cardWidth = 670;
     const cardHeight = 120;
     const x = 375;
-    const y = 260;
+    const y = 260 + this.contentOffsetY;
 
     const card = this.add.graphics();
 
@@ -231,7 +323,7 @@ export class LevelSelectScene extends Phaser.Scene {
   }
 
   private addFilterBar(): void {
-    const barY = 350;
+    const barY = 350 + this.contentOffsetY;
     const barHeight = 160;
 
     const barBg = this.add.graphics();
@@ -519,7 +611,7 @@ export class LevelSelectScene extends Phaser.Scene {
     if (!this.levelGridContainer) return;
 
     const levelsToShow = this.getFilteredLevels();
-    const startY = 540;
+    const startY = 540 + this.contentOffsetY;
     const cardWidth = 320;
     const cardHeight = 320;
     const padding = 30;

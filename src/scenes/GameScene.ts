@@ -4,7 +4,7 @@ import { getLevelRule } from '../data/LevelRules';
 import { getPlantSpecimen } from '../data/PlantSpecimens';
 import { SaveManager } from '../utils/SaveManager';
 import { calculateScore, formatTime, getDifficultyColor, getDifficultyText } from '../utils/GameUtils';
-import { LevelRule, PlantSpecimen, PuzzlePieceData, EventLevelRule, DailyQuest, TowerFloorData, TowerResultData, TowerScoringCondition, TowerRuleModifier, AchievementUnlockResult, TutorialStep, ConservationHealthLevel } from '../types/GameTypes';
+import { LevelRule, PlantSpecimen, PuzzlePieceData, EventLevelRule, DailyQuest, TowerFloorData, TowerResultData, TowerScoringCondition, TowerRuleModifier, AchievementUnlockResult, TutorialStep, ConservationHealthLevel, PuzzleSaveData, PuzzlePieceSaveData } from '../types/GameTypes';
 import { getDropRule, getFragmentsBySpecimenId, Fragments, Materials } from '../data/WorkshopConfig';
 import { getEventLevelRule, isEventLevel } from '../data/EventLevelRules';
 import { getEventById } from '../data/Events';
@@ -57,6 +57,9 @@ export class GameScene extends Phaser.Scene {
   private comboBonusMultiplier: number = 1;
   private mirrorPieces: PuzzlePieceSprite[] = [];
   private realPiecesCount: number = 0;
+  private isLoadingSave: boolean = false;
+  private loadedSaveData: PuzzleSaveData | null = null;
+  private autoSaveTimer: Phaser.Time.TimerEvent | null = null;
 
   private tutorialContainer!: Phaser.GameObjects.Container;
   private tutorialOverlay!: Phaser.GameObjects.Graphics;
@@ -89,7 +92,7 @@ export class GameScene extends Phaser.Scene {
     super('GameScene');
   }
 
-  init(data: { levelId: number; isEventLevel?: boolean; eventId?: string; isTowerFloor?: boolean; towerFloorId?: number }): void {
+  init(data: { levelId: number; isEventLevel?: boolean; eventId?: string; isTowerFloor?: boolean; towerFloorId?: number; loadSave?: boolean }): void {
     this.isEventLevel = data.isEventLevel ?? false;
     this.eventId = data.eventId ?? null;
     this.isTowerFloor = data.isTowerFloor ?? false;
@@ -108,6 +111,8 @@ export class GameScene extends Phaser.Scene {
     this.pieces = [];
     this.targetOffsetX = 0;
     this.targetOffsetY = 0;
+    this.isLoadingSave = data.loadSave ?? false;
+    this.loadedSaveData = null;
 
     if (this.isTowerFloor && this.towerFloorId) {
       const towerFloor = getTowerFloor(this.towerFloorId);
@@ -159,6 +164,34 @@ export class GameScene extends Phaser.Scene {
     }
     this.specimen = specimen;
 
+    if (this.isLoadingSave) {
+      const save = SaveManager.getPuzzleSave(
+        this.levelRule.id,
+        this.isEventLevel,
+        this.eventId,
+        this.isTowerFloor,
+        this.towerFloorId
+      );
+      if (save) {
+        this.loadedSaveData = save;
+        this.elapsedTime = this.levelRule.timeLimit - save.remainingTime;
+        this.hintsUsed = save.hintsUsed;
+        this.snappedCount = save.snappedCount;
+        this.comboCount = save.comboCount;
+        this.maxCombo = save.maxCombo;
+        this.mistakeCount = save.mistakeCount;
+        this.perfectSnaps = save.perfectSnaps;
+      }
+    } else {
+      SaveManager.clearPuzzleSave(
+        this.levelRule.id,
+        this.isEventLevel,
+        this.eventId,
+        this.isTowerFloor,
+        this.towerFloorId
+      );
+    }
+
     if (this.randomEventsEnabled && !this.isTowerFloor && !this.isEventLevel) {
       RandomEventManager.startSession(this.levelRule.difficulty);
     }
@@ -190,6 +223,56 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.lastUpdateTime = this.time.now;
+
+    this.setupAutoSave();
+  }
+
+  private setupAutoSave(): void {
+    if (this.autoSaveTimer) {
+      this.autoSaveTimer.remove(false);
+    }
+
+    this.autoSaveTimer = this.time.addEvent({
+      delay: 30000,
+      loop: true,
+      callback: () => {
+        if (this.isPaused || this.isCompleted) return;
+        this.saveCurrentProgress();
+      }
+    });
+  }
+
+  private saveCurrentProgress(): void {
+    if (this.isCompleted) return;
+
+    const pieceSaves: PuzzlePieceSaveData[] = this.pieces
+      .filter(p => !p.isMirror)
+      .map(piece => ({
+        pieceId: piece.getPieceId(),
+        x: piece.x,
+        y: piece.y,
+        rotation: piece.rotation,
+        isSnapped: piece.isPieceSnapped(),
+        isMirror: piece.isMirror
+      }));
+
+    const remainingTime = Math.max(0, this.levelRule.timeLimit - this.elapsedTime);
+
+    SaveManager.savePuzzleProgress({
+      levelId: this.levelRule.id,
+      isEventLevel: this.isEventLevel,
+      eventId: this.eventId,
+      isTowerFloor: this.isTowerFloor,
+      towerFloorId: this.towerFloorId,
+      remainingTime,
+      hintsUsed: this.hintsUsed,
+      snappedCount: this.snappedCount,
+      pieces: pieceSaves,
+      comboCount: this.comboCount,
+      maxCombo: this.maxCombo,
+      mistakeCount: this.mistakeCount,
+      perfectSnaps: this.perfectSnaps
+    });
   }
 
   update(time: number, delta: number): void {
@@ -496,6 +579,30 @@ export class GameScene extends Phaser.Scene {
 
     if (this.isTowerFloor && this.hasTowerRule('mirror_pieces')) {
       this.createMirrorPieces();
+    }
+
+    if (this.isLoadingSave && this.loadedSaveData) {
+      this.restorePiecesFromSave(this.loadedSaveData.pieces);
+    }
+  }
+
+  private restorePiecesFromSave(savedPieces: PuzzlePieceSaveData[]): void {
+    savedPieces.forEach(savedPiece => {
+      const piece = this.pieces.find(p => p.getPieceId() === savedPiece.pieceId);
+      if (piece) {
+        piece.setPosition(savedPiece.x, savedPiece.y);
+        piece.rotation = savedPiece.rotation;
+        piece.updateInitialPosition(savedPiece.x, savedPiece.y);
+
+        if (savedPiece.isSnapped) {
+          piece.setSnapped(true);
+          piece.setDepth(5);
+        }
+      }
+    });
+
+    if (this.isTowerFloor) {
+      this.updateTowerStatusUI();
     }
   }
 
@@ -910,6 +1017,8 @@ export class GameScene extends Phaser.Scene {
 
       this.cameras.main.flash(80, 255, 255, 200, false);
 
+      this.saveCurrentProgress();
+
       if (this.snappedCount >= this.realPiecesCount) {
         this.time.delayedCall(400, () => this.onLevelComplete());
       }
@@ -1252,6 +1361,19 @@ export class GameScene extends Phaser.Scene {
       this.targetTween.stop();
     }
 
+    if (this.autoSaveTimer) {
+      this.autoSaveTimer.remove(false);
+      this.autoSaveTimer = null;
+    }
+
+    SaveManager.clearPuzzleSave(
+      this.levelRule.id,
+      this.isEventLevel,
+      this.eventId,
+      this.isTowerFloor,
+      this.towerFloorId
+    );
+
     if (this.isTowerFloor && this.towerFloorId) {
       SaveManager.failTowerFloor(this.towerFloorId);
     }
@@ -1317,6 +1439,19 @@ export class GameScene extends Phaser.Scene {
     if (this.targetTween) {
       this.targetTween.stop();
     }
+
+    if (this.autoSaveTimer) {
+      this.autoSaveTimer.remove(false);
+      this.autoSaveTimer = null;
+    }
+
+    SaveManager.clearPuzzleSave(
+      this.levelRule.id,
+      this.isEventLevel,
+      this.eventId,
+      this.isTowerFloor,
+      this.towerFloorId
+    );
 
     if (this.isTowerFloor && this.towerFloorData && this.towerFloorId) {
       const towerPreviousProgress = SaveManager.getTowerFloorProgress(this.towerFloorId);
@@ -1589,6 +1724,19 @@ export class GameScene extends Phaser.Scene {
     if (this.targetTween) {
       this.targetTween.stop();
     }
+
+    if (this.autoSaveTimer) {
+      this.autoSaveTimer.remove(false);
+      this.autoSaveTimer = null;
+    }
+
+    SaveManager.clearPuzzleSave(
+      this.levelRule.id,
+      this.isEventLevel,
+      this.eventId,
+      this.isTowerFloor,
+      this.towerFloorId
+    );
 
     if (this.isTowerFloor && this.towerFloorId) {
       SaveManager.failTowerFloor(this.towerFloorId);
@@ -2366,21 +2514,21 @@ export class GameScene extends Phaser.Scene {
 
     const modal = this.add.graphics();
     modal.fillStyle(0x16213e, 1);
-    modal.fillRoundedRect(110, 400, 530, 480, 24);
+    modal.fillRoundedRect(110, 360, 530, 580, 24);
     modal.lineStyle(3, 0xe94560, 1);
-    modal.strokeRoundedRect(110, 400, 530, 480, 24);
+    modal.strokeRoundedRect(110, 360, 530, 580, 24);
 
-    this.add.text(375, 465, '⏸ 游戏暂停', {
+    this.add.text(375, 425, '⏸ 游戏暂停', {
       font: 'bold 36px Arial',
       color: '#ffffff'
     }).setOrigin(0.5);
 
     const infoBg = this.add.graphics();
     infoBg.fillStyle(0x0f3460, 0.5);
-    infoBg.fillRoundedRect(150, 515, 450, 70, 12);
+    infoBg.fillRoundedRect(150, 475, 450, 70, 12);
 
     const remaining = Math.max(0, this.levelRule.timeLimit - this.elapsedTime);
-    this.add.text(375, 550, `剩余时间 ${formatTime(remaining)}  ·  进度 ${this.snappedCount}/${this.pieces.length}`, {
+    this.add.text(375, 510, `剩余时间 ${formatTime(remaining)}  ·  进度 ${this.snappedCount}/${this.pieces.length}`, {
       font: '18px Arial',
       color: '#eaeaea'
     }).setOrigin(0.5);
@@ -2388,8 +2536,8 @@ export class GameScene extends Phaser.Scene {
     const btnW = 350;
     const btnH = 66;
     const startX = 200;
-    let btnY = 620;
-    const gap = 22;
+    let btnY = 580;
+    const gap = 20;
 
     const resumeBtn = this.add.graphics();
     resumeBtn.fillStyle(0x4caf50, 1);
@@ -2399,6 +2547,20 @@ export class GameScene extends Phaser.Scene {
       Phaser.Geom.Rectangle.Contains
     );
     this.add.text(startX + btnW / 2, btnY + btnH / 2, '继续游戏', {
+      font: 'bold 22px Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+
+    btnY += btnH + gap;
+
+    const saveBtn = this.add.graphics();
+    saveBtn.fillStyle(0x2196f3, 1);
+    saveBtn.fillRoundedRect(startX, btnY, btnW, btnH, 16);
+    saveBtn.setInteractive(
+      new Phaser.Geom.Rectangle(startX, btnY, btnW, btnH),
+      Phaser.Geom.Rectangle.Contains
+    );
+    this.add.text(startX + btnW / 2, btnY + btnH / 2, '💾 保存进度', {
       font: 'bold 22px Arial',
       color: '#ffffff'
     }).setOrigin(0.5);
@@ -2431,6 +2593,11 @@ export class GameScene extends Phaser.Scene {
       color: '#ffffff'
     }).setOrigin(0.5);
 
+    const saveNotification = this.add.text(375, 545, '', {
+      font: 'bold 16px Arial',
+      color: '#4caf50'
+    }).setOrigin(0.5).setAlpha(0);
+
     resumeBtn.on('pointerup', () => {
       this.isPaused = false;
       this.startTime = this.time.now - this.elapsedTime * 1000;
@@ -2438,8 +2605,10 @@ export class GameScene extends Phaser.Scene {
       modal.destroy();
       infoBg.destroy();
       resumeBtn.destroy();
+      saveBtn.destroy();
       restartBtn.destroy();
       quitBtn.destroy();
+      saveNotification.destroy();
       this.children.each(child => {
         if ((child as Phaser.GameObjects.Text).type === 'Text' && (child as Phaser.GameObjects.Text).y > 450) {
           // do nothing
@@ -2447,7 +2616,26 @@ export class GameScene extends Phaser.Scene {
       });
     });
 
+    saveBtn.on('pointerup', () => {
+      this.saveCurrentProgress();
+      saveNotification.setText('✓ 进度已保存！下次进入可继续');
+      saveNotification.setAlpha(1);
+      this.tweens.add({
+        targets: saveNotification,
+        alpha: 0,
+        delay: 2000,
+        duration: 500
+      });
+    });
+
     restartBtn.on('pointerup', () => {
+      SaveManager.clearPuzzleSave(
+        this.levelRule.id,
+        this.isEventLevel,
+        this.eventId,
+        this.isTowerFloor,
+        this.towerFloorId
+      );
       this.scene.restart({
         levelId: this.levelRule.id,
         isEventLevel: this.isEventLevel,
@@ -2456,6 +2644,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     quitBtn.on('pointerup', () => {
+      this.saveCurrentProgress();
       if (this.isEventLevel && this.eventId) {
         this.scene.start('EventLevelSelectScene', { eventId: this.eventId });
       } else {

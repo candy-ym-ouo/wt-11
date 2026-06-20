@@ -1302,6 +1302,36 @@ export interface RandomEventSaveData {
   rareEventsUnlocked: string[];
 }
 
+export interface PuzzlePieceSaveData {
+  pieceId: number;
+  x: number;
+  y: number;
+  rotation: number;
+  isSnapped: boolean;
+  isMirror: boolean;
+}
+
+export interface PuzzleSaveData {
+  levelId: number;
+  isEventLevel: boolean;
+  eventId: string | null;
+  isTowerFloor: boolean;
+  towerFloorId: number | null;
+  remainingTime: number;
+  hintsUsed: number;
+  snappedCount: number;
+  pieces: PuzzlePieceSaveData[];
+  savedAt: number;
+  comboCount: number;
+  maxCombo: number;
+  mistakeCount: number;
+  perfectSnaps: number;
+}
+
+export interface PuzzleSaves {
+  saves: Record<string, PuzzleSaveData>;
+}
+
 export interface SaveData {
   progress: Record<number, LevelProgress>;
   chapterProgress: Record<number, ChapterProgress>;
@@ -1328,4 +1358,5 @@ export interface SaveData {
   chapterMap: ChapterMapSaveData;
   donation: DonationSaveData;
   randomEvent: RandomEventSaveData;
+  puzzleSaves: PuzzleSaves;
 }

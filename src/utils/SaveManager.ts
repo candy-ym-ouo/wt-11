@@ -53,7 +53,7 @@ import { NotificationManager } from './NotificationManager';
 import { QuizManager } from './QuizManager';
 import { DonationManager } from './DonationManager';
 import { RandomEventManager } from './RandomEventManager';
-import { RandomEventSaveData } from '../types/GameTypes';
+import { RandomEventSaveData, PuzzleSaveData, PuzzlePieceSaveData, PuzzleSaves } from '../types/GameTypes';
 
 const STORAGE_KEY = 'plant_specimen_puzzle_save';
 
@@ -500,6 +500,12 @@ export class SaveManager {
       if (!re.rareEventsUnlocked) re.rareEventsUnlocked = [];
     }
 
+    if (!oldData.puzzleSaves) {
+      oldData.puzzleSaves = { saves: {} };
+    } else if (!oldData.puzzleSaves.saves) {
+      oldData.puzzleSaves.saves = {};
+    }
+
     return oldData as SaveData;
   }
 
@@ -576,7 +582,10 @@ export class SaveManager {
       quiz: QuizManager.createDefaultQuizSave(),
       chapterMap: chapterMapData,
       donation: donationData,
-      randomEvent: randomEventData
+      randomEvent: randomEventData,
+      puzzleSaves: {
+        saves: {}
+      }
     };
   }
 
@@ -2838,5 +2847,84 @@ export class SaveManager {
 
   static getRepairLogSpecimenStats(specimenId: number) {
     return RepairLogManager.getSpecimenStats(specimenId);
+  }
+
+  private static getPuzzleSaveKey(
+    levelId: number,
+    isEventLevel: boolean = false,
+    eventId: string | null = null,
+    isTowerFloor: boolean = false,
+    towerFloorId: number | null = null
+  ): string {
+    if (isTowerFloor && towerFloorId !== null) {
+      return `tower_${towerFloorId}`;
+    }
+    if (isEventLevel && eventId) {
+      return `event_${eventId}_${levelId}`;
+    }
+    return `level_${levelId}`;
+  }
+
+  static savePuzzleProgress(
+    saveData: Omit<PuzzleSaveData, 'savedAt'>
+  ): void {
+    const key = this.getPuzzleSaveKey(
+      saveData.levelId,
+      saveData.isEventLevel,
+      saveData.eventId,
+      saveData.isTowerFloor,
+      saveData.towerFloorId
+    );
+
+    this.data.puzzleSaves.saves[key] = {
+      ...saveData,
+      savedAt: Date.now()
+    };
+    this.save();
+  }
+
+  static getPuzzleSave(
+    levelId: number,
+    isEventLevel: boolean = false,
+    eventId: string | null = null,
+    isTowerFloor: boolean = false,
+    towerFloorId: number | null = null
+  ): PuzzleSaveData | undefined {
+    const key = this.getPuzzleSaveKey(levelId, isEventLevel, eventId, isTowerFloor, towerFloorId);
+    return this.data.puzzleSaves.saves[key];
+  }
+
+  static hasPuzzleSave(
+    levelId: number,
+    isEventLevel: boolean = false,
+    eventId: string | null = null,
+    isTowerFloor: boolean = false,
+    towerFloorId: number | null = null
+  ): boolean {
+    const key = this.getPuzzleSaveKey(levelId, isEventLevel, eventId, isTowerFloor, towerFloorId);
+    return this.data.puzzleSaves.saves[key] !== undefined;
+  }
+
+  static clearPuzzleSave(
+    levelId: number,
+    isEventLevel: boolean = false,
+    eventId: string | null = null,
+    isTowerFloor: boolean = false,
+    towerFloorId: number | null = null
+  ): void {
+    const key = this.getPuzzleSaveKey(levelId, isEventLevel, eventId, isTowerFloor, towerFloorId);
+    if (this.data.puzzleSaves.saves[key]) {
+      delete this.data.puzzleSaves.saves[key];
+      this.save();
+    }
+  }
+
+  static getAllPuzzleSaves(): Record<string, PuzzleSaveData> {
+    return { ...this.data.puzzleSaves.saves };
+  }
+
+  static clearAllPuzzleSaves(): void {
+    this.data.puzzleSaves.saves = {};
+    this.save();
   }
 }
