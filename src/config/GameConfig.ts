@@ -51,3 +51,13 @@ export const HintConfig = {
     fullPreviewTimePenaltyPerSecond: 8
   }
 };
+
+export const PieceLayoutConfig = {
+  defaultPieceWidth: 130,
+  defaultPieceHeight: 100,
+  defaultPieceSpacing: 20,
+  minPieceWidth: 80,
+  minPieceHeight: 60,
+  maxPieceWidth: 180,
+  maxPieceHeight: 140
+};

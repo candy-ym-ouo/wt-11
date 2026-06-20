@@ -39,7 +39,8 @@ export const EventLevelRules: EventLevelRule[] = [
       scoreMultiplier: 1.2,
       fragmentDropBonus: 1,
       materialDropBonus: 0,
-      bonusResearchPoints: 15
+      bonusResearchPoints: 15,
+      starThresholds: [900, 1800, 2700]
     }
   },
   {
@@ -78,7 +79,8 @@ export const EventLevelRules: EventLevelRule[] = [
       scoreMultiplier: 1.3,
       fragmentDropBonus: 1,
       materialDropBonus: 1,
-      bonusResearchPoints: 20
+      bonusResearchPoints: 20,
+      starThresholds: [1000, 2000, 3000]
     }
   },
   {
@@ -125,7 +127,8 @@ export const EventLevelRules: EventLevelRule[] = [
       scoreMultiplier: 1.5,
       fragmentDropBonus: 2,
       materialDropBonus: 1,
-      bonusResearchPoints: 30
+      bonusResearchPoints: 30,
+      starThresholds: [1200, 2400, 3600]
     }
   },
   {
@@ -172,7 +175,8 @@ export const EventLevelRules: EventLevelRule[] = [
       scoreMultiplier: 1.8,
       fragmentDropBonus: 3,
       materialDropBonus: 2,
-      bonusResearchPoints: 40
+      bonusResearchPoints: 40,
+      starThresholds: [1400, 2800, 4200]
     }
   },
   {
@@ -225,7 +229,8 @@ export const EventLevelRules: EventLevelRule[] = [
       scoreMultiplier: 2.0,
       fragmentDropBonus: 4,
       materialDropBonus: 3,
-      bonusResearchPoints: 60
+      bonusResearchPoints: 60,
+      starThresholds: [1600, 3200, 4800]
     }
   }
 ];

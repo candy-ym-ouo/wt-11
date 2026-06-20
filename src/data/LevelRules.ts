@@ -34,7 +34,8 @@ export const LevelRules: LevelRule[] = [
       scoreMultiplier: 0.5,
       fragmentDropBonus: 0,
       materialDropBonus: 0,
-      bonusResearchPoints: 5
+      bonusResearchPoints: 5,
+      starThresholds: [600, 1200, 1800]
     }
   },
   {
@@ -70,7 +71,8 @@ export const LevelRules: LevelRule[] = [
       scoreMultiplier: 1,
       fragmentDropBonus: 0,
       materialDropBonus: 0,
-      bonusResearchPoints: 10
+      bonusResearchPoints: 10,
+      starThresholds: [800, 1600, 2400]
     }
   },
   {
@@ -106,7 +108,8 @@ export const LevelRules: LevelRule[] = [
       scoreMultiplier: 1,
       fragmentDropBonus: 0,
       materialDropBonus: 0,
-      bonusResearchPoints: 10
+      bonusResearchPoints: 10,
+      starThresholds: [900, 1800, 2700]
     }
   },
   {
@@ -150,7 +153,8 @@ export const LevelRules: LevelRule[] = [
       scoreMultiplier: 1.2,
       fragmentDropBonus: 1,
       materialDropBonus: 0,
-      bonusResearchPoints: 20
+      bonusResearchPoints: 20,
+      starThresholds: [1000, 2000, 3000]
     }
   },
   {
@@ -194,7 +198,8 @@ export const LevelRules: LevelRule[] = [
       scoreMultiplier: 1.3,
       fragmentDropBonus: 1,
       materialDropBonus: 1,
-      bonusResearchPoints: 25
+      bonusResearchPoints: 25,
+      starThresholds: [1100, 2200, 3300]
     }
   },
   {
@@ -238,7 +243,8 @@ export const LevelRules: LevelRule[] = [
       scoreMultiplier: 1.5,
       fragmentDropBonus: 2,
       materialDropBonus: 1,
-      bonusResearchPoints: 35
+      bonusResearchPoints: 35,
+      starThresholds: [1300, 2600, 3900]
     }
   },
   {
@@ -282,7 +288,8 @@ export const LevelRules: LevelRule[] = [
       scoreMultiplier: 1.8,
       fragmentDropBonus: 2,
       materialDropBonus: 2,
-      bonusResearchPoints: 40
+      bonusResearchPoints: 40,
+      starThresholds: [1400, 2800, 4200]
     }
   },
   {
@@ -327,7 +334,8 @@ export const LevelRules: LevelRule[] = [
       scoreMultiplier: 2.0,
       fragmentDropBonus: 3,
       materialDropBonus: 2,
-      bonusResearchPoints: 50
+      bonusResearchPoints: 50,
+      starThresholds: [1500, 3000, 4500]
     }
   },
   {
@@ -377,7 +385,8 @@ export const LevelRules: LevelRule[] = [
       scoreMultiplier: 2.5,
       fragmentDropBonus: 3,
       materialDropBonus: 2,
-      bonusResearchPoints: 60
+      bonusResearchPoints: 60,
+      starThresholds: [1700, 3400, 5100]
     }
   },
   {
@@ -428,7 +437,8 @@ export const LevelRules: LevelRule[] = [
       scoreMultiplier: 3.0,
       fragmentDropBonus: 5,
       materialDropBonus: 3,
-      bonusResearchPoints: 80
+      bonusResearchPoints: 80,
+      starThresholds: [2000, 4000, 6000]
     }
   }
 ];

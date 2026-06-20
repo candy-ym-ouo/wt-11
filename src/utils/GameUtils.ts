@@ -17,8 +17,9 @@ export function calculateScore(
     maxCombo: 0,
     rotationAdjustCount: 0,
     totalHintsUsed: 0
-  }
-): { score: number; stars: number; hintPenalty: number; scoringBreakdown: { name: string; score: number }[]; comboReward: number; starThresholdAdjustment: number } {
+  },
+  customStarThresholds?: number[]
+): { score: number; stars: number; hintPenalty: number; scoringBreakdown: { name: string; score: number }[]; comboReward: number; starThresholdAdjustment: number; usedStarThresholds: number[] } {
   const timeRemaining = Math.max(0, timeLimit - timeElapsed);
   const timeBonus = Math.floor(timeRemaining * ScoreConfig.timeBonusPerSecond);
   const perfectBonus = perfectSnaps * ScoreConfig.perfectSnapBonus;
@@ -75,7 +76,8 @@ export function calculateScore(
     starThresholdAdjustment += stb.noRotation;
   }
 
-  const adjustedThresholds = ScoreConfig.starThresholds.map(t => Math.max(0, t + starThresholdAdjustment));
+  const baseThresholds = customStarThresholds ?? ScoreConfig.starThresholds;
+  const adjustedThresholds = baseThresholds.map(t => Math.max(0, t + starThresholdAdjustment));
 
   let stars = 0;
   if (totalScore >= adjustedThresholds[0]) stars = 1;
@@ -94,7 +96,7 @@ export function calculateScore(
     { name: '完整预览惩罚', score: -(previewBasePenalty + previewTimePenalty) }
   ];
 
-  return { score: totalScore, stars, hintPenalty: totalHintPenalty, scoringBreakdown, comboReward: totalComboReward, starThresholdAdjustment };
+  return { score: totalScore, stars, hintPenalty: totalHintPenalty, scoringBreakdown, comboReward: totalComboReward, starThresholdAdjustment, usedStarThresholds: adjustedThresholds };
 }
 
 export function formatTime(seconds: number): string {

@@ -18,7 +18,7 @@ import { RepairLogManager } from '../utils/RepairLogManager';
 import { RandomEventManager } from '../utils/RandomEventManager';
 import { RandomEventData, ActiveRandomEvent, RandomEventSessionStats } from '../types/GameTypes';
 import { getRandomEventById, getRarityColor } from '../data/RandomEvents';
-import { HintConfig } from '../config/GameConfig';
+import { HintConfig, PieceLayoutConfig } from '../config/GameConfig';
 
 export class GameScene extends Phaser.Scene {
   private levelRule!: LevelRule;
@@ -305,7 +305,8 @@ export class GameScene extends Phaser.Scene {
       this.pieces.length,
       this.snappedCount,
       this.getHintUsageStats(),
-      this.getComboRewardStats()
+      this.getComboRewardStats(),
+      this.getLevelStarThresholds()
     );
 
     SaveManager.savePuzzleProgress({
@@ -791,9 +792,17 @@ export class GameScene extends Phaser.Scene {
     const rows = Math.ceil(count / cols);
 
     const layout = this.levelRule.pieceLayout;
-    const pieceW = layout?.pieceWidth ?? (this.levelRule.difficulty === 'easy' ? 140 : this.levelRule.difficulty === 'medium' ? 130 : 120);
-    const pieceH = layout?.pieceHeight ?? (this.levelRule.difficulty === 'easy' ? 110 : this.levelRule.difficulty === 'medium' ? 100 : 90);
-    const spacing = layout?.pieceSpacing ?? 20;
+    const pieceW = Phaser.Math.Clamp(
+      layout?.pieceWidth ?? PieceLayoutConfig.defaultPieceWidth,
+      PieceLayoutConfig.minPieceWidth,
+      PieceLayoutConfig.maxPieceWidth
+    );
+    const pieceH = Phaser.Math.Clamp(
+      layout?.pieceHeight ?? PieceLayoutConfig.defaultPieceHeight,
+      PieceLayoutConfig.minPieceHeight,
+      PieceLayoutConfig.maxPieceHeight
+    );
+    const spacing = layout?.pieceSpacing ?? PieceLayoutConfig.defaultPieceSpacing;
 
     const totalWidth = cols * pieceW + (cols - 1) * spacing;
     const startX = (750 - totalWidth) / 2 + pieceW / 2;
@@ -1651,6 +1660,10 @@ export class GameScene extends Phaser.Scene {
     return multiplier;
   }
 
+  private getLevelStarThresholds(): number[] | undefined {
+    return this.levelRule.rewardConfig?.starThresholds;
+  }
+
   private handleRandomEventTriggered(activeEvent: ActiveRandomEvent): void {
     const eventData = getRandomEventById(activeEvent.eventId);
     if (!eventData) return;
@@ -2056,7 +2069,8 @@ export class GameScene extends Phaser.Scene {
       this.pieces.length,
       this.snappedCount,
       this.getHintUsageStats(),
-      this.getComboRewardStats()
+      this.getComboRewardStats(),
+      this.getLevelStarThresholds()
     );
     let finalMultiplier = this.scoreMultiplier;
     finalMultiplier *= this.getLevelScoreMultiplier();
@@ -2176,7 +2190,8 @@ export class GameScene extends Phaser.Scene {
       this.pieces.length,
       this.snappedCount,
       this.getHintUsageStats(),
-      this.getComboRewardStats()
+      this.getComboRewardStats(),
+      this.getLevelStarThresholds()
     );
     let finalScore = Math.floor(result.score * this.scoreMultiplier * this.getLevelScoreMultiplier());
     
@@ -2536,7 +2551,8 @@ export class GameScene extends Phaser.Scene {
       this.snappedCount,
       this.snappedCount,
       this.getHintUsageStats(),
-      this.getComboRewardStats()
+      this.getComboRewardStats(),
+      this.getLevelStarThresholds()
     );
 
     this.showGameOver(result.score, this.snappedCount, this.pieces.length);
@@ -2932,7 +2948,8 @@ export class GameScene extends Phaser.Scene {
         this.pieces.length,
         this.snappedCount,
         this.getHintUsageStats(),
-        this.getComboRewardStats()
+        this.getComboRewardStats(),
+        this.getLevelStarThresholds()
       );
 
       this.add.text(375, infoY, '🔥 连贯操作奖励', {
