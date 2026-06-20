@@ -635,6 +635,22 @@ export class SaveManager {
       migrated.puzzleSaves = defaultData.puzzleSaves;
     }
 
+    const fallbackTime = migrated.metadata?.createdAt || Date.now();
+    if (migrated.galleryUnlocked && migrated.galleryUnlockTimes) {
+      migrated.galleryUnlocked.forEach((specimenId: number) => {
+        if (!migrated.galleryUnlockTimes[specimenId]) {
+          migrated.galleryUnlockTimes[specimenId] = fallbackTime;
+        }
+      });
+    }
+    if (migrated.event?.eventGalleryUnlocked && migrated.event?.eventGalleryUnlockTimes) {
+      migrated.event.eventGalleryUnlocked.forEach((specimenId: number) => {
+        if (!migrated.event.eventGalleryUnlockTimes[specimenId]) {
+          migrated.event.eventGalleryUnlockTimes[specimenId] = fallbackTime;
+        }
+      });
+    }
+
     return migrated;
   }
 
@@ -658,6 +674,22 @@ export class SaveManager {
       merged.schemaVersion = CURRENT_SCHEMA_VERSION;
       if (!merged.metadata) {
         merged.metadata = this.createDefaultMetadata();
+      }
+
+      const fallbackTime = merged.metadata?.createdAt || Date.now();
+      if (merged.galleryUnlocked && merged.galleryUnlockTimes) {
+        merged.galleryUnlocked.forEach((specimenId: number) => {
+          if (!merged.galleryUnlockTimes[specimenId]) {
+            merged.galleryUnlockTimes[specimenId] = fallbackTime;
+          }
+        });
+      }
+      if (merged.event?.eventGalleryUnlocked && merged.event?.eventGalleryUnlockTimes) {
+        merged.event.eventGalleryUnlocked.forEach((specimenId: number) => {
+          if (!merged.event.eventGalleryUnlockTimes[specimenId]) {
+            merged.event.eventGalleryUnlockTimes[specimenId] = fallbackTime;
+          }
+        });
       }
 
       this.logMigration(fromVersion, CURRENT_SCHEMA_VERSION, true);

@@ -1013,14 +1013,19 @@ export class GalleryScene extends Phaser.Scene {
       }).setOrigin(1, 0.5);
     }
 
+    let dateDisplay = '';
+    let dateColor = '#90caf9';
     if (unlockTime) {
       const unlockDate = new Date(unlockTime);
-      const dateStr = `${unlockDate.getFullYear()}-${(unlockDate.getMonth() + 1).toString().padStart(2, '0')}-${unlockDate.getDate().toString().padStart(2, '0')}`;
-      this.add.text(630, 632, `📅 ${dateStr}`, {
-        font: '12px Arial',
-        color: '#90caf9'
-      }).setOrigin(1, 0.5);
+      dateDisplay = `${unlockDate.getFullYear()}-${(unlockDate.getMonth() + 1).toString().padStart(2, '0')}-${unlockDate.getDate().toString().padStart(2, '0')}`;
+    } else {
+      dateDisplay = '早期收藏';
+      dateColor = '#bdbdbd';
     }
+    this.add.text(630, 632, `📅 ${dateDisplay}`, {
+      font: '12px Arial',
+      color: dateColor
+    }).setOrigin(1, 0.5);
     container.add(unlockInfoBg);
 
     let displayDescription = item.description;
