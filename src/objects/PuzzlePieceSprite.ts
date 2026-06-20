@@ -572,4 +572,28 @@ export class PuzzlePieceSprite extends Phaser.GameObjects.Container {
     this.stopPieceHighlight();
     this.hideTargetIndicator();
   }
+
+  pauseAllHints(): void {
+    if (this.outlineFlashTween) {
+      this.outlineFlashTween.pause();
+    }
+    if (this.highlightTween) {
+      this.highlightTween.pause();
+    }
+    if (this.targetIndicatorTween) {
+      this.targetIndicatorTween.pause();
+    }
+  }
+
+  resumeAllHints(): void {
+    if (this.outlineFlashTween) {
+      this.outlineFlashTween.resume();
+    }
+    if (this.highlightTween) {
+      this.highlightTween.resume();
+    }
+    if (this.targetIndicatorTween) {
+      this.targetIndicatorTween.resume();
+    }
+  }
 }
