@@ -21,6 +21,7 @@ import { getRandomEventById, getRarityColor } from '../data/RandomEvents';
 import { HintConfig, PieceLayoutConfig } from '../config/GameConfig';
 import { PieceGenerationConfig, InitialRotationMode, ScatterAreaMode, SliceMode, InitialRotationRule, ScatterAreaConfig, FamilyBorderStyle, FamilyBackgroundStyle } from '../types/GameTypes';
 import { PlantFamilies } from '../data/PlantFamilies';
+import { TimeWarningAudio, WarningLevel } from '../utils/TimeWarningAudio';
 
 export class GameScene extends Phaser.Scene {
   private levelRule!: LevelRule;
@@ -260,6 +261,7 @@ export class GameScene extends Phaser.Scene {
     this.timeWarningPulseTween = null;
     this.timeTickTimer = null;
     this.timeShakeTimer = null;
+    TimeWarningAudio.getInstance().acquire();
   }
 
   create(): void {
@@ -2706,23 +2708,8 @@ export class GameScene extends Phaser.Scene {
     this.timeWarningBackground.strokeRoundedRect(575, 35, 155, 50, 10);
   }
 
-  private playTimeTickSound(level: 'low' | 'critical'): void {
-    const freq = level === 'critical' ? 880 : 660;
-    const duration = level === 'critical' ? 0.06 : 0.08;
-    try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const oscillator = audioCtx.createOscillator();
-      const gainNode = audioCtx.createGain();
-      oscillator.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
-      oscillator.frequency.value = freq;
-      oscillator.type = 'sine';
-      gainNode.gain.setValueAtTime(level === 'critical' ? 0.25 : 0.15, audioCtx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
-      oscillator.start(audioCtx.currentTime);
-      oscillator.stop(audioCtx.currentTime + duration);
-    } catch (e) {
-    }
+  private playTimeTickSound(level: WarningLevel): void {
+    TimeWarningAudio.getInstance().playTick(level);
   }
 
   private adjustAudioForTimeWarning(level: 'low' | 'critical'): void {
@@ -4760,6 +4747,9 @@ export class GameScene extends Phaser.Scene {
     if (this.timeShakeTimer) {
       this.timeShakeTimer.paused = true;
     }
+    if (this.timeWarningLevel !== 'none') {
+      TimeWarningAudio.getInstance().pause();
+    }
   }
 
   private resumeGameState(): void {
@@ -4793,6 +4783,9 @@ export class GameScene extends Phaser.Scene {
     if (this.timeShakeTimer) {
       this.timeShakeTimer.paused = false;
     }
+    if (this.timeWarningLevel !== 'none') {
+      TimeWarningAudio.getInstance().resume();
+    }
   }
 
   private cleanupGameStateForExit(): void {
@@ -4801,6 +4794,7 @@ export class GameScene extends Phaser.Scene {
 
     this.stopTimeWarningEffects();
     this.timeWarningLevel = 'none';
+    TimeWarningAudio.getInstance().release();
 
     if (this.fullPreviewActive) {
       this.stopFullPreview();

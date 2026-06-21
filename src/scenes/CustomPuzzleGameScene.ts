@@ -7,6 +7,7 @@ import { getSliceScheme, getDifficultyScheme, getSettlementRule, makeCustomPuzzl
 import { formatTime, getDifficultyText, getDifficultyColor } from '../utils/GameUtils';
 import { PlantSpecimen, SliceScheme, DifficultyScheme, SettlementRule, PuzzlePieceData } from '../types/GameTypes';
 import { getDropRule, getFragmentsBySpecimenId, Fragments, Materials } from '../data/WorkshopConfig';
+import { TimeWarningAudio, WarningLevel } from '../utils/TimeWarningAudio';
 
 export class CustomPuzzleGameScene extends Phaser.Scene {
   private specimen!: PlantSpecimen;
@@ -78,6 +79,7 @@ export class CustomPuzzleGameScene extends Phaser.Scene {
     this.timeWarningPulseTween = null;
     this.timeTickTimer = null;
     this.timeShakeTimer = null;
+    TimeWarningAudio.getInstance().acquire();
   }
 
   create(): void {
@@ -621,23 +623,8 @@ export class CustomPuzzleGameScene extends Phaser.Scene {
     this.timeWarningBackground.strokeRoundedRect(575, 35, 155, 50, 10);
   }
 
-  private playTimeTickSound(level: 'low' | 'critical'): void {
-    const freq = level === 'critical' ? 880 : 660;
-    const duration = level === 'critical' ? 0.06 : 0.08;
-    try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const oscillator = audioCtx.createOscillator();
-      const gainNode = audioCtx.createGain();
-      oscillator.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
-      oscillator.frequency.value = freq;
-      oscillator.type = 'sine';
-      gainNode.gain.setValueAtTime(level === 'critical' ? 0.25 : 0.15, audioCtx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
-      oscillator.start(audioCtx.currentTime);
-      oscillator.stop(audioCtx.currentTime + duration);
-    } catch (e) {
-    }
+  private playTimeTickSound(level: WarningLevel): void {
+    TimeWarningAudio.getInstance().playTick(level);
   }
 
   private updateUI(): void {
@@ -668,6 +655,7 @@ export class CustomPuzzleGameScene extends Phaser.Scene {
     if (this.timerEvent) this.timerEvent.paused = true;
     this.stopTimeWarningEffects();
     this.timeWarningLevel = 'none';
+    TimeWarningAudio.getInstance().release();
 
     const result = this.calculateCustomScore();
     const finalScore = Math.floor(result.score * this.diffScheme.scoreMultiplier);
@@ -700,6 +688,7 @@ export class CustomPuzzleGameScene extends Phaser.Scene {
     if (this.timerEvent) this.timerEvent.paused = true;
     this.stopTimeWarningEffects();
     this.timeWarningLevel = 'none';
+    TimeWarningAudio.getInstance().release();
 
     const result = this.calculateCustomScore();
     const finalScore = Math.floor(result.score * this.diffScheme.scoreMultiplier);
@@ -972,6 +961,9 @@ export class CustomPuzzleGameScene extends Phaser.Scene {
     if (this.timeWarningPulseTween) this.timeWarningPulseTween.pause();
     if (this.timeTickTimer) this.timeTickTimer.paused = true;
     if (this.timeShakeTimer) this.timeShakeTimer.paused = true;
+    if (this.timeWarningLevel !== 'none') {
+      TimeWarningAudio.getInstance().pause();
+    }
 
     const overlay = this.add.graphics();
     overlay.fillStyle(0x000000, 0.7);
@@ -1018,6 +1010,9 @@ export class CustomPuzzleGameScene extends Phaser.Scene {
       if (this.timeWarningPulseTween) this.timeWarningPulseTween.resume();
       if (this.timeTickTimer) this.timeTickTimer.paused = false;
       if (this.timeShakeTimer) this.timeShakeTimer.paused = false;
+      if (this.timeWarningLevel !== 'none') {
+        TimeWarningAudio.getInstance().resume();
+      }
       container.destroy();
       overlay.destroy();
     };
@@ -1026,6 +1021,7 @@ export class CustomPuzzleGameScene extends Phaser.Scene {
     quitBtn.on('pointerup', () => {
       this.stopTimeWarningEffects();
       this.timeWarningLevel = 'none';
+      TimeWarningAudio.getInstance().release();
       container.destroy();
       overlay.destroy();
       this.scene.start('CustomPuzzleScene');
