@@ -19,9 +19,7 @@ import { RandomEventManager } from '../utils/RandomEventManager';
 import { RandomEventData, ActiveRandomEvent, RandomEventSessionStats } from '../types/GameTypes';
 import { getRandomEventById, getRarityColor } from '../data/RandomEvents';
 import { HintConfig, PieceLayoutConfig } from '../config/GameConfig';
-import { PieceGenerationConfig, InitialRotationMode, ScatterAreaMode, SliceMode, InitialRotationRule, ScatterAreaConfig, FamilyBorderStyle, FamilyBackgroundStyle } from '../types/GameTypes';
-import { PlantFamilies } from '../data/PlantFamilies';
-import { TimeWarningAudio, WarningLevel } from '../utils/TimeWarningAudio';
+import { PieceGenerationConfig, InitialRotationMode, ScatterAreaMode, SliceMode, InitialRotationRule, ScatterAreaConfig } from '../types/GameTypes';
 
 export class GameScene extends Phaser.Scene {
   private levelRule!: LevelRule;
@@ -104,26 +102,10 @@ export class GameScene extends Phaser.Scene {
 
   private currentBgmKey: string | null = null;
   private currentAmbientKey: string | null = null;
-  private originalBgmVolume: number = 0.4;
-  private originalAmbientVolume: number = 0.2;
   private fogOverlay!: Phaser.GameObjects.Graphics;
   private scoreSurgeMultiplier: number = 1;
   private scoreSurgeTimer: Phaser.Time.TimerEvent | null = null;
   private pieceDriftTimer: Phaser.Time.TimerEvent | null = null;
-  private familyParticles: Phaser.GameObjects.Particles.ParticleEmitter[] = [];
-  private familyBorderGraphics: Phaser.GameObjects.Graphics | null = null;
-  private usedTimeExtensions: number = 0;
-
-  private lowTimeWarningActive: boolean = false;
-  private criticalTimeWarningActive: boolean = false;
-  private timeWarningLevel: 'none' | 'low' | 'critical' = 'none';
-  private timeWarningOverlay!: Phaser.GameObjects.Graphics;
-  private timeWarningBackground!: Phaser.GameObjects.Graphics;
-  private timeWarningIcon!: Phaser.GameObjects.Text;
-  private timeWarningTween: Phaser.Tweens.Tween | null = null;
-  private timeWarningPulseTween: Phaser.Tweens.Tween | null = null;
-  private timeTickTimer: Phaser.Time.TimerEvent | null = null;
-  private timeShakeTimer: Phaser.Time.TimerEvent | null = null;
 
   private static readonly TARGET_AREA_X = 375;
   private static readonly TARGET_AREA_Y = 420;
@@ -253,15 +235,6 @@ export class GameScene extends Phaser.Scene {
     if (this.randomEventsEnabled && !this.isTowerFloor && !this.isEventLevel) {
       RandomEventManager.startSession(this.levelRule.difficulty);
     }
-
-    this.lowTimeWarningActive = false;
-    this.criticalTimeWarningActive = false;
-    this.timeWarningLevel = 'none';
-    this.timeWarningTween = null;
-    this.timeWarningPulseTween = null;
-    this.timeTickTimer = null;
-    this.timeShakeTimer = null;
-    TimeWarningAudio.getInstance().acquire();
   }
 
   create(): void {
@@ -410,172 +383,6 @@ export class GameScene extends Phaser.Scene {
     if (bg?.backgroundImageKey) {
       this.add.image(375, 667, bg.backgroundImageKey).setAlpha(0.3).setDepth(0);
     }
-
-    this.applyFamilyBackground();
-    this.applyFamilyBorder();
-  }
-
-  private applyFamilyBackground(): void {
-    const activeBg = SaveManager.getActiveBackground();
-    if (!activeBg) return;
-
-    const family = PlantFamilies.find(f => f.id === activeBg.familyId);
-    if (!family) return;
-
-    const bgReward = family.rewards.find(r => r.id === activeBg.backgroundId && r.type === 'background');
-    if (!bgReward || !bgReward.backgroundStyle) return;
-
-    const style = bgReward.backgroundStyle;
-
-    const overlay = this.add.graphics();
-    overlay.setDepth(1);
-    if (style.gradientFrom !== style.gradientTo) {
-      const gradientH = 667;
-      for (let i = 0; i < gradientH; i++) {
-        const t = i / gradientH;
-        const r = Math.round(((style.gradientFrom >> 16) & 0xff) * (1 - t) + ((style.gradientTo >> 16) & 0xff) * t);
-        const g = Math.round(((style.gradientFrom >> 8) & 0xff) * (1 - t) + ((style.gradientTo >> 8) & 0xff) * t);
-        const b = Math.round((style.gradientFrom & 0xff) * (1 - t) + (style.gradientTo & 0xff) * t);
-        const color = (r << 16) | (g << 8) | b;
-        overlay.fillStyle(color, style.overlayOpacity);
-        overlay.fillRect(0, i * 2, 750, 2);
-      }
-    }
-
-    this.addFamilyParticles(style);
-  }
-
-  private addFamilyParticles(style: FamilyBackgroundStyle): void {
-    const particleColor = '#' + style.particleColor.toString(16).padStart(6, '0');
-
-    if (style.particleType === 'none' || style.particleCount <= 0) return;
-
-    const particleTexture = this.createParticleTexture(style.particleType, particleColor);
-    if (!particleTexture) return;
-
-    const emitter = this.add.particles(0, -20, particleTexture, {
-      x: { min: 0, max: 750 },
-      y: -20,
-      lifespan: 8000,
-      speedY: { min: 20, max: 50 },
-      speedX: { min: -10, max: 10 },
-      scale: { start: 0.5, end: 0.2 },
-      alpha: { start: 0.8, end: 0.1 },
-      quantity: Math.ceil(style.particleCount / 10),
-      frequency: 200,
-      gravityY: 5,
-      rotate: { onEmit: () => Phaser.Math.Between(0, 360) }
-    });
-    emitter.setDepth(2);
-    this.familyParticles.push(emitter);
-  }
-
-  private createParticleTexture(type: string, color: string): string | null {
-    const key = `family-particle-${type}-${color}`;
-    if (this.textures.exists(key)) return key;
-
-    const size = 16;
-    const canvas = this.textures.createCanvas(key, size, size);
-    if (!canvas) return null;
-    const ctx = canvas.getContext();
-
-    ctx.fillStyle = color;
-
-    switch (type) {
-      case 'leaf':
-        ctx.beginPath();
-        ctx.ellipse(size / 2, size / 2, size / 3, size / 2, Math.PI / 6, 0, Math.PI * 2);
-        ctx.fill();
-        break;
-      case 'petal':
-        ctx.beginPath();
-        ctx.ellipse(size / 2, size / 2, size / 3, size / 2, 0, 0, Math.PI * 2);
-        ctx.fill();
-        break;
-      case 'sparkle':
-        ctx.beginPath();
-        for (let i = 0; i < 5; i++) {
-          const angle = (i * 4 * Math.PI) / 5 - Math.PI / 2;
-          const r = i % 2 === 0 ? size / 2 : size / 4;
-          const x = size / 2 + Math.cos(angle) * r;
-          const y = size / 2 + Math.sin(angle) * r;
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-        ctx.closePath();
-        ctx.fill();
-        break;
-      case 'snow':
-        ctx.beginPath();
-        ctx.arc(size / 2, size / 2, size / 3, 0, Math.PI * 2);
-        ctx.fill();
-        break;
-      default:
-        ctx.fillRect(0, 0, size, size);
-    }
-
-    canvas.refresh();
-    return key;
-  }
-
-  private applyFamilyBorder(): void {
-    const activeBorder = SaveManager.getActiveBorder();
-    if (!activeBorder) return;
-
-    const family = PlantFamilies.find(f => f.id === activeBorder.familyId);
-    if (!family) return;
-
-    const borderReward = family.rewards.find(r => r.id === activeBorder.borderId && r.type === 'border');
-    if (!borderReward || !borderReward.borderStyle) return;
-
-    const style = borderReward.borderStyle;
-    this.familyBorderGraphics = this.add.graphics();
-    this.familyBorderGraphics.setDepth(100);
-
-    this.drawFamilyBorder(style);
-
-    if (style.animation === 'pulse' || style.animation === 'shine') {
-      this.time.addEvent({
-        delay: 50,
-        loop: true,
-        callback: () => {
-          if (!this.familyBorderGraphics || this.scene.isPaused()) return;
-          this.drawFamilyBorder(style);
-        }
-      });
-    }
-  }
-
-  private drawFamilyBorder(style: FamilyBorderStyle): void {
-    if (!this.familyBorderGraphics) return;
-    this.familyBorderGraphics.clear();
-
-    const padding = 8;
-    const w = 750 - padding * 2;
-    const h = 1334 - padding * 2;
-
-    let glowAlpha = style.glowIntensity;
-    let borderAlpha = 1;
-
-    if (style.animation === 'pulse') {
-      const t = (Date.now() / 500) % (Math.PI * 2);
-      glowAlpha = style.glowIntensity * (0.5 + 0.5 * Math.sin(t));
-    } else if (style.animation === 'shine') {
-      const t = (Date.now() / 800) % (Math.PI * 2);
-      borderAlpha = 0.7 + 0.3 * Math.sin(t);
-    }
-
-    this.familyBorderGraphics.lineStyle(style.borderWidth, style.glowColor, glowAlpha * 0.5);
-    this.familyBorderGraphics.strokeRoundedRect(
-      padding - 4,
-      padding - 4,
-      w + 8,
-      h + 8,
-      style.cornerRadius + 4
-    );
-
-    this.familyBorderGraphics.lineStyle(style.borderWidth, style.borderColor, borderAlpha);
-    this.familyBorderGraphics.strokeRoundedRect(padding, padding, w, h, style.cornerRadius);
   }
 
   private addHeader(): void {
@@ -633,19 +440,7 @@ export class GameScene extends Phaser.Scene {
     this.timeText = this.add.text(690, 45, formatTime(this.levelRule.timeLimit), {
       font: 'bold 32px Arial',
       color: '#ffd700'
-    }).setOrigin(1, 0).setDepth(10);
-
-    this.timeWarningBackground = this.add.graphics();
-    this.timeWarningBackground.setDepth(9);
-    this.timeWarningBackground.setVisible(false);
-
-    this.timeWarningIcon = this.add.text(590, 45, '⚠️', {
-      font: '28px Arial'
-    }).setOrigin(1, 0).setDepth(10).setAlpha(0);
-
-    this.timeWarningOverlay = this.add.graphics();
-    this.timeWarningOverlay.setDepth(999);
-    this.timeWarningOverlay.setAlpha(0);
+    }).setOrigin(1, 0);
 
     this.scoreText = this.add.text(690, 85, '得分: 0', {
       font: '18px Arial',
@@ -1244,15 +1039,13 @@ export class GameScene extends Phaser.Scene {
 
   private addControlButtons(): void {
     const hasNoHintRestriction = this.hasTowerRule('no_hint_restriction');
-    const hasTimeExtensions = SaveManager.getTotalTimeExtensionsAvailable() > 0;
     const btnY = 845;
-    const btnW = 132;
+    const btnW = 155;
     const btnH = 52;
-    const spacing = 14;
+    const spacing = 18;
 
     let buttonCount = 5;
     if (hasNoHintRestriction) buttonCount = 2;
-    if (hasTimeExtensions && !this.isTowerFloor && !this.isEventLevel) buttonCount += 1;
 
     const totalW = btnW * buttonCount + spacing * (buttonCount - 1);
     const startX = (750 - totalW) / 2 + btnW / 2;
@@ -1326,24 +1119,6 @@ export class GameScene extends Phaser.Scene {
       currentIndex++;
     }
 
-    if (hasTimeExtensions && !this.isTowerFloor && !this.isEventLevel) {
-      const timeBtn = this.createControlButton(
-        startX + currentIndex * (btnW + spacing),
-        btnY,
-        btnW,
-        btnH,
-        '⏰ 加时',
-        0x4caf50,
-        () => this.useFamilyTimeExtension()
-      );
-      this.addHintCountBadge(
-        startX + currentIndex * (btnW + spacing) + btnW / 2 - 10,
-        btnY - btnH / 2 + 10,
-        () => SaveManager.getTotalTimeExtensionsAvailable()
-      );
-      currentIndex++;
-    }
-
     const resetBtn = this.createControlButton(
       startX + currentIndex * (btnW + spacing),
       btnY,
@@ -1363,9 +1138,6 @@ export class GameScene extends Phaser.Scene {
       this.input.keyboard?.on('keydown-2', () => this.usePieceHighlightHint());
       this.input.keyboard?.on('keydown-3', () => this.useFullPreviewHint());
     }
-    if (hasTimeExtensions && !this.isTowerFloor && !this.isEventLevel) {
-      this.input.keyboard?.on('keydown-T', () => this.useFamilyTimeExtension());
-    }
     this.input.keyboard?.on('keydown-ESC', () => {
       if (!this.isCompleted) this.showPauseMenu();
     });
@@ -1373,45 +1145,6 @@ export class GameScene extends Phaser.Scene {
     if (this.isTowerFloor) {
       this.addTowerStatusUI();
     }
-  }
-
-  private useFamilyTimeExtension(): void {
-    if (this.isPaused || this.isCompleted) return;
-    if (SaveManager.getTotalTimeExtensionsAvailable() <= 0) return;
-
-    const familyProgressData = SaveManager.getAllFamilyProgress();
-    let bonusSeconds = 0;
-    for (const [familyId, progress] of Object.entries(familyProgressData)) {
-      if (progress.timeExtensionsAvailable > 0) {
-        bonusSeconds = SaveManager.useTimeExtension(familyId);
-        if (bonusSeconds > 0) break;
-      }
-    }
-
-    if (bonusSeconds <= 0) return;
-
-    this.startTime = this.time.now - (this.elapsedTime - bonusSeconds) * 1000;
-    this.usedTimeExtensions++;
-
-    this.cameras.main.flash(500, 76, 175, 80, false);
-
-    const flashText = this.add.text(375, 400, `⏰ +${bonusSeconds}秒！`, {
-      font: 'bold 48px Arial',
-      color: '#4caf50',
-      stroke: '#ffffff',
-      strokeThickness: 4
-    }).setOrigin(0.5).setDepth(200);
-
-    this.tweens.add({
-      targets: flashText,
-      y: 300,
-      alpha: 0,
-      duration: 1500,
-      ease: 'Cubic.easeOut',
-      onComplete: () => flashText.destroy()
-    });
-
-    this.updateTimerDisplay();
   }
 
   private addHintCountBadge(
@@ -2468,9 +2201,6 @@ export class GameScene extends Phaser.Scene {
       SaveManager.failTowerFloor(this.towerFloorId);
     }
 
-    SaveManager.recordLevelFail(this.elapsedTime, this.hintsUsed);
-    SaveManager.save();
-
     this.showGameOver(0, this.snappedCount, this.realPiecesCount, 'mistake_limit');
   }
 
@@ -2518,29 +2248,9 @@ export class GameScene extends Phaser.Scene {
     const remaining = Math.max(0, this.levelRule.timeLimit - this.elapsedTime);
     this.timeText.setText(formatTime(remaining));
 
-    let newLevel: 'none' | 'low' | 'critical' = 'none';
-    if (remaining <= 0) {
-      newLevel = 'critical';
-    } else if (remaining <= 15) {
-      newLevel = 'critical';
-    } else if (remaining <= 30) {
-      newLevel = 'low';
-    } else {
-      newLevel = 'none';
-    }
-
-    if (newLevel !== this.timeWarningLevel) {
-      if (newLevel === 'none') {
-        this.stopTimeWarningEffects();
-      } else {
-        this.startTimeWarningEffects(newLevel);
-      }
-      this.timeWarningLevel = newLevel;
-    }
-
-    if (remaining <= 15) {
+    if (remaining < 30) {
       this.timeText.setColor('#f44336');
-    } else if (remaining <= 30) {
+    } else if (remaining < 60) {
       this.timeText.setColor('#ff9800');
     } else {
       this.timeText.setColor('#ffd700');
@@ -2548,218 +2258,6 @@ export class GameScene extends Phaser.Scene {
 
     if (remaining <= 0 && !this.isCompleted) {
       this.onTimeUp();
-    }
-  }
-
-  private startTimeWarningEffects(level: 'low' | 'critical'): void {
-    this.stopTimeWarningEffects();
-
-    if (level === 'critical') {
-      this.criticalTimeWarningActive = true;
-      this.lowTimeWarningActive = true;
-    } else {
-      this.lowTimeWarningActive = true;
-      this.criticalTimeWarningActive = false;
-    }
-
-    this.timeWarningBackground.setVisible(true);
-    this.updateTimeWarningBackground(level);
-
-    if (this.timeWarningIcon) {
-      this.tweens.add({
-        targets: this.timeWarningIcon,
-        alpha: 1,
-        duration: 200
-      });
-    }
-
-    if (this.timeWarningTween) {
-      this.timeWarningTween.remove();
-    }
-    this.timeWarningTween = this.tweens.add({
-      targets: this.timeWarningOverlay,
-      alpha: level === 'critical' ? { from: 0, to: 0.35 } : { from: 0, to: 0.18 },
-      duration: level === 'critical' ? 350 : 600,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut',
-      onUpdate: () => {
-        this.drawTimeWarningOverlay(level);
-      }
-    });
-
-    if (this.timeWarningPulseTween) {
-      this.timeWarningPulseTween.remove();
-    }
-    const pulseScale = level === 'critical' ? 1.15 : 1.08;
-    this.timeWarningPulseTween = this.tweens.add({
-      targets: this.timeText,
-      scaleX: pulseScale,
-      scaleY: pulseScale,
-      duration: level === 'critical' ? 250 : 500,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut'
-    });
-
-    const tickInterval = level === 'critical' ? 500 : 1000;
-    this.timeTickTimer = this.time.addEvent({
-      delay: tickInterval,
-      loop: true,
-      callback: () => {
-        if (!this.isPaused && !this.isCompleted) {
-          this.playTimeTickSound(level);
-        }
-      }
-    });
-
-    if (level === 'critical') {
-      this.timeShakeTimer = this.time.addEvent({
-        delay: 800,
-        loop: true,
-        callback: () => {
-          if (!this.isPaused && !this.isCompleted) {
-            this.cameras.main.shake(150, 0.008);
-          }
-        }
-      });
-    }
-
-    this.adjustAudioForTimeWarning(level);
-  }
-
-  private stopTimeWarningEffects(): void {
-    this.lowTimeWarningActive = false;
-    this.criticalTimeWarningActive = false;
-
-    if (this.timeWarningTween) {
-      this.timeWarningTween.remove();
-      this.timeWarningTween = null;
-    }
-    if (this.timeWarningPulseTween) {
-      this.timeWarningPulseTween.remove();
-      this.timeWarningPulseTween = null;
-    }
-    if (this.timeTickTimer) {
-      this.timeTickTimer.remove(false);
-      this.timeTickTimer = null;
-    }
-    if (this.timeShakeTimer) {
-      this.timeShakeTimer.remove(false);
-      this.timeShakeTimer = null;
-    }
-
-    if (this.timeWarningBackground) {
-      this.timeWarningBackground.setVisible(false);
-      this.timeWarningBackground.clear();
-    }
-
-    if (this.timeWarningIcon) {
-      this.tweens.add({
-        targets: this.timeWarningIcon,
-        alpha: 0,
-        duration: 200
-      });
-    }
-
-    if (this.timeWarningOverlay) {
-      this.tweens.add({
-        targets: this.timeWarningOverlay,
-        alpha: 0,
-        duration: 200,
-        onComplete: () => {
-          if (this.timeWarningOverlay) {
-            this.timeWarningOverlay.clear();
-          }
-        }
-      });
-    }
-
-    if (this.timeText) {
-      this.tweens.add({
-        targets: this.timeText,
-        scaleX: 1,
-        scaleY: 1,
-        duration: 200
-      });
-    }
-
-    this.restoreAudioAfterWarning();
-  }
-
-  private drawTimeWarningOverlay(level: 'low' | 'critical'): void {
-    if (!this.timeWarningOverlay) return;
-    this.timeWarningOverlay.clear();
-    const color = level === 'critical' ? 0xf44336 : 0xff9800;
-    const alpha = this.timeWarningOverlay.alpha;
-
-    const thickness = level === 'critical' ? 35 : 22;
-    this.timeWarningOverlay.fillStyle(color, alpha);
-    this.timeWarningOverlay.fillRect(0, 0, 750, thickness);
-    this.timeWarningOverlay.fillRect(0, 1334 - thickness, 750, thickness);
-    this.timeWarningOverlay.fillRect(0, 0, thickness, 1334);
-    this.timeWarningOverlay.fillRect(750 - thickness, 0, thickness, 1334);
-  }
-
-  private updateTimeWarningBackground(level: 'low' | 'critical'): void {
-    if (!this.timeWarningBackground) return;
-    this.timeWarningBackground.clear();
-    const color = level === 'critical' ? 0xf44336 : 0xff9800;
-    this.timeWarningBackground.fillStyle(color, 0.25);
-    this.timeWarningBackground.fillRoundedRect(575, 35, 155, 50, 10);
-    this.timeWarningBackground.lineStyle(2, color, 0.8);
-    this.timeWarningBackground.strokeRoundedRect(575, 35, 155, 50, 10);
-  }
-
-  private playTimeTickSound(level: WarningLevel): void {
-    TimeWarningAudio.getInstance().playTick(level);
-  }
-
-  private adjustAudioForTimeWarning(level: 'low' | 'critical'): void {
-    if (this.currentBgmKey) {
-      const bgm = this.sound.get(this.currentBgmKey);
-      if (bgm && bgm.isPlaying) {
-        const targetVol = level === 'critical' ? this.originalBgmVolume * 0.4 : this.originalBgmVolume * 0.7;
-        this.tweens.add({
-          targets: bgm,
-          volume: targetVol,
-          duration: 500
-        });
-      }
-    }
-    if (this.currentAmbientKey) {
-      const ambient = this.sound.get(this.currentAmbientKey);
-      if (ambient && ambient.isPlaying) {
-        const targetVol = level === 'critical' ? this.originalAmbientVolume * 0.3 : this.originalAmbientVolume * 0.6;
-        this.tweens.add({
-          targets: ambient,
-          volume: targetVol,
-          duration: 500
-        });
-      }
-    }
-  }
-
-  private restoreAudioAfterWarning(): void {
-    if (this.currentBgmKey) {
-      const bgm = this.sound.get(this.currentBgmKey);
-      if (bgm && bgm.isPlaying) {
-        this.tweens.add({
-          targets: bgm,
-          volume: this.originalBgmVolume,
-          duration: 500
-        });
-      }
-    }
-    if (this.currentAmbientKey) {
-      const ambient = this.sound.get(this.currentAmbientKey);
-      if (ambient && ambient.isPlaying) {
-        this.tweens.add({
-          targets: ambient,
-          volume: this.originalAmbientVolume,
-          duration: 500
-        });
-      }
     }
   }
 
@@ -2972,8 +2470,7 @@ export class GameScene extends Phaser.Scene {
           combo: this.maxCombo,
           perfectSnaps: this.perfectSnaps,
           rotations: this.rotationAdjustCount,
-          hintTime: this.hintViewTime,
-          hintsUsed: this.hintsUsed
+          hintTime: this.hintViewTime
         }
       );
       updatedQuests = chapterResult.updatedQuests || [];
@@ -3046,53 +2543,33 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.zoomTo(1.05, 400, 'Cubic.easeInOut', true);
     this.time.delayedCall(450, () => {
       this.cameras.main.zoomTo(1.0, 400, 'Cubic.easeInOut', true);
-
-      const firstUnlockInfo = this.isEventLevel
-        ? (eventResult as any)?.galleryFirstUnlock
-        : (chapterResult as any)?.galleryFirstUnlock;
-
-      const invokeVictory = () => {
-        this.showVictory(
-          finalScore,
-          result.stars,
-          this.elapsedTime,
-          chapterResult,
-          drops,
-          eventResult,
-          updatedQuests,
-          achievementResult,
-          conservationMultiplier,
-          randomEventStats,
-          {
-            accuracy,
-            perfectSnaps: this.perfectSnaps,
-            totalSnapDistance: this.totalSnapDistance,
-            snapCount: this.snapCount,
-            snapTimestamps: [...this.snapTimestamps],
-            realPiecesCount: this.realPiecesCount,
-            rotationAdjustCount: this.rotationAdjustCount,
-            hintViewTime: this.hintViewTime,
-            hintsUsed: this.hintsUsed,
-            maxCombo: this.maxCombo,
-            mistakeCount: this.mistakeCount
-          },
-          levelProgressResult,
-          replayData
-        );
-      };
-
-      if (firstUnlockInfo?.unlocked && firstUnlockInfo.specimenId !== null && this.specimen) {
-        this.scene.launch('FirstShowcaseScene', {
-          specimenId: firstUnlockInfo.specimenId,
-          specimen: this.specimen,
-          onComplete: () => {
-            this.scene.remove('FirstShowcaseScene');
-            invokeVictory();
-          }
-        });
-      } else {
-        invokeVictory();
-      }
+      this.showVictory(
+        finalScore,
+        result.stars,
+        this.elapsedTime,
+        chapterResult,
+        drops,
+        eventResult,
+        updatedQuests,
+        achievementResult,
+        conservationMultiplier,
+        randomEventStats,
+        {
+          accuracy,
+          perfectSnaps: this.perfectSnaps,
+          totalSnapDistance: this.totalSnapDistance,
+          snapCount: this.snapCount,
+          snapTimestamps: [...this.snapTimestamps],
+          realPiecesCount: this.realPiecesCount,
+          rotationAdjustCount: this.rotationAdjustCount,
+          hintViewTime: this.hintViewTime,
+          hintsUsed: this.hintsUsed,
+          maxCombo: this.maxCombo,
+          mistakeCount: this.mistakeCount
+        },
+        levelProgressResult,
+        replayData
+      );
     });
   }
 
@@ -3277,7 +2754,6 @@ export class GameScene extends Phaser.Scene {
 
     if (this.isTowerFloor && this.towerFloorId) {
       SaveManager.failTowerFloor(this.towerFloorId);
-      SaveManager.recordLevelFail(this.elapsedTime, this.hintsUsed);
       this.showGameOver(0, this.snappedCount, this.realPiecesCount, 'time_up');
       return;
     }
@@ -3285,9 +2761,6 @@ export class GameScene extends Phaser.Scene {
     if (!this.isEventLevel) {
       DailyQuestManager.onLevelFail();
     }
-
-    SaveManager.recordLevelFail(this.elapsedTime, this.hintsUsed);
-    SaveManager.save();
 
     const result = calculateScore(
       this.levelRule.timeLimit,
@@ -4742,22 +4215,6 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.pieces.forEach(piece => piece.pauseAllHints());
-
-    if (this.timeWarningTween) {
-      this.timeWarningTween.pause();
-    }
-    if (this.timeWarningPulseTween) {
-      this.timeWarningPulseTween.pause();
-    }
-    if (this.timeTickTimer) {
-      this.timeTickTimer.paused = true;
-    }
-    if (this.timeShakeTimer) {
-      this.timeShakeTimer.paused = true;
-    }
-    if (this.timeWarningLevel !== 'none') {
-      TimeWarningAudio.getInstance().pause();
-    }
   }
 
   private resumeGameState(): void {
@@ -4778,31 +4235,11 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.pieces.forEach(piece => piece.resumeAllHints());
-
-    if (this.timeWarningTween) {
-      this.timeWarningTween.resume();
-    }
-    if (this.timeWarningPulseTween) {
-      this.timeWarningPulseTween.resume();
-    }
-    if (this.timeTickTimer) {
-      this.timeTickTimer.paused = false;
-    }
-    if (this.timeShakeTimer) {
-      this.timeShakeTimer.paused = false;
-    }
-    if (this.timeWarningLevel !== 'none') {
-      TimeWarningAudio.getInstance().resume();
-    }
   }
 
   private cleanupGameStateForExit(): void {
     this.isCompleted = true;
     this.isPaused = false;
-
-    this.stopTimeWarningEffects();
-    this.timeWarningLevel = 'none';
-    TimeWarningAudio.getInstance().release();
 
     if (this.fullPreviewActive) {
       this.stopFullPreview();

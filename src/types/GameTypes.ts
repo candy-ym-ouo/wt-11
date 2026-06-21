@@ -266,28 +266,8 @@ export interface PlantSpecimen {
   shape: 'ginkgo' | 'rose' | 'sunflower' | 'lavender' | 'orchid' | 'succulent';
 }
 
-export interface FamilyBorderStyle {
-  borderColor: number;
-  borderWidth: number;
-  glowColor: number;
-  glowIntensity: number;
-  cornerRadius: number;
-  pattern?: string;
-  animation?: 'pulse' | 'shine' | 'none';
-}
-
-export interface FamilyBackgroundStyle {
-  gradientFrom: number;
-  gradientTo: number;
-  particleColor: number;
-  particleType: 'leaf' | 'petal' | 'sparkle' | 'snow' | 'none';
-  particleCount: number;
-  overlayOpacity: number;
-  headerColor: number;
-}
-
 export interface FamilyReward {
-  type: 'score' | 'badge' | 'title' | 'research_point' | 'material' | 'border' | 'background' | 'time_extension';
+  type: 'score' | 'badge' | 'title' | 'research_point' | 'material';
   id: number;
   name: string;
   description: string;
@@ -295,9 +275,6 @@ export interface FamilyReward {
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
   requiredProgress: number;
   value?: number;
-  borderStyle?: FamilyBorderStyle;
-  backgroundStyle?: FamilyBackgroundStyle;
-  timeBonusSeconds?: number;
 }
 
 export interface PlantFamily {
@@ -326,19 +303,12 @@ export interface FamilyProgress {
   totalStars: number;
   firstUnlockedAt?: number;
   completedAt?: number;
-  unlockedBorders: number[];
-  unlockedBackgrounds: number[];
-  timeExtensionsAvailable: number;
-  activeBorderId: number | null;
-  activeBackgroundId: number | null;
 }
 
 export interface FamilyCollectionSaveData {
   familyProgress: Record<string, FamilyProgress>;
   totalFamiliesCompleted: number;
   totalSpecimensByFamily: Record<string, number>;
-  activeBorderFamilyId: string | null;
-  activeBackgroundFamilyId: string | null;
 }
 
 export interface LevelData {
@@ -1587,9 +1557,6 @@ export interface SaveData {
   randomEvent: RandomEventSaveData;
   puzzleSaves: PuzzleSaves;
   replay: ReplaySaveData;
-  recentPlayed: RecentPlayedRecord[];
-  lastPlayedState: LastPlayedState | null;
-  stats: PlayerStats;
 }
 
 export interface SnapRecord {
@@ -1685,78 +1652,4 @@ export interface HiddenLevelProgress {
   unlocked: boolean;
   revealedAt?: number;
   unlockedAt?: number;
-}
-
-export interface RecentPlayedRecord {
-  levelId: number;
-  chapterId: number;
-  playedAt: number;
-  stars: number;
-  score: number;
-}
-
-export interface LastPlayedState {
-  levelId: number;
-  chapterId: number;
-  lastSaveId?: string;
-  savedAt: number;
-  progressPercent: number;
-}
-
-export type ChallengeSource =
-  | 'chapter_level'
-  | 'tower_floor'
-  | 'event_level'
-  | 'exhibition'
-  | 'daily_quest'
-  | 'branch_route';
-
-export interface RecommendedChallenge {
-  id: string | number;
-  source: ChallengeSource;
-  title: string;
-  subtitle: string;
-  icon: string;
-  color: number;
-  chapterId?: number;
-  levelId?: number;
-  sceneKey: string;
-  sceneData?: any;
-  priority: number;
-  reason: string;
-  rewardPreview?: string;
-}
-
-export type ClaimableRewardSource =
-  | 'chapter'
-  | 'tower'
-  | 'event'
-  | 'exhibition'
-  | 'season_pass'
-  | 'family'
-  | 'donation'
-  | 'branch_route'
-  | 'daily_quest';
-
-export interface PlayerStats {
-  totalPlayTime: number;
-  currentWinStreak: number;
-  bestWinStreak: number;
-  totalCompletions: number;
-  totalCompletionTime: number;
-  totalHintsUsed: number;
-  totalLevelsPlayed: number;
-}
-
-export interface ClaimableRewardInfo {
-  id: string | number;
-  source: ClaimableRewardSource;
-  name: string;
-  description: string;
-  icon: string;
-  count: number;
-  color: number;
-  sceneKey: string;
-  sceneData?: any;
-  rewardNames: string[];
 }

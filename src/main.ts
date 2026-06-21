@@ -33,6 +33,7 @@ import { DonationScene } from './scenes/DonationScene';
 import { ProfileScene } from './scenes/ProfileScene';
 import { ReplayScene } from './scenes/ReplayScene';
 import { FirstShowcaseScene } from './scenes/FirstShowcaseScene';
+import { LevelFailScene } from './scenes/LevelFailScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -77,7 +78,8 @@ const config: Phaser.Types.Core.GameConfig = {
     DonationScene,
     ProfileScene,
     ReplayScene,
-    FirstShowcaseScene
+    FirstShowcaseScene,
+    LevelFailScene
   ],
   physics: {
     default: 'arcade',
