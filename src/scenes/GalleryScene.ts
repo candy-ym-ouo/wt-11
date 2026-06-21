@@ -8,9 +8,12 @@ import { getGalleryModifiedDescription } from '../data/ConservationConfig';
 import { BranchRoutesList, getBranchRoute } from '../data/BranchRoutes';
 import { PlantFamilies, getPlantFamilyBySpecimenId } from '../data/PlantFamilies';
 import { getPlantSpecimen } from '../data/PlantSpecimens';
+import { LevelRules } from '../data/LevelRules';
+import { EventLevelRules } from '../data/EventLevelRules';
 
 type FilterMode = 'all' | 'chapter' | 'event' | 'route' | 'family';
 type UnlockSource = 'main_level' | 'event' | 'workshop' | 'route';
+type ProgressCategory = 'family' | 'difficulty' | 'chapter';
 
 export class GalleryScene extends Phaser.Scene {
   private selectedChapterId: number | null = null;
@@ -24,6 +27,9 @@ export class GalleryScene extends Phaser.Scene {
   private searchCursor: Phaser.GameObjects.Text | null = null;
   private galleryContainer: Phaser.GameObjects.Container | null = null;
   private cursorTimer: Phaser.Time.TimerEvent | null = null;
+  private progressPanelExpanded: boolean = false;
+  private progressPanelContainer: Phaser.GameObjects.Container | null = null;
+  private activeProgressCategory: ProgressCategory = 'family';
 
   constructor() {
     super('GalleryScene');
@@ -33,6 +39,7 @@ export class GalleryScene extends Phaser.Scene {
     this.addBackground();
     this.addTitle();
     this.addStatsBar();
+    this.addProgressSummaryPanel();
     this.addSearchBar();
     this.addFilterTabs();
     this.addGalleryItems();
@@ -98,9 +105,327 @@ export class GalleryScene extends Phaser.Scene {
     }).setOrigin(0, 0.5);
   }
 
+  private addProgressSummaryPanel(): void {
+    const panelY = 200;
+    const headerHeight = 44;
+    const contentHeight = 280;
+    const panelWidth = 660;
+    const panelX = 45;
+
+    this.progressPanelContainer = this.add.container(0, 0);
+    this.progressPanelContainer.setDepth(10);
+
+    const headerBg = this.add.graphics();
+    headerBg.fillStyle(0x1a3a5c, 0.95);
+    headerBg.fillRoundedRect(panelX, panelY, panelWidth, headerHeight, 10);
+    this.progressPanelContainer.add(headerBg);
+
+    const toggleIcon = this.add.text(panelX + 20, panelY + headerHeight / 2, '📊', {
+      font: '20px Arial'
+    }).setOrigin(0, 0.5);
+    this.progressPanelContainer.add(toggleIcon);
+
+    const titleText = this.add.text(panelX + 50, panelY + headerHeight / 2, '收集进度汇总', {
+      font: 'bold 16px Arial',
+      color: '#ffffff'
+    }).setOrigin(0, 0.5);
+    this.progressPanelContainer.add(titleText);
+
+    const totalUnlocked = SaveManager.getUnlockedGalleryItems().length;
+    const totalItems = AllGalleryItems.length;
+    const overallPercent = Math.round((totalUnlocked / totalItems) * 100);
+
+    const overallText = this.add.text(panelX + panelWidth - 90, panelY + headerHeight / 2, `总进度: ${overallPercent}%`, {
+      font: 'bold 13px Arial',
+      color: '#4caf50'
+    }).setOrigin(1, 0.5);
+    this.progressPanelContainer.add(overallText);
+
+    const expandIcon = this.add.text(panelX + panelWidth - 20, panelY + headerHeight / 2, '▼', {
+      font: '12px Arial',
+      color: '#888888'
+    }).setOrigin(1, 0.5);
+    this.progressPanelContainer.add(expandIcon);
+
+    headerBg.setInteractive(
+      new Phaser.Geom.Rectangle(panelX, panelY, panelWidth, headerHeight),
+      Phaser.Geom.Rectangle.Contains
+    );
+    headerBg.on('pointerup', () => {
+      this.toggleProgressPanel();
+    });
+
+    const contentContainer = this.createProgressContent(0, headerHeight + 5, panelWidth, contentHeight);
+    contentContainer.setPosition(panelX, panelY + headerHeight + 5);
+    contentContainer.setVisible(this.progressPanelExpanded);
+    this.progressPanelContainer.add(contentContainer);
+  }
+
+  private createProgressContent(x: number, y: number, width: number, height: number): Phaser.GameObjects.Container {
+    const container = this.add.container(x, y);
+
+    const contentBg = this.add.graphics();
+    contentBg.fillStyle(0x0f3460, 0.9);
+    contentBg.fillRoundedRect(0, 0, width, height, 10);
+    container.add(contentBg);
+
+    const tabY = 15;
+    const tabWidth = 100;
+    const tabHeight = 32;
+    const tabSpacing = 8;
+    const tabsStartX = (width - (tabWidth * 3 + tabSpacing * 2)) / 2;
+
+    const categories: { key: ProgressCategory; label: string; icon: string }[] = [
+      { key: 'family', label: '科属', icon: '🌿' },
+      { key: 'difficulty', label: '难度', icon: '⭐' },
+      { key: 'chapter', label: '章节', icon: '📖' }
+    ];
+
+    categories.forEach((cat, index) => {
+      const tabX = tabsStartX + index * (tabWidth + tabSpacing);
+      const isActive = this.activeProgressCategory === cat.key;
+
+      const tabBg = this.add.graphics();
+      tabBg.fillStyle(isActive ? 0xe94560 : 0x1a3a5c, 1);
+      tabBg.fillRoundedRect(tabX, tabY, tabWidth, tabHeight, 8);
+      container.add(tabBg);
+
+      const tabText = this.add.text(tabX + tabWidth / 2, tabY + tabHeight / 2, `${cat.icon} ${cat.label}`, {
+        font: 'bold 13px Arial',
+        color: isActive ? '#ffffff' : '#aaaaaa'
+      }).setOrigin(0.5);
+      container.add(tabText);
+
+      tabBg.setInteractive(
+        new Phaser.Geom.Rectangle(tabX, tabY, tabWidth, tabHeight),
+        Phaser.Geom.Rectangle.Contains
+      );
+      tabBg.on('pointerup', () => {
+        this.activeProgressCategory = cat.key;
+        this.refreshProgressContent();
+      });
+    });
+
+    const listContainer = this.add.container(0, 55);
+    container.add(listContainer);
+    this.updateProgressList(listContainer, width, height - 65);
+
+    return container;
+  }
+
+  private updateProgressList(container: Phaser.GameObjects.Container, width: number, maxHeight: number): void {
+    container.removeAll(true);
+
+    let items: { name: string; percent: number; color: number; icon?: string; id?: string | number }[] = [];
+
+    if (this.activeProgressCategory === 'family') {
+      items = PlantFamilies.map(family => ({
+        name: `${family.icon} ${family.familyName} ${family.genusName}`,
+        percent: SaveManager.getFamilyProgressPercent(family.id),
+        color: family.primaryColor,
+        icon: family.icon,
+        id: family.id
+      })).sort((a, b) => b.percent - a.percent);
+    } else if (this.activeProgressCategory === 'difficulty') {
+      const difficulties: { key: string; label: string; color: number; icon: string }[] = [
+        { key: 'easy', label: '简单', color: 0x4caf50, icon: '🌱' },
+        { key: 'medium', label: '中等', color: 0xff9800, icon: '🌿' },
+        { key: 'hard', label: '困难', color: 0xf44336, icon: '🌳' }
+      ];
+
+      items = difficulties.map(diff => {
+        const total = AllGalleryItems.filter(item => {
+          const level = this.getLevelRuleByGalleryItem(item);
+          return level?.difficulty === diff.key;
+        }).length;
+        const unlocked = AllGalleryItems.filter(item => {
+          const level = this.getLevelRuleByGalleryItem(item);
+          return level?.difficulty === diff.key && SaveManager.isGalleryUnlocked(item.specimenId);
+        }).length;
+        return {
+          name: `${diff.icon} ${diff.label}`,
+          percent: total > 0 ? Math.round((unlocked / total) * 100) : 0,
+          color: diff.color,
+          id: diff.key
+        };
+      });
+    } else if (this.activeProgressCategory === 'chapter') {
+      items = Chapters.map(chapter => {
+        const chapterItems = AllGalleryItems.filter(item => 
+          item.chapterId === chapter.id && !item.isEventExclusive
+        );
+        const unlocked = chapterItems.filter(item => 
+          SaveManager.isGalleryUnlocked(item.specimenId)
+        ).length;
+        return {
+          name: `第${chapter.id}章 · ${chapter.theme}`,
+          percent: chapterItems.length > 0 ? Math.round((unlocked / chapterItems.length) * 100) : 0,
+          color: chapter.primaryColor,
+          id: chapter.id
+        };
+      });
+
+      if (EventGalleryItems.length > 0) {
+        const eventUnlocked = EventGalleryItems.filter(item => 
+          SaveManager.isGalleryUnlocked(item.specimenId)
+        ).length;
+        items.push({
+          name: '🌸 活动限定',
+          percent: Math.round((eventUnlocked / EventGalleryItems.length) * 100),
+          color: 0xe91e63,
+          id: 'event'
+        });
+      }
+    }
+
+    const itemHeight = 42;
+    const padding = 15;
+    const startY = 10;
+
+    items.forEach((item, index) => {
+      const itemY = startY + index * (itemHeight + padding);
+      
+      const itemBg = this.add.graphics();
+      itemBg.fillStyle(0x1a1a2e, 0.6);
+      itemBg.fillRoundedRect(15, itemY, width - 30, itemHeight, 8);
+      container.add(itemBg);
+
+      const nameText = this.add.text(30, itemY + itemHeight / 2, item.name, {
+        font: 'bold 13px Arial',
+        color: '#ffffff'
+      }).setOrigin(0, 0.5);
+      container.add(nameText);
+
+      const barWidth = 150;
+      const barHeight = 10;
+      const barX = width - 30 - barWidth - 50;
+      const barY = itemY + itemHeight / 2 - barHeight / 2;
+
+      const barBg = this.add.graphics();
+      barBg.fillStyle(0x333344, 1);
+      barBg.fillRoundedRect(barX, barY, barWidth, barHeight, 5);
+      container.add(barBg);
+
+      const barFill = this.add.graphics();
+      barFill.fillStyle(item.color, 1);
+      barFill.fillRoundedRect(barX, barY, barWidth * (item.percent / 100), barHeight, 5);
+      container.add(barFill);
+
+      const percentText = this.add.text(width - 25, itemY + itemHeight / 2, `${item.percent}%`, {
+        font: 'bold 14px Arial',
+        color: item.percent === 100 ? '#4caf50' : '#ffd700'
+      }).setOrigin(1, 0.5);
+      container.add(percentText);
+
+      if (item.percent === 100) {
+        const checkmark = this.add.text(30 + nameText.width + 10, itemY + itemHeight / 2, '✓', {
+          font: 'bold 14px Arial',
+          color: '#4caf50'
+        }).setOrigin(0, 0.5);
+        container.add(checkmark);
+      }
+
+      itemBg.setInteractive(
+        new Phaser.Geom.Rectangle(15, itemY, width - 30, itemHeight),
+        Phaser.Geom.Rectangle.Contains
+      );
+      itemBg.on('pointerup', () => {
+        this.handleProgressItemClick(item);
+      });
+
+      itemBg.on('pointerover', () => {
+        itemBg.clear();
+        itemBg.fillStyle(0x2a4a6c, 0.8);
+        itemBg.fillRoundedRect(15, itemY, width - 30, itemHeight, 8);
+      });
+      itemBg.on('pointerout', () => {
+        itemBg.clear();
+        itemBg.fillStyle(0x1a1a2e, 0.6);
+        itemBg.fillRoundedRect(15, itemY, width - 30, itemHeight, 8);
+      });
+    });
+
+    if (items.length === 0) {
+      const emptyText = this.add.text(width / 2, maxHeight / 2, '暂无数据', {
+        font: '14px Arial',
+        color: '#666666'
+      }).setOrigin(0.5);
+      container.add(emptyText);
+    }
+  }
+
+  private handleProgressItemClick(item: { name: string; percent: number; color: number; id?: string | number }): void {
+    if (this.activeProgressCategory === 'family' && typeof item.id === 'string') {
+      this.filterMode = 'family';
+      this.selectedFamilyId = item.id;
+      this.selectedChapterId = null;
+      this.selectedRouteId = null;
+      this.refreshGallery();
+      this.refreshFilterTabs();
+    } else if (this.activeProgressCategory === 'chapter') {
+      if (item.id === 'event') {
+        this.filterMode = 'event';
+        this.selectedChapterId = null;
+        this.selectedRouteId = null;
+        this.selectedFamilyId = null;
+      } else if (typeof item.id === 'number') {
+        this.filterMode = 'chapter';
+        this.selectedChapterId = item.id;
+        this.selectedRouteId = null;
+        this.selectedFamilyId = null;
+      }
+      this.refreshGallery();
+      this.refreshFilterTabs();
+    }
+  }
+
+  private getLevelRuleByGalleryItem(item: GalleryItem): { difficulty: string } | null {
+    const rule = LevelRules.find(r => r.id === item.id) || 
+                 EventLevelRules.find(r => r.id === item.id);
+    return rule || null;
+  }
+
+  private toggleProgressPanel(): void {
+    this.progressPanelExpanded = !this.progressPanelExpanded;
+    if (this.progressPanelContainer && this.progressPanelContainer.length > 5) {
+      const content = this.progressPanelContainer.getAt(5) as Phaser.GameObjects.Container;
+      if (content) {
+        content.setVisible(this.progressPanelExpanded);
+      }
+      
+      const expandIcon = this.progressPanelContainer.getAt(4) as Phaser.GameObjects.Text;
+      if (expandIcon) {
+        expandIcon.setText(this.progressPanelExpanded ? '▲' : '▼');
+      }
+    }
+  }
+
+  private refreshProgressContent(): void {
+    if (!this.progressPanelContainer) return;
+    
+    while (this.progressPanelContainer.length > 5) {
+      this.progressPanelContainer.removeAt(5);
+    }
+    
+    const panelY = 200;
+    const headerHeight = 44;
+    const contentHeight = 280;
+    const panelWidth = 660;
+    const panelX = 45;
+    
+    const newContent = this.createProgressContent(0, headerHeight + 5, panelWidth, contentHeight);
+    newContent.setPosition(panelX, panelY + headerHeight + 5);
+    newContent.setVisible(this.progressPanelExpanded);
+    this.progressPanelContainer.add(newContent);
+  }
+
+  private refreshFilterTabs(): void {
+    this.addFilterTabs();
+  }
+
   private addSearchBar(): void {
     const barX = 45;
-    const barY = 210;
+    const barY = 255;
     const barWidth = 660;
     const barHeight = 48;
 
@@ -222,7 +547,7 @@ export class GalleryScene extends Phaser.Scene {
       this.searchTextObj.setColor(this.searchQuery || this.isSearchFocused ? '#ffffff' : '#666666');
 
       const barX = 45;
-      const barY = 210;
+      const barY = 255;
       const textWidth = this.searchTextObj.width;
       this.searchCursor.setPosition(barX + 55 + textWidth + 2, barY + 24);
     }
