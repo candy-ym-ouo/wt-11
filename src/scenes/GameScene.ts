@@ -3572,65 +3572,25 @@ export class GameScene extends Phaser.Scene {
   }
 
   private showGameOver(score: number, snapped: number, total: number, failType?: string): void {
-    let title = '⏰ 时间到';
-    let titleColor = '#f44336';
-    let borderColor = 0xf44336;
-    let emoji = '😢';
-    let subtitle = '';
+    const failData: LevelFailData = {
+      levelId: this.levelRule.id,
+      score: score,
+      snappedCount: snapped,
+      totalPieces: this.realPiecesCount || total,
+      failType: (failType === 'mistake_limit' ? 'mistake_limit' : 'time_up'),
+      elapsedTime: this.elapsedTime,
+      timeLimit: this.levelRule.timeLimit,
+      mistakeCount: this.mistakeCount,
+      hintsUsed: this.hintsUsed,
+      maxCombo: this.maxCombo,
+      perfectSnaps: this.perfectSnaps,
+      isEventLevel: this.isEventLevel,
+      eventId: this.eventId ?? undefined,
+      isTowerFloor: this.isTowerFloor,
+      towerFloorId: this.towerFloorId ?? undefined
+    };
 
-    if (this.isTowerFloor && failType === 'mistake_limit') {
-      title = '💔 挑战失败';
-      titleColor = '#9c27b0';
-      borderColor = 0x9c27b0;
-      emoji = '😵';
-      subtitle = '失误次数已达上限';
-    } else if (this.isTowerFloor && failType === 'time_up') {
-      title = '⏰ 时间耗尽';
-      subtitle = '挑战塔时间到';
-    }
-
-    const { overlay } = this.createModal(title, titleColor, borderColor);
-
-    this.add.text(375, 480, emoji, {
-      font: '60px Arial',
-      color: '#ffffff'
-    }).setOrigin(0.5);
-
-    if (subtitle) {
-      this.add.text(375, 530, subtitle, {
-        font: '18px Arial',
-        color: '#ff9800'
-      }).setOrigin(0.5);
-    }
-
-    const scoreBg = this.add.graphics();
-    scoreBg.fillStyle(0x0f3460, 0.6);
-    const scoreBgY = subtitle ? 570 : 560;
-    scoreBg.fillRoundedRect(130, scoreBgY, 490, this.isTowerFloor ? 180 : 160, 16);
-
-    this.add.text(375, scoreBgY + 30, `获得分数`, {
-      font: '20px Arial',
-      color: '#aaaaaa'
-    }).setOrigin(0.5);
-
-    this.add.text(375, scoreBgY + 75, score.toLocaleString(), {
-      font: 'bold 44px Arial',
-      color: '#ff9800'
-    }).setOrigin(0.5);
-
-    this.add.text(375, scoreBgY + 115, `已修复 ${snapped}/${this.realPiecesCount || total} 片`, {
-      font: '18px Arial',
-      color: '#eaeaea'
-    }).setOrigin(0.5);
-
-    if (this.isTowerFloor) {
-      this.add.text(375, scoreBgY + 145, `连击: ${this.maxCombo}  |  失误: ${this.mistakeCount}  |  完美: ${this.perfectSnaps}`, {
-        font: '14px Arial',
-        color: '#aaaaaa'
-      }).setOrigin(0.5);
-    }
-
-    this.createResultButtons(overlay, false);
+    this.scene.start('LevelFailScene', failData);
   }
 
   private showTowerVictory(
