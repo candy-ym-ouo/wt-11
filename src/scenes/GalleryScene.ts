@@ -11,14 +11,16 @@ import { getPlantSpecimen } from '../data/PlantSpecimens';
 import { LevelRules } from '../data/LevelRules';
 import { EventLevelRules } from '../data/EventLevelRules';
 
-type FilterMode = 'all' | 'chapter' | 'event' | 'route' | 'family';
+type FilterMode = 'all' | 'chapter' | 'event' | 'route' | 'family' | 'difficulty';
 type UnlockSource = 'main_level' | 'event' | 'workshop' | 'route';
 type ProgressCategory = 'family' | 'difficulty' | 'chapter';
+type DifficultyLevel = 'easy' | 'medium' | 'hard';
 
 export class GalleryScene extends Phaser.Scene {
   private selectedChapterId: number | null = null;
   private selectedRouteId: BranchRouteType | null = null;
   private selectedFamilyId: string | null = null;
+  private selectedDifficulty: DifficultyLevel | null = null;
   private filterMode: FilterMode = 'all';
   private searchQuery: string = '';
   private searchInputRect: Phaser.Geom.Rectangle | null = null;
@@ -360,6 +362,7 @@ export class GalleryScene extends Phaser.Scene {
       this.selectedFamilyId = item.id;
       this.selectedChapterId = null;
       this.selectedRouteId = null;
+      this.selectedDifficulty = null;
       this.refreshGallery();
       this.refreshFilterTabs();
     } else if (this.activeProgressCategory === 'chapter') {
@@ -368,12 +371,22 @@ export class GalleryScene extends Phaser.Scene {
         this.selectedChapterId = null;
         this.selectedRouteId = null;
         this.selectedFamilyId = null;
+        this.selectedDifficulty = null;
       } else if (typeof item.id === 'number') {
         this.filterMode = 'chapter';
         this.selectedChapterId = item.id;
         this.selectedRouteId = null;
         this.selectedFamilyId = null;
+        this.selectedDifficulty = null;
       }
+      this.refreshGallery();
+      this.refreshFilterTabs();
+    } else if (this.activeProgressCategory === 'difficulty' && typeof item.id === 'string') {
+      this.filterMode = 'difficulty';
+      this.selectedDifficulty = item.id as DifficultyLevel;
+      this.selectedChapterId = null;
+      this.selectedRouteId = null;
+      this.selectedFamilyId = null;
       this.refreshGallery();
       this.refreshFilterTabs();
     }
@@ -583,6 +596,7 @@ export class GalleryScene extends Phaser.Scene {
         this.selectedChapterId = null;
         this.selectedRouteId = null;
         this.selectedFamilyId = null;
+        this.selectedDifficulty = null;
         this.refreshGallery();
       }
     );
@@ -606,6 +620,7 @@ export class GalleryScene extends Phaser.Scene {
         this.selectedChapterId = null;
         this.selectedRouteId = null;
         this.selectedFamilyId = null;
+        this.selectedDifficulty = null;
         this.refreshGallery();
       },
       !hasEventItems
@@ -643,6 +658,7 @@ export class GalleryScene extends Phaser.Scene {
             this.selectedRouteId = route.id;
             this.selectedChapterId = null;
             this.selectedFamilyId = null;
+            this.selectedDifficulty = null;
             this.refreshGallery();
           }
         },
@@ -670,6 +686,7 @@ export class GalleryScene extends Phaser.Scene {
             this.selectedChapterId = chapter.id;
             this.selectedRouteId = null;
             this.selectedFamilyId = null;
+            this.selectedDifficulty = null;
             this.refreshGallery();
           }
         },
@@ -697,6 +714,7 @@ export class GalleryScene extends Phaser.Scene {
           this.selectedFamilyId = family.id;
           this.selectedChapterId = null;
           this.selectedRouteId = null;
+          this.selectedDifficulty = null;
           this.refreshGallery();
         },
         false
@@ -813,6 +831,11 @@ export class GalleryScene extends Phaser.Scene {
       } else {
         itemsToShow = AllGalleryItems;
       }
+    } else if (this.filterMode === 'difficulty' && this.selectedDifficulty !== null) {
+      itemsToShow = AllGalleryItems.filter(item => {
+        const rule = this.getLevelRuleByGalleryItem(item);
+        return rule?.difficulty === this.selectedDifficulty;
+      });
     } else {
       itemsToShow = AllGalleryItems;
     }
@@ -850,17 +873,61 @@ export class GalleryScene extends Phaser.Scene {
     this.galleryContainer = this.add.container(0, 0);
     const itemsToShow = this.getFilteredItems();
 
-    const startY = 340;
     const itemWidth = 320;
     const itemHeight = 340;
     const padding = 20;
     const cols = 2;
 
+    let filterTitle = '';
+    let filterColor = '#aaaaaa';
+    if (this.filterMode === 'difficulty' && this.selectedDifficulty) {
+      const diffLabels: Record<DifficultyLevel, { label: string; icon: string; color: string }> = {
+        easy: { label: '简单', icon: '🌱', color: '#4caf50' },
+        medium: { label: '中等', icon: '🌿', color: '#ff9800' },
+        hard: { label: '困难', icon: '🌳', color: '#f44336' }
+      };
+      const diff = diffLabels[this.selectedDifficulty];
+      filterTitle = `${diff.icon} 难度筛选: ${diff.label}`;
+      filterColor = diff.color;
+    } else if (this.filterMode === 'family' && this.selectedFamilyId) {
+      const family = PlantFamilies.find(f => f.id === this.selectedFamilyId);
+      if (family) {
+        filterTitle = `${family.icon} 科属筛选: ${family.familyName} ${family.genusName}`;
+      }
+    } else if (this.filterMode === 'chapter' && this.selectedChapterId) {
+      const chapter = getChapterById(this.selectedChapterId);
+      if (chapter) {
+        filterTitle = `📖 章节筛选: 第${chapter.id}章 · ${chapter.theme}`;
+      }
+    } else if (this.filterMode === 'route' && this.selectedRouteId) {
+      const route = getBranchRoute(this.selectedRouteId);
+      if (route) {
+        filterTitle = `${route.icon} 路线筛选: ${route.theme}`;
+      }
+    } else if (this.filterMode === 'event') {
+      filterTitle = '🌸 活动限定图鉴';
+    }
+
+    const galleryStartY = filterTitle ? 375 : 340;
+
+    if (filterTitle) {
+      const titleBg = this.add.graphics();
+      titleBg.fillStyle(0x1a3a5c, 0.8);
+      titleBg.fillRoundedRect(45, 325, 660, 30, 8);
+      this.galleryContainer.add(titleBg);
+      
+      const filterText = this.add.text(375, 340, filterTitle, {
+        font: 'bold 13px Arial',
+        color: filterColor
+      }).setOrigin(0.5);
+      this.galleryContainer.add(filterText);
+    }
+
     itemsToShow.forEach((item, index) => {
       const col = index % cols;
       const row = Math.floor(index / cols);
       const x = padding + col * (itemWidth + padding) + itemWidth / 2;
-      const y = startY + row * (itemHeight + padding) + itemHeight / 2;
+      const y = galleryStartY + row * (itemHeight + padding) + itemHeight / 2;
 
       this.createGalleryItem(x, y, itemWidth, itemHeight, item, this.galleryContainer!);
     });
@@ -871,6 +938,13 @@ export class GalleryScene extends Phaser.Scene {
         emptyText = `未找到与 "${this.searchQuery}" 相关的植物`;
       } else if (this.filterMode === 'event') {
         emptyText = '暂无活动限定图鉴';
+      } else if (this.filterMode === 'difficulty' && this.selectedDifficulty) {
+        const diffLabels: Record<DifficultyLevel, string> = {
+          easy: '简单',
+          medium: '中等',
+          hard: '困难'
+        };
+        emptyText = `暂无${diffLabels[this.selectedDifficulty]}难度的图鉴`;
       }
       
       const emptyBg = this.add.graphics();
@@ -896,7 +970,7 @@ export class GalleryScene extends Phaser.Scene {
     
     const countBg = this.add.graphics();
     countBg.fillStyle(0x0f3460, 0.8);
-    const countY = startY + Math.ceil(filteredCount / cols) * (itemHeight + padding) + 20;
+    const countY = galleryStartY + Math.ceil(filteredCount / cols) * (itemHeight + padding) + 20;
     countBg.fillRoundedRect(45, countY, 660, 35, 10);
     this.galleryContainer.add(countBg);
 
