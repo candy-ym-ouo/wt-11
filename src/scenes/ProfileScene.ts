@@ -131,6 +131,7 @@ export class ProfileScene extends Phaser.Scene {
 
     y = this.addProfileHeader(y);
     y = this.addCoreStats(y);
+    y = this.addDetailedStats(y);
     y = this.addPlantsSection(y);
     y = this.addSpeedRecordSection(y);
     y = this.addAchievementsSection(y);
@@ -250,6 +251,66 @@ export class ProfileScene extends Phaser.Scene {
       { icon: '🎮', label: '完成关卡', value: completedLevels.toString(), color: '#2196f3' },
       { icon: '🏆', label: '成就', value: `${achievementCount}/${totalAchievements}`, color: '#ff9800' }
     ];
+  }
+
+  private addDetailedStats(y: number): number {
+    const cardHeight = 130;
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0x16213e, 1);
+    bg.fillRoundedRect(25, y, 700, cardHeight, 16);
+
+    const stats = this.getDetailedStats();
+    const colWidth = 700 / stats.length;
+
+    stats.forEach((stat, index) => {
+      const cx = 25 + index * colWidth + colWidth / 2;
+
+      this.add.text(cx, y + 35, stat.icon, {
+        font: '28px Arial'
+      }).setOrigin(0.5);
+
+      this.add.text(cx, y + 70, stat.value, {
+        font: 'bold 24px Arial',
+        color: stat.color
+      }).setOrigin(0.5);
+
+      this.add.text(cx, y + 100, stat.label, {
+        font: '13px Arial',
+        color: '#888888'
+      }).setOrigin(0.5);
+    });
+
+    this.contentContainer!.add(bg);
+    return y + cardHeight + 20;
+  }
+
+  private getDetailedStats(): { icon: string; label: string; value: string; color: string }[] {
+    const totalPlayTime = SaveManager.getTotalPlayTime();
+    const bestWinStreak = SaveManager.getBestWinStreak();
+    const avgCompletionTime = SaveManager.getAverageCompletionTime();
+    const hintDependencyRate = SaveManager.getHintDependencyRate();
+
+    const playTimeStr = this.formatPlayTime(totalPlayTime);
+    const avgTimeStr = avgCompletionTime > 0 ? this.formatTime(avgCompletionTime) : '--';
+    const hintRateStr = hintDependencyRate > 0 ? `${(hintDependencyRate * 100).toFixed(1)}%` : '0%';
+
+    return [
+      { icon: '⏱️', label: '总游玩时长', value: playTimeStr, color: '#00bcd4' },
+      { icon: '🔥', label: '最高连胜', value: `${bestWinStreak}`, color: '#ff5722' },
+      { icon: '⚡', label: '平均通关', value: avgTimeStr, color: '#9c27b0' },
+      { icon: '💡', label: '提示依赖率', value: hintRateStr, color: '#ffc107' }
+    ];
+  }
+
+  private formatPlayTime(seconds: number): string {
+    if (seconds <= 0) return '0分钟';
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    if (hours > 0) {
+      return `${hours}小时${minutes}分`;
+    }
+    return `${minutes}分钟`;
   }
 
   private addPlantsSection(y: number): number {

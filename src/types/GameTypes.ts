@@ -1589,6 +1589,7 @@ export interface SaveData {
   replay: ReplaySaveData;
   recentPlayed: RecentPlayedRecord[];
   lastPlayedState: LastPlayedState | null;
+  stats: PlayerStats;
 }
 
 export interface SnapRecord {
@@ -1736,6 +1737,16 @@ export type ClaimableRewardSource =
   | 'donation'
   | 'branch_route'
   | 'daily_quest';
+
+export interface PlayerStats {
+  totalPlayTime: number;
+  currentWinStreak: number;
+  bestWinStreak: number;
+  totalCompletions: number;
+  totalCompletionTime: number;
+  totalHintsUsed: number;
+  totalLevelsPlayed: number;
+}
 
 export interface ClaimableRewardInfo {
   id: string | number;

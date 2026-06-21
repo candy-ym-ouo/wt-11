@@ -40,7 +40,8 @@ import {
   RecommendedChallenge,
   ClaimableRewardInfo,
   ClaimableRewardSource,
-  ChallengeSource
+  ChallengeSource,
+  PlayerStats
 } from '../types/GameTypes';
 import { TutorialManager } from './TutorialManager';
 import { ConservationManager } from './ConservationManager';
@@ -673,6 +674,18 @@ export class SaveManager {
       migrated.lastPlayedState = null;
     }
 
+    if (!migrated.stats) {
+      migrated.stats = {
+        totalPlayTime: 0,
+        currentWinStreak: 0,
+        bestWinStreak: 0,
+        totalCompletions: 0,
+        totalCompletionTime: 0,
+        totalHintsUsed: 0,
+        totalLevelsPlayed: 0
+      };
+    }
+
     const fallbackTime = migrated.metadata?.createdAt || Date.now();
     if (migrated.galleryUnlocked && migrated.galleryUnlockTimes) {
       migrated.galleryUnlocked.forEach((specimenId: number) => {
@@ -830,7 +843,16 @@ export class SaveManager {
       puzzleSaves: { saves: {}, maxSavesPerLevel: 3 },
       replay: { replays: [], maxReplaysPerLevel: 3 },
       recentPlayed: [],
-      lastPlayedState: null
+      lastPlayedState: null,
+      stats: {
+        totalPlayTime: 0,
+        currentWinStreak: 0,
+        bestWinStreak: 0,
+        totalCompletions: 0,
+        totalCompletionTime: 0,
+        totalHintsUsed: 0,
+        totalLevelsPlayed: 0
+      }
     };
   }
 
@@ -1175,7 +1197,7 @@ export class SaveManager {
     score: number,
     time: number,
     stars: number,
-    stats?: { accuracy?: number; combo?: number; perfectSnaps?: number; rotations?: number; hintTime?: number }
+    stats?: { accuracy?: number; combo?: number; perfectSnaps?: number; rotations?: number; hintTime?: number; hintsUsed?: number }
   ): {
     chapterCompleted: boolean;
     completedChapterId: number | null;
@@ -1422,6 +1444,9 @@ export class SaveManager {
       this.addRecentPlayed(levelId, chapterForLevel.id, stars, finalScore);
       this.clearLastPlayedState();
     }
+
+    const hintsUsed = stats?.hintsUsed ?? 0;
+    this.recordLevelCompletion(time, hintsUsed);
 
     this.save();
     return {
@@ -3527,6 +3552,52 @@ export class SaveManager {
 
   private static syncDonationData(): void {
     this.data.donation = DonationManager.getSaveData();
+  }
+
+  static getPlayerStats(): PlayerStats {
+    return { ...this.data.stats };
+  }
+
+  static getTotalPlayTime(): number {
+    return this.data.stats.totalPlayTime;
+  }
+
+  static getBestWinStreak(): number {
+    return this.data.stats.bestWinStreak;
+  }
+
+  static getCurrentWinStreak(): number {
+    return this.data.stats.currentWinStreak;
+  }
+
+  static getAverageCompletionTime(): number {
+    if (this.data.stats.totalCompletions === 0) return 0;
+    return this.data.stats.totalCompletionTime / this.data.stats.totalCompletions;
+  }
+
+  static getHintDependencyRate(): number {
+    if (this.data.stats.totalLevelsPlayed === 0) return 0;
+    return this.data.stats.totalHintsUsed / this.data.stats.totalLevelsPlayed;
+  }
+
+  static addPlayTime(seconds: number): void {
+    this.data.stats.totalPlayTime += seconds;
+  }
+
+  static recordLevelCompletion(time: number, hintsUsed: number = 0): void {
+    this.data.stats.totalLevelsPlayed += 1;
+    this.data.stats.totalCompletions += 1;
+    this.data.stats.totalCompletionTime += time;
+    this.data.stats.totalHintsUsed += hintsUsed;
+
+    this.data.stats.currentWinStreak += 1;
+    if (this.data.stats.currentWinStreak > this.data.stats.bestWinStreak) {
+      this.data.stats.bestWinStreak = this.data.stats.currentWinStreak;
+    }
+  }
+
+  static resetWinStreak(): void {
+    this.data.stats.currentWinStreak = 0;
   }
 
   static save(): void {

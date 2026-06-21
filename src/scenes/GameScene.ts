@@ -2969,7 +2969,8 @@ export class GameScene extends Phaser.Scene {
           combo: this.maxCombo,
           perfectSnaps: this.perfectSnaps,
           rotations: this.rotationAdjustCount,
-          hintTime: this.hintViewTime
+          hintTime: this.hintViewTime,
+          hintsUsed: this.hintsUsed
         }
       );
       updatedQuests = chapterResult.updatedQuests || [];
