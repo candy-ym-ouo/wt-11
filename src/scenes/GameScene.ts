@@ -103,6 +103,8 @@ export class GameScene extends Phaser.Scene {
 
   private currentBgmKey: string | null = null;
   private currentAmbientKey: string | null = null;
+  private originalBgmVolume: number = 0.4;
+  private originalAmbientVolume: number = 0.2;
   private fogOverlay!: Phaser.GameObjects.Graphics;
   private scoreSurgeMultiplier: number = 1;
   private scoreSurgeTimer: Phaser.Time.TimerEvent | null = null;
@@ -110,6 +112,17 @@ export class GameScene extends Phaser.Scene {
   private familyParticles: Phaser.GameObjects.Particles.ParticleEmitter[] = [];
   private familyBorderGraphics: Phaser.GameObjects.Graphics | null = null;
   private usedTimeExtensions: number = 0;
+
+  private lowTimeWarningActive: boolean = false;
+  private criticalTimeWarningActive: boolean = false;
+  private timeWarningLevel: 'none' | 'low' | 'critical' = 'none';
+  private timeWarningOverlay!: Phaser.GameObjects.Graphics;
+  private timeWarningBackground!: Phaser.GameObjects.Graphics;
+  private timeWarningIcon!: Phaser.GameObjects.Text;
+  private timeWarningTween: Phaser.Tweens.Tween | null = null;
+  private timeWarningPulseTween: Phaser.Tweens.Tween | null = null;
+  private timeTickTimer: Phaser.Time.TimerEvent | null = null;
+  private timeShakeTimer: Phaser.Time.TimerEvent | null = null;
 
   private static readonly TARGET_AREA_X = 375;
   private static readonly TARGET_AREA_Y = 420;
@@ -239,6 +252,14 @@ export class GameScene extends Phaser.Scene {
     if (this.randomEventsEnabled && !this.isTowerFloor && !this.isEventLevel) {
       RandomEventManager.startSession(this.levelRule.difficulty);
     }
+
+    this.lowTimeWarningActive = false;
+    this.criticalTimeWarningActive = false;
+    this.timeWarningLevel = 'none';
+    this.timeWarningTween = null;
+    this.timeWarningPulseTween = null;
+    this.timeTickTimer = null;
+    this.timeShakeTimer = null;
   }
 
   create(): void {
@@ -610,7 +631,19 @@ export class GameScene extends Phaser.Scene {
     this.timeText = this.add.text(690, 45, formatTime(this.levelRule.timeLimit), {
       font: 'bold 32px Arial',
       color: '#ffd700'
-    }).setOrigin(1, 0);
+    }).setOrigin(1, 0).setDepth(10);
+
+    this.timeWarningBackground = this.add.graphics();
+    this.timeWarningBackground.setDepth(9);
+    this.timeWarningBackground.setVisible(false);
+
+    this.timeWarningIcon = this.add.text(590, 45, '⚠️', {
+      font: '28px Arial'
+    }).setOrigin(1, 0).setDepth(10).setAlpha(0);
+
+    this.timeWarningOverlay = this.add.graphics();
+    this.timeWarningOverlay.setDepth(999);
+    this.timeWarningOverlay.setAlpha(0);
 
     this.scoreText = this.add.text(690, 85, '得分: 0', {
       font: '18px Arial',
@@ -2480,9 +2513,29 @@ export class GameScene extends Phaser.Scene {
     const remaining = Math.max(0, this.levelRule.timeLimit - this.elapsedTime);
     this.timeText.setText(formatTime(remaining));
 
-    if (remaining < 30) {
+    let newLevel: 'none' | 'low' | 'critical' = 'none';
+    if (remaining <= 0) {
+      newLevel = 'critical';
+    } else if (remaining <= 15) {
+      newLevel = 'critical';
+    } else if (remaining <= 30) {
+      newLevel = 'low';
+    } else {
+      newLevel = 'none';
+    }
+
+    if (newLevel !== this.timeWarningLevel) {
+      if (newLevel === 'none') {
+        this.stopTimeWarningEffects();
+      } else {
+        this.startTimeWarningEffects(newLevel);
+      }
+      this.timeWarningLevel = newLevel;
+    }
+
+    if (remaining <= 15) {
       this.timeText.setColor('#f44336');
-    } else if (remaining < 60) {
+    } else if (remaining <= 30) {
       this.timeText.setColor('#ff9800');
     } else {
       this.timeText.setColor('#ffd700');
@@ -2490,6 +2543,233 @@ export class GameScene extends Phaser.Scene {
 
     if (remaining <= 0 && !this.isCompleted) {
       this.onTimeUp();
+    }
+  }
+
+  private startTimeWarningEffects(level: 'low' | 'critical'): void {
+    this.stopTimeWarningEffects();
+
+    if (level === 'critical') {
+      this.criticalTimeWarningActive = true;
+      this.lowTimeWarningActive = true;
+    } else {
+      this.lowTimeWarningActive = true;
+      this.criticalTimeWarningActive = false;
+    }
+
+    this.timeWarningBackground.setVisible(true);
+    this.updateTimeWarningBackground(level);
+
+    if (this.timeWarningIcon) {
+      this.tweens.add({
+        targets: this.timeWarningIcon,
+        alpha: 1,
+        duration: 200
+      });
+    }
+
+    if (this.timeWarningTween) {
+      this.timeWarningTween.remove();
+    }
+    this.timeWarningTween = this.tweens.add({
+      targets: this.timeWarningOverlay,
+      alpha: level === 'critical' ? { from: 0, to: 0.35 } : { from: 0, to: 0.18 },
+      duration: level === 'critical' ? 350 : 600,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+      onUpdate: () => {
+        this.drawTimeWarningOverlay(level);
+      }
+    });
+
+    if (this.timeWarningPulseTween) {
+      this.timeWarningPulseTween.remove();
+    }
+    const pulseScale = level === 'critical' ? 1.15 : 1.08;
+    this.timeWarningPulseTween = this.tweens.add({
+      targets: this.timeText,
+      scaleX: pulseScale,
+      scaleY: pulseScale,
+      duration: level === 'critical' ? 250 : 500,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+
+    const tickInterval = level === 'critical' ? 500 : 1000;
+    this.timeTickTimer = this.time.addEvent({
+      delay: tickInterval,
+      loop: true,
+      callback: () => {
+        if (!this.isPaused && !this.isCompleted) {
+          this.playTimeTickSound(level);
+        }
+      }
+    });
+
+    if (level === 'critical') {
+      this.timeShakeTimer = this.time.addEvent({
+        delay: 800,
+        loop: true,
+        callback: () => {
+          if (!this.isPaused && !this.isCompleted) {
+            this.cameras.main.shake(150, 0.008);
+          }
+        }
+      });
+    }
+
+    this.adjustAudioForTimeWarning(level);
+  }
+
+  private stopTimeWarningEffects(): void {
+    this.lowTimeWarningActive = false;
+    this.criticalTimeWarningActive = false;
+
+    if (this.timeWarningTween) {
+      this.timeWarningTween.remove();
+      this.timeWarningTween = null;
+    }
+    if (this.timeWarningPulseTween) {
+      this.timeWarningPulseTween.remove();
+      this.timeWarningPulseTween = null;
+    }
+    if (this.timeTickTimer) {
+      this.timeTickTimer.remove(false);
+      this.timeTickTimer = null;
+    }
+    if (this.timeShakeTimer) {
+      this.timeShakeTimer.remove(false);
+      this.timeShakeTimer = null;
+    }
+
+    if (this.timeWarningBackground) {
+      this.timeWarningBackground.setVisible(false);
+      this.timeWarningBackground.clear();
+    }
+
+    if (this.timeWarningIcon) {
+      this.tweens.add({
+        targets: this.timeWarningIcon,
+        alpha: 0,
+        duration: 200
+      });
+    }
+
+    if (this.timeWarningOverlay) {
+      this.tweens.add({
+        targets: this.timeWarningOverlay,
+        alpha: 0,
+        duration: 200,
+        onComplete: () => {
+          if (this.timeWarningOverlay) {
+            this.timeWarningOverlay.clear();
+          }
+        }
+      });
+    }
+
+    if (this.timeText) {
+      this.tweens.add({
+        targets: this.timeText,
+        scaleX: 1,
+        scaleY: 1,
+        duration: 200
+      });
+    }
+
+    this.restoreAudioAfterWarning();
+  }
+
+  private drawTimeWarningOverlay(level: 'low' | 'critical'): void {
+    if (!this.timeWarningOverlay) return;
+    this.timeWarningOverlay.clear();
+    const color = level === 'critical' ? 0xf44336 : 0xff9800;
+    const alpha = this.timeWarningOverlay.alpha;
+
+    const thickness = level === 'critical' ? 35 : 22;
+    this.timeWarningOverlay.fillStyle(color, alpha);
+    this.timeWarningOverlay.fillRect(0, 0, 750, thickness);
+    this.timeWarningOverlay.fillRect(0, 1334 - thickness, 750, thickness);
+    this.timeWarningOverlay.fillRect(0, 0, thickness, 1334);
+    this.timeWarningOverlay.fillRect(750 - thickness, 0, thickness, 1334);
+  }
+
+  private updateTimeWarningBackground(level: 'low' | 'critical'): void {
+    if (!this.timeWarningBackground) return;
+    this.timeWarningBackground.clear();
+    const color = level === 'critical' ? 0xf44336 : 0xff9800;
+    this.timeWarningBackground.fillStyle(color, 0.25);
+    this.timeWarningBackground.fillRoundedRect(575, 35, 155, 50, 10);
+    this.timeWarningBackground.lineStyle(2, color, 0.8);
+    this.timeWarningBackground.strokeRoundedRect(575, 35, 155, 50, 10);
+  }
+
+  private playTimeTickSound(level: 'low' | 'critical'): void {
+    const freq = level === 'critical' ? 880 : 660;
+    const duration = level === 'critical' ? 0.06 : 0.08;
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      oscillator.frequency.value = freq;
+      oscillator.type = 'sine';
+      gainNode.gain.setValueAtTime(level === 'critical' ? 0.25 : 0.15, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+      oscillator.start(audioCtx.currentTime);
+      oscillator.stop(audioCtx.currentTime + duration);
+    } catch (e) {
+    }
+  }
+
+  private adjustAudioForTimeWarning(level: 'low' | 'critical'): void {
+    if (this.currentBgmKey) {
+      const bgm = this.sound.get(this.currentBgmKey);
+      if (bgm && bgm.isPlaying) {
+        const targetVol = level === 'critical' ? this.originalBgmVolume * 0.4 : this.originalBgmVolume * 0.7;
+        this.tweens.add({
+          targets: bgm,
+          volume: targetVol,
+          duration: 500
+        });
+      }
+    }
+    if (this.currentAmbientKey) {
+      const ambient = this.sound.get(this.currentAmbientKey);
+      if (ambient && ambient.isPlaying) {
+        const targetVol = level === 'critical' ? this.originalAmbientVolume * 0.3 : this.originalAmbientVolume * 0.6;
+        this.tweens.add({
+          targets: ambient,
+          volume: targetVol,
+          duration: 500
+        });
+      }
+    }
+  }
+
+  private restoreAudioAfterWarning(): void {
+    if (this.currentBgmKey) {
+      const bgm = this.sound.get(this.currentBgmKey);
+      if (bgm && bgm.isPlaying) {
+        this.tweens.add({
+          targets: bgm,
+          volume: this.originalBgmVolume,
+          duration: 500
+        });
+      }
+    }
+    if (this.currentAmbientKey) {
+      const ambient = this.sound.get(this.currentAmbientKey);
+      if (ambient && ambient.isPlaying) {
+        this.tweens.add({
+          targets: ambient,
+          volume: this.originalAmbientVolume,
+          duration: 500
+        });
+      }
     }
   }
 
@@ -4467,6 +4747,19 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.pieces.forEach(piece => piece.pauseAllHints());
+
+    if (this.timeWarningTween) {
+      this.timeWarningTween.pause();
+    }
+    if (this.timeWarningPulseTween) {
+      this.timeWarningPulseTween.pause();
+    }
+    if (this.timeTickTimer) {
+      this.timeTickTimer.paused = true;
+    }
+    if (this.timeShakeTimer) {
+      this.timeShakeTimer.paused = true;
+    }
   }
 
   private resumeGameState(): void {
@@ -4487,11 +4780,27 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.pieces.forEach(piece => piece.resumeAllHints());
+
+    if (this.timeWarningTween) {
+      this.timeWarningTween.resume();
+    }
+    if (this.timeWarningPulseTween) {
+      this.timeWarningPulseTween.resume();
+    }
+    if (this.timeTickTimer) {
+      this.timeTickTimer.paused = false;
+    }
+    if (this.timeShakeTimer) {
+      this.timeShakeTimer.paused = false;
+    }
   }
 
   private cleanupGameStateForExit(): void {
     this.isCompleted = true;
     this.isPaused = false;
+
+    this.stopTimeWarningEffects();
+    this.timeWarningLevel = 'none';
 
     if (this.fullPreviewActive) {
       this.stopFullPreview();
