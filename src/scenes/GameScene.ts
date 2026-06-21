@@ -2468,6 +2468,9 @@ export class GameScene extends Phaser.Scene {
       SaveManager.failTowerFloor(this.towerFloorId);
     }
 
+    SaveManager.recordLevelFail(this.elapsedTime, this.hintsUsed);
+    SaveManager.save();
+
     this.showGameOver(0, this.snappedCount, this.realPiecesCount, 'mistake_limit');
   }
 
@@ -3274,6 +3277,7 @@ export class GameScene extends Phaser.Scene {
 
     if (this.isTowerFloor && this.towerFloorId) {
       SaveManager.failTowerFloor(this.towerFloorId);
+      SaveManager.recordLevelFail(this.elapsedTime, this.hintsUsed);
       this.showGameOver(0, this.snappedCount, this.realPiecesCount, 'time_up');
       return;
     }
@@ -3281,6 +3285,9 @@ export class GameScene extends Phaser.Scene {
     if (!this.isEventLevel) {
       DailyQuestManager.onLevelFail();
     }
+
+    SaveManager.recordLevelFail(this.elapsedTime, this.hintsUsed);
+    SaveManager.save();
 
     const result = calculateScore(
       this.levelRule.timeLimit,

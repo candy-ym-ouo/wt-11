@@ -3585,6 +3585,7 @@ export class SaveManager {
   }
 
   static recordLevelCompletion(time: number, hintsUsed: number = 0): void {
+    this.data.stats.totalPlayTime += time;
     this.data.stats.totalLevelsPlayed += 1;
     this.data.stats.totalCompletions += 1;
     this.data.stats.totalCompletionTime += time;
@@ -3594,6 +3595,13 @@ export class SaveManager {
     if (this.data.stats.currentWinStreak > this.data.stats.bestWinStreak) {
       this.data.stats.bestWinStreak = this.data.stats.currentWinStreak;
     }
+  }
+
+  static recordLevelFail(time: number, hintsUsed: number = 0): void {
+    this.data.stats.totalPlayTime += time;
+    this.data.stats.totalLevelsPlayed += 1;
+    this.data.stats.totalHintsUsed += hintsUsed;
+    this.data.stats.currentWinStreak = 0;
   }
 
   static resetWinStreak(): void {
